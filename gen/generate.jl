@@ -80,15 +80,15 @@ end
 
 cleanup(state) = ccall(:cleanup_cpp_env,Ptr{Void},(Ptr{Void},),state)
 
-immutable CppPtr{T}
+immutable CppPtr{T,targs}
     ptr::Ptr{Void}
 end
 
-immutable CppRef{T}
+immutable CppRef{T,targs}
     ptr::Ptr{Void}
 end
 
-immutable CppValue{T}
+immutable CppValue{T,targs}
     data::Vector{Uint8}
 end
 
@@ -98,11 +98,15 @@ immutable CppPOD{T,N}
 end
 
 macro pcpp_str(s)
-    CppPtr{symbol(s)}
+    CppPtr{symbol(s),()}
 end
 
 macro rcpp_str(s)
-    CppRef{symbol(s)}
+    CppRef{symbol(s),()}
+end
+
+macro vcpp_str(s)
+    CppValue{symbol(s),()}
 end
 
 import Base: cconvert
@@ -134,9 +138,10 @@ function get_decl(argt,func,thiscall)
     end
     if thiscall
         thist = argt[1]
-        if !(thist <: CppPtr) && !(thist <: CppRef)
-            error("Expected a CppPtr or CppRef type, got $thist")
+        if !(thist <: CppPtr) && !(thist <: CppRef) && !(thist <: CppValue)
+            error("Expected a CppPtr, CppRef or CppValue type, got $thist")
         end
+        @show thist
         fname = string(thist.parameters[1],"::",func)
     else
         fname = string(func)
@@ -145,7 +150,7 @@ function get_decl(argt,func,thiscall)
     lookup_name(fname)
 end
 
-function cpp_argt(args,fname,thiscall)
+function cpp_argt(args,uuid,fname,thiscall)
     #println("cpp_argt")
     for i = 1:length(args)
         arg = args[i]
@@ -163,11 +168,11 @@ function primary_decl(x)
     y = decl_context(x)
     ccall(:get_primary_dc,Ptr{Void},(Ptr{Void},),y)
 end
-function decl_context(x) 
+function decl_context(x)
     x == C_NULL && error("decl_context")
     y = ccall(:decl_context,Ptr{Void},(Ptr{Void},),x)
     if y == C_NULL
-        #ccall(:cdump,Void,(Ptr{Void},),x)
+        ccall(:cdump,Void,(Ptr{Void},),x)
         error("Decl Context Returned NULL!")
     end
     y
@@ -182,12 +187,12 @@ end
 
 using Base.Meta
 
-function build_cpp_call1(cexpr,member,ret,prefix,this=nothing)
+function build_cpp_call1(cexpr,member,ret,prefix,this,uuid)
     @assert isexpr(cexpr,:call)
     fname = string(prefix,cexpr.args[1])
-    c = Expr(:call,:llvmcall,Expr(:tuple,member,fname,this != nothing),
-                             Expr(:tuple,ret,fname,this != nothing),
-                             Expr(:tuple,cpp_argt,fname,this != nothing))
+    c = Expr(:call,:llvmcall,Expr(:tuple,member,uuid,fname,this != nothing),
+                             Expr(:tuple,ret,uuid,fname,this != nothing),
+                             Expr(:tuple,cpp_argt,uuid,fname,this != nothing))
     if this != nothing
         push!(c.args,this)
     end
@@ -218,7 +223,7 @@ function build_ref(expr)
     end
 end
 
-function cpps_impl(expr,member,build_cpp_call,ret,prefix="")
+function cpps_impl(expr,member,build_cpp_call,ret,prefix="",uuid = rand(Uint128))
     # Expands a->b to
     # llvmcall((cpp_member,typeof(a),"b"))
     if expr.head == :(->)
@@ -233,18 +238,19 @@ function cpps_impl(expr,member,build_cpp_call,ret,prefix="")
             i += 1
         end
         if isexpr(b,:call)
-            return build_cpp_call(b,member,ret,prefix,a)
+            return build_cpp_call(b,member,ret,prefix,a,uuid)
         else
+            Base.dump(expr)
             error("Unsupported!")
         end
     elseif isexpr(expr,:(=))
         flattened = build_ref(expr.args[1])
-        return Expr(:call,:llvmcall,Expr(:tuple,:cpp_assignment,quot(flattened[2:end])),
+        return Expr(:call,:llvmcall,Expr(:tuple,:cpp_assignment,uuid,quot(flattened[2:end])),
                 Void,Expr(:tuple,:cpp_argt),flattened[1],expr.args[2])
     elseif isexpr(expr,:(::))
-        return cpps_impl(expr.args[2],member,build_cpp_call,ret,string(to_prefix(expr.args[1]),"::"))
+        return cpps_impl(expr.args[2],member,build_cpp_call,ret,string(to_prefix(expr.args[1]),"::"),uuid)
     elseif isexpr(expr,:call)
-        return build_cpp_call(expr,member,ret,prefix,nothing)
+        return build_cpp_call(expr,member,ret,prefix,nothing,uuid)
     end
     error("Unrecognized CPP Expression ",expr," (",expr.head,")")
 end
@@ -265,7 +271,7 @@ function lookup_name(fname)
         d = lookup_name(parts[i],cur)
         if d == C_NULL
             #ccall(:cdump,Void,(Ptr{Void},),cur)
-            error("Could not find $x as part of $fname lookup")
+            error("Could not find $(parts[i]) as part of $fname lookup")
         end
         # The last Decl need not be a decl context
         if i == length(parts)
@@ -305,11 +311,11 @@ function compile_func(f,mod,argt,func)
     initialize(mod,f) do
         d = lookup_name(func)
         args,types = process_args(f,argt)
-        ccall(:emit_cpp_call,Void,(Ptr{Void},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Csize_t,Bool,Bool),d,args,types,length(args),false,true)
+        ccall(:emit_cpp_call,Void,(Ptr{Void},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Csize_t,Bool,Bool),d,args,types,C_NULL,length(args),false,true)
     end
 end
 
-function cpp_rett(args,f,thiscall)
+function cpp_rett(args,uuid,f,thiscall)
     d = get_decl(args,f,thiscall)
     t = ccall(:get_result_type,Ptr{Void},(Ptr{Void},),d) 
     arr = Array(Ptr{Void},1)
@@ -327,12 +333,12 @@ function cpp_rett(args,f,thiscall)
 end
 
 
-function cpp_member(f,mod,argt,func,thiscall)
+function cpp_member(f,mod,argt,uuid,func,thiscall)
     #println((f,mod,argt,func,thiscall))
     initialize(mod,f) do 
         d = get_decl(argt,func,thiscall)
         args,types = process_args(f,argt)
-        ccall(:emit_cpp_call,Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Csize_t,Bool,Bool),d,args,types,length(args),false,true)
+        ccall(:emit_cpp_call,Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Csize_t,Bool,Bool),d,args,types,C_NULL,length(args),false,true)
     end
 end
 
@@ -361,12 +367,16 @@ const default_compiler = ClangCompiler(
 lookup_name2(fname) = pcpp"clang::Decl"(lookup_name(fname))
 tocxx(p::pcpp"clang::Decl") = pcpp"clang::CXXRecordDecl"(ccall(:to_cxxdecl,Ptr{Void},(Ptr{Void},),p.ptr))
 
+RequireCompleteType(d::pcpp"clang::Type") = ccall(:RequireCompleteType,Cint,(Ptr{Void},),d.ptr) > 0
+
 function sizeof(d::pcpp"clang::CXXRecordDecl")
     @assert d.ptr != C_NULL
     executionEngine = pcpp"llvm::ExecutionEngine"(ccall(:jl_get_llvm_ee,Ptr{Void},()))
     dl = pcpp"llvm::DataLayout"(@cpp1 executionEngine->getDataLayout())
     cgt = (pcpp"clang::CodeGen::CodeGenTypes")(ccall(:clang_get_cgt,Ptr{Void},()))
+    RequireCompleteType(typeForDecl(d))
     t = pcpp"llvm::Type"(@cpp1 cgt->ConvertRecordDeclType(d))
+    @assert @cpp1 t->isSized()
     div((@cpp1 dl->getTypeSizeInBits(t)),8)
 end
 
@@ -381,12 +391,7 @@ dump(x::Union(pcpp"clang::Decl",pcpp"clang::Expr")) = @cpp1 x->dumpColor()
 
 
 pointerTo(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall(:getPointerTo,Ptr{Void},(Ptr{Void},),t.ptr))
-function typeForDecl(p::pcpp"clang::CXXRecordDecl")
-    @assert p.ptr != C_NULL
-    #@show p 
-    pcpp"clang::Type"(@cpp1 p->getTypeForDecl())
-end
-typeForDecl(p::pcpp"clang::Decl") = typeForDecl(tocxx(p))
+referenceTo(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall(:getReferenceTo,Ptr{Void},(Ptr{Void},),t.ptr))
 
 createDeref(p::pcpp"clang::Type", val::pcpp"llvm::UndefValue") = pcpp"clang::Expr"(ccall(:createDeref,Ptr{Void},(Ptr{Void},Ptr{Void}),p.ptr,val.ptr))
 
@@ -429,6 +434,7 @@ function process_args2(f,argt,builder)
         t = argt[i]
         args[i] = pcpp"llvm::Value"(ccall(:get_nth_argument,Ptr{Void},(Ptr{Void},Csize_t),f,i-1))
         if t <: CppPtr
+            @show t
             types[i] = pointerTo(typeForDecl(lookup_name2(string(t.parameters[1])))).ptr
             args[i] = create_extract_value(args[i],0)
         elseif t <: CppRef
@@ -466,28 +472,60 @@ function _decl_name(d)
     ret
 end
 
+
+type CXXState
+    callargs
+    pvds
+    templateresult
+    CXXState() = new()
+end
+
+const statemap = (Uint128=>CXXState)[]
+
+state(uuid) = haskey(statemap,uuid) ? statemap[uuid] : (statemap[uuid] = CXXState())
+function argexprs(state,argt,derefs)
+    if !isdefined(state,:callargs)
+        state.callargs, state.pvds = buildargexprs(argt,derefs)
+    end
+    @show (argt,state.callargs,state.pvds)
+    @assert length(argt) == length(state.callargs) == length(state.pvds)
+    state.callargs, state.pvds
+end
+
 get_pointee_name(t) = _decl_name(@cpp1 t->getPointeeCXXRecordDecl())
 get_name(t) = _decl_name(@cpp1 t->getAsCXXRecordDecl())
 
-function cpp_ret_to_julia(args,f,thiscall)
+function juliatype(t::pcpp"clang::Type")
+    if @cpp1 t->isVoidType()
+        return Void
+    elseif @cpp1 t->isBooleanType()
+        return Bool
+    elseif @cpp1 t->isPointerType()
+        return CppPtr{symbol(get_pointee_name(t)),()}
+    elseif @cpp1 t->isReferenceType()
+        t = pcpp"clang::Type"(ccall(:referenced_type,Ptr{Void},(Ptr{Void},),t.ptr))
+        return CppRef{symbol(get_name(t)),()}
+    elseif @cpp1 t->isIntegerType()
+        # This is wrong. Might be any int. Need to access the BuiltinType::Kind Enum
+        return Int
+    else
+        rd = pcpp"clang::CXXRecordDecl"(@cpp1 t->getAsCXXRecordDecl())
+        if rd.ptr != C_NULL
+            return CppValue{symbol(get_name(t)),()}
+        end
+    end
+    return Ptr{Void}
+end
+
+cxxtmplt(x) = pcpp"clang::ClassTemplateDecl"(ccall(:cxxtmplt,Ptr{Void},(Ptr{Void},),x))
+
+function cpp_ret_to_julia(argt,uuid,derefs,targs,f,thiscall)
+    @show (argt,uuid,derefs,f,thiscall)
     #println("cpp_ret_to_julia")
-    d = pcpp"clang::Decl"(get_decl(args,f,thiscall))
+    d = pcpp"clang::Decl"(get_decl(argt,f,thiscall))
     t = pcpp"clang::Type"(ccall(:get_result_type,Ptr{Void},(Ptr{Void},),d.ptr))
     if t != C_NULL
-        if @cpp1 t->isVoidType()
-            return Void
-        elseif @cpp1 t->isBooleanType()
-            return Bool
-        elseif @cpp1 t->isPointerType()
-            return CppPtr{symbol(get_pointee_name(t))}
-        elseif @cpp1 t->isReferenceType()
-            t = pcpp"clang::Type"(ccall(:referenced_type,Ptr{Void},(Ptr{Void},),t.ptr))
-            return CppRef{symbol(get_name(t))}
-        elseif @cpp1 t->isIntegerType()
-            # This is wrong. Might be any int. Need to access the BuiltinType::Kind Enum
-            return Int
-        end
-        return Ptr{Void}
+        return juliatype(t)
     else
         cxxd = tocxx(d)
         #@show cxxd
@@ -497,35 +535,72 @@ function cpp_ret_to_julia(args,f,thiscall)
             #t = typeForDecl(cxxd)
             #return CppValue{symbol(get_name(t))}
         else
-            error("Unknown type of call!")
+            cxxt =  cxxtmplt(d)
+            if cxxt != C_NULL
+                ts = map(cpptype,targs)
+                deduced = pcpp"clang::ClassTemplateSpecializationDecl"(ccall(:SpecializeClass,Ptr{Void},(Ptr{Void},Ptr{Void},Uint32),cxxt.ptr,[p.ptr for p in ts],length(ts)))
+                s.templateresult = deduced
+                return Void
+                #@cpp1 cxxt->findSpecialization(args,nargs,C_NULL)
+            else
+                # Just blatently assume it's a template call for now
+                s = state(uuid)
+                args = argexprs(s,argt,derefs)[1]
+                deduced = pcpp"clang::FunctionDecl"(ccall(:DeduceTemplateArguments,Ptr{Void},(Ptr{Void},Ptr{Void},Uint32),d.ptr,args,length(args)))
+                s.templateresult = deduced
+                t = pcpp"clang::Type"(ccall(:get_result_type,Ptr{Void},(Ptr{Void},),deduced.ptr))
+                return juliatype(t)
+            end
         end
     end
 end
 
-tname{s}(p::Type{CppPtr{s}}) = p.parameters[1]
-tname{s}(p::Type{CppValue{s}}) = p.parameters[1]
-cpptype{s}(p::Type{CppPtr{s}}) = pointerTo(typeForDecl(lookup_name2(string(tname(p)))))
-cpptype{s}(p::Type{CppValue{s}}) = typeForDecl(lookup_name2(string(tname(p))))
+tname{s}(p::Type{CppPtr{s,()}}) = s
+tname{s}(p::Type{CppValue{s,()}}) = s
+tname{s}(p::Type{CppRef{s,()}}) = s
+cpptype{s}(p::Type{CppPtr{s,()}}) = pointerTo(typeForDecl(lookup_name2(string(tname(p)))))
+cpptype{s}(p::Type{CppValue{s,()}}) = typeForDecl(lookup_name2(string(tname(p))))
+cpptype{s}(p::Type{CppRef{s,()}}) = referenceTo(typeForDecl(lookup_name2(string(tname(p)))))
+cpptype{T}(p::Type{Ptr{T}}) = pointerTo(cpptype(T))
 get_decl2(args...) = pcpp"clang::Decl"(get_decl(args...))
 
 const default_cgf = (pcpp"clang::CodeGen::CodeGenFunction")(ccall(:clang_get_cgf,Ptr{Void},()))
 
+using Base.Meta
 
-function build_cpp_call2(cexpr,member,ret,prefix,this=nothing)
+function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs)
+    ts = pcpp"clang::Type"[cpptype(t) for t in targs]
+    @show ts
+    dump(ts[1])
+    d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall(:SpecializeClass,Ptr{Void},(Ptr{Void},Ptr{Void},Uint32),cxxt.ptr,[p.ptr for p in ts],length(ts)))
+    @show d
+    dump(d)
+    d
+end
+
+function build_cpp_call2(cexpr,member,ret,prefix,this,uuid)
     @assert isexpr(cexpr,:call)
-    fname = string(prefix,cexpr.args[1])
-    c = Expr(:call,:llvmcall,Expr(:tuple,member,fname,this != nothing),
-                             Expr(:tuple,ret,fname,this != nothing),
-                             Expr(:tuple,cpp_argt,fname,this != nothing))
+    targs = []
+    if isexpr(cexpr.args[1],:curly)
+        fname = string(prefix,cexpr.args[1].args[1])
+        targs = map(macroexpand,copy(cexpr.args[1].args[2:end]))
+    else
+        fname = string(prefix,cexpr.args[1])
+    end
+    derefs = [false for i = 1:(length(cexpr.args)-1)]
+    c = Expr(:call,:llvmcall,Expr(:tuple,member,uuid,derefs,targs,fname,this != nothing),
+                             Expr(:tuple,ret,uuid,derefs,targs,fname,this != nothing),
+                             Expr(:tuple,cpp_argt,uuid,fname,this != nothing))
     ret = c
     if this != nothing
         push!(c.args,this)
     else
         d = lookup_name2(fname)
         cxxd = tocxx(d)
-        if cxxd != C_NULL
-            T = CppValue{symbol(get_name(typeForDecl(cxxd)))}
-            size = sizeof(cxxd)
+        cxxt = cxxtmplt(d)
+        if cxxd != C_NULL || cxxt != C_NULL
+            T = CppValue{symbol(fname),()}
+            size =  cxxd != C_NULL ? sizeof(cxxd) : sizeof(pcpp"clang::CXXRecordDecl"(specialize_template(cxxt,targs).ptr))
             ret = Expr(:block,
                 :( r = ($(T))(Array(Uint8,$size)) ),
                 c,
@@ -534,42 +609,80 @@ function build_cpp_call2(cexpr,member,ret,prefix,this=nothing)
         end
     end
     if length(cexpr.args) > 1
-        for arg in cexpr.args[2:end]
+        for (i, arg) in enumerate(cexpr.args[2:end])
+            if isexpr(arg,:call)
+                @show arg
+                # is unary *
+                if length(arg.args) == 2 && arg.args[1] == :*
+                    arg = arg.args[2]
+                    derefs[i] = true
+                end
+            end
             push!(c.args,arg)
         end
     end
     return ret
 end
 
-function buildargexprs(argt,args)
+createDerefExpr(e::pcpp"clang::Expr") = pcpp"clang::Expr"(ccall(:createDerefExpr,Ptr{Void},(Ptr{Void},),e.ptr))
+
+function buildargexprs(argt,derefs)
     callargs = pcpp"clang::Expr"[]
+    pvds = pcpp"clang::Decl"[]
     for i in 1:length(argt)
         #@show argt[i]
         argit = cpptype(argt[i])
         argpvd = CreateParmVarDecl(argit)
-        AssociateValue(argpvd,argit,args[i])
-        push!(callargs,CreateDeclRefExpr(argpvd,argit))
+        push!(pvds, argpvd)
+        expr = CreateDeclRefExpr(argpvd,argit)
+        if derefs[i]
+            expr = createDerefExpr(expr)
+        end
+        push!(callargs,expr)
     end
-    callargs
+    callargs, pvds
 end
 
-function cpp_member2(f,mod,argt,func,thiscall)
+function associateargs(argt,args,pvds)
+    for i = 1:length(args)
+        argit = cpptype(argt[i])
+        AssociateValue(pvds[i],argit,args[i])
+    end
+end
+
+function alloc(ty)
+    @assert ty <: CppValue
+    d = lookup_name2(string(tname(ty)))
+    cxxd = tocxx(d)
+    ty(Array(Uint8,sizeof(cxxd)))
+end
+
+function cpp_member2(f,mod,argt,uuid,derefs,targs,func,thiscall)
     #show (f,mod,argt,func,thiscall)
     #println("cpp_member2")
     #Base.dump((f,mod,argt,func,thiscall))
     initialize(mod,f) do
         llvmf = pcpp"llvm::Function"(f)
-        d = get_decl2(argt,func,thiscall)
+        s = state(uuid)
+        d = isdefined(s,:templateresult) ? pcpp"clang::Decl"(s.templateresult.ptr) : get_decl2(argt,func,thiscall)
         cxxd = tocxx(d)
         builder = pcpp"clang::CodeGen::CGBuilderTy"(ccall(:clang_get_builder,Ptr{Void},()))
         args, types = process_args2(f,argt,builder)
+        rett = cpp_ret_to_julia(argt,uuid,derefs,targs,func,thiscall)
+        rslot = pcpp"llvm::Value"(C_NULL)
+        if rett <: CppValue
+            t = pcpp"clang::Type"(ccall(:get_result_type,Ptr{Void},(Ptr{Void},),d.ptr))
+            cxxt = pcpp"clang::CXXRecordDecl"(@cpp1 t->getAsCXXRecordDecl())
+            rslot = createAlloc(builder,cxxt,rett)
+        end
         #@show args
         #@show cxxd
         #@show (argt, thiscall)
         if cxxd != C_NULL
             @assert argt[1] == Ptr{Void}
             #@show argt
-            callargs = buildargexprs(argt[2:end],args[2:end])
+            callargs, pvds= argexprs(s,argt[2:end],derefs)
+            associateargs(argt[2:end],args[2:end],pvds)
             ctce = BuildCXXTypeConstructExpr(typeForDecl(cxxd),callargs)
             #dump(ctce)
             ccall(:emitexprtomem,Void,(Ptr{Void},Ptr{Void},Cint),ctce,args[1],1)
@@ -579,21 +692,23 @@ function cpp_member2(f,mod,argt,func,thiscall)
             pvd = CreateParmVarDecl(ct)
             AssociateValue(pvd,ct,args[1])
             dre = CreateDeclRefExpr(pvd,ct)
-            me = CreateMemberExpr(dre,true,tovdecl(d))
+            me = CreateMemberExpr(dre,argt[1] <: CppPtr,tovdecl(d))
 
-            callargs = buildargexprs(argt[2:end],args[2:end])
+            callargs, pvds = argexprs(s,argt[2:end],derefs)
+            associateargs(argt[2:end],args[2:end],pvds)
 
             mce = BuildCallToMemberFunction(me,callargs)
 
-            ret = pcpp"llvm::Value"(ccall(:emitcppmembercallexpr,Ptr{Void},(Ptr{Void},),mce.ptr))
+            ret = pcpp"llvm::Value"(ccall(:emitcppmembercallexpr,Ptr{Void},(Ptr{Void},Ptr{Void}),mce.ptr,rslot))
         else
-            ret::pcpp"llvm::Value" = pcpp"llvm::Value"(ccall(:emit_cpp_call,Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Ptr{Ptr{Void}},Csize_t,Bool,Bool),
-                d,[arg.ptr for arg in args],types,length(args),false,false))
+            callargs, pvds = argexprs(s,argt,derefs)
+            associateargs(argt,args,pvds)
+            ret::pcpp"llvm::Value" = pcpp"llvm::Value"(ccall(:emit_cpp_call,Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Ptr{Void}},Ptr{Void},Csize_t,Bool,Bool),
+                d,args,types,callargs,length(args),false,false))
         end
         if ret == C_NULL
             @cpp1 builder->CreateRetVoid()
         else
-            rett = cpp_ret_to_julia(argt,func,thiscall)
             #@show rett
             if rett == Void
                 @cpp1 builder->CreateRetVoid()
@@ -609,34 +724,74 @@ function cpp_member2(f,mod,argt,func,thiscall)
             end
         end
     end
+    delete!(statemap,uuid)
     #println("-cpp_member2")
 end
 
 function cpp_assignment(f,mod,argt,path)
     t = argt[1]
     @assert t <: CppRef
+    @show t
     ct = lookup_name2(string(t.parameters[1]))
 
 end
 
 cpptype(::Type{Uint32}) = pcpp"clang::Type"(unsafe_load(cglobal(:cT_uint32,Ptr{Void})))
+cpptype(::Type{Uint64}) = pcpp"clang::Type"(unsafe_load(cglobal(:cT_uint64,Ptr{Void})))
 
 macro cpp(expr)
     cpps_impl(expr,cpp_member2,build_cpp_call2,cpp_ret_to_julia)
 end
 
+llvmconst(::Type{Any},x::ANY) = @cpp llvm::ConstantInt::get(llvmty(Ptr{Void}),convert(Uint64,pointer_from_objeref(x)))
+llvmconst{T}(::Type{T},x) = @cpp llvm::ConstantInt::get(llvmty(T),convert(Uint64,x))
+
+function createAlloc(builder,cxxt,rett)
+    # Prepare struct return
+    # We emit:
+    #
+    # arr = jl_alloc_array(Uint8,sizeof(cxxt))
+    # obj = allocobj(2)
+    # obj[0] = rett
+    # obj[1] = arr
+    #
+    # First set up the function objects
+    args = pcpp"llvm::Type"[llvmty(Ptr{Void}),llvmty(Csize_t)]
+    aftype1 = @cpp llvm::FunctionType::get(llvmty(Ptr{Void}),
+        (@cpp llvm::ArrayRef{pcpp"llvm::Type"}(pointer(args),convert(Csize_t,length(args)))),
+        false)
+    jl_alloc_array = @cpp llvm::Function::Create(aftype, uint32(0),
+                               "jl_alloc_array", mod)
+
+
+    args = pcpp"llvm::Type"[llvmty(Csize_t)]
+    aftype2 = @cpp llvm::FunctionType::get(llvmty(Ptr{Void}),
+        (@cpp llvm::ArrayRef{pcpp"llvm::Type"}(pointer(args),convert(Csize_t,length(args)))),
+        false)
+    allocobj = @cpp llvm::Function::Create(aftype, uint32(0),
+                               "jl_allocobj", mod)
+
+    # Emit the actual allocation
+    puint8 = llvmconst(Any,Uint8)
+    size = llvmconst(Csize_t,sizeof(cxxt))
+    arr = @cpp builder->CreateCall2(jl_alloc_array,puint8,size)
+    obj = @cpp builder->CreateCall(allocobj,llvmconst(Csize_t,2))
+    llvmstore(builder,obj,llvmconst(Any,rett))
+    llvmstore(builder,CreateConstGEP1_32(obj,1),arr)
+    arr
+end
 
 function ClangCompiler()
-    instance = @cppnew "clang::CompilerInstance"
-    @cpp instance->createDiagnostics()
-    lopts = @cpp instance->getLangOpts()
-    @cpp lopts.CPlusPlus = 1
-    @cpp lopts.LineComment = 1
-    @cpp lopts.Bool = 1
-    @cpp lopts.WChar = 1
-    @cpp lopts.C99 = 1
-    @cpp lopts.ImplicitInt = 0
-    ClangCompiler(instance)
+    #instance = @cppnew "clang::CompilerInstance"
+    #@cpp instance->createDiagnostics()
+    #lopts = @cpp instance->getLangOpts()
+    ##@cpp lopts.CPlusPlus = 1
+    #@cpp lopts.LineComment = 1
+    #@cpp lopts.Bool = 1
+    ##@cpp lopts.WChar = 1
+    #@cpp lopts.C99 = 1
+    #@cpp lopts.ImplicitInt = 0
+    #ClangCompiler(instance)
     #@cpp to->Triple = @cpp llvm::sys::getProcessTriple();
     #tin = @cpp clang::TargetInfo::CreateTargetInfo(@cpp instance->getDiagnostics(), to)
     #@cpp instance->setTarget(tin)
@@ -725,6 +880,38 @@ toLLVM(typeForDecl(lookup_name2("llvm::ExecutionEngine")))
 
 # THE GOAL FOR TODAY
 # Create a graph from a function
+
+function baz()
+    graphf = code_llvmf(toLLVM,(pcpp"clang::Type",))
+    @cpp llvm::ViewGraph(graphf,@cpp llvm::Twine())
+end
+
+code_lowered(baz,())
+code_llvm(baz,())
+
+dump(x::CppRef) = @cpp x->dump()
+
+sstring = pcpp"clang::ClassTemplateSpecializationDecl"(lookup_name2("std::string").ptr)
+
+get_targs(x) = @cpp x->getTemplateArgs()
+getindex(targ::rcpp"clang::TemplateArgumentList",i) = @cpp targ->get(uint32(i))
+
+function astype(targ::rcpp"clang::TemplateArgument")
+    t = @cpp targ->getAsType()
+    @cpp t->getTypePtr()
+end
+
+#dump(astype(get_targs(sstring)[0]))
+
+function baz2()
+    v = @cpp std::string()
+    os = @cpp llvm::raw_string_ostream(v)
+    graphf = code_llvmf(toLLVM,(pcpp"clang::Type",))
+    @cpp llvm::WriteGraph(os,graphf)
+    bytestring((@cpp v->data()), (@cpp v->length()))
+end
+
+code_llvm(baz2,())
 
 #bar(cgt,d) = @cpp cgt->ConvertRecordDeclType(d)
 #t = bar(default_compiler.cgt,lookup_name2("clang::CompilerInstance"))
