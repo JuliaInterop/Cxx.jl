@@ -17,6 +17,9 @@
 #include "clang/AST/DeclTemplate.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Analysis/CallGraph.h"
+#define LLDB_DISABLE_PYTHON // NO!
+#include "/Users/kfischer/julia-upstream/deps/llvm-svn/tools/lldb/include/lldb/Interpreter/CommandInterpreter.h"
+#include "/Users/kfischer/julia-upstream/deps/llvm-svn/tools/lldb/include/lldb/Interpreter/CommandReturnObject.h"
 #include <string>
 namespace clang {
 namespace CodeGen {

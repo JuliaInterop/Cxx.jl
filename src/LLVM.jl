@@ -166,6 +166,9 @@ CreateCallExpr(Fn::pcpp"clang::Expr",args::Vector{pcpp"clang::Expr"}) = pcpp"cla
 
 toLLVM(t::pcpp"clang::Type") = pcpp"llvm::Type"(ccall(:ConvertTypeForMem,Ptr{Void},(Ptr{Void},),t))
 
+getDirectCallee(t::pcpp"clang::CallExpr") = pcpp"clang::FunctionDecl"(ccall(:getDirectCallee,Ptr{Void},(Ptr{Void},),t))
+getCalleeReturnType(t::pcpp"clang::CallExpr") = pcpp"clang::Type"(ccall(:getCalleeReturnType,Ptr{Void},(Ptr{Void},),t))
+
 const CK_Dependent      = 0
 const CK_BitCast        = 1
 const CK_LValueBitCast  = 2
@@ -405,11 +408,12 @@ stripmodifier{s,targs}(p::Union(Type{CppPtr{s,targs}},
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
 stripmodifier{T}(p::Type{CppDeref{T}}) = T
 stripmodifier{T}(p::Type{Ptr{T}}) = Ptr{T}
-stripmodifier(p::Type{Bool}) = p
+stripmodifier(p::Union(Type{Bool},Type{Int64},Type{Uint32})) = p
 
 resolvemodifier{s,targs}(p::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}},
     Type{CppValue{s,targs}}), e::pcpp"clang::Expr") = e
-resolvemodifier(p::Type{Bool}, e::pcpp"clang::Expr") = e
+resolvemodifier(p::Union(Type{Bool},Type{Int64}, Type{Uint32}), e::pcpp"clang::Expr") = e
+resolvemodifier{T}(p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T,To}(p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") =
     createCast(e,cpptype(To),CK_BitCast)
 resolvemodifier{T}(p::Type{CppDeref{T}}, e::pcpp"clang::Expr") =
@@ -422,7 +426,7 @@ resolvemodifier_llvm{s,targs}(builder, t::Union(Type{CppPtr{s,targs}}, Type{CppR
         v::pcpp"llvm::Value") = ExtractValue(v,0)
 
 resolvemodifier_llvm{ptr}(builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
-resolvemodifier_llvm(builder, t::Type{Bool}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(builder, t::Union(Type{Int64},Type{Uint32},Type{Bool}), v::pcpp"llvm::Value") = v
 #resolvemodifier_llvm(builder, t::Type{Uint8}, v::pcpp"llvm::Value") = v
 
 function resolvemodifier_llvm{s,targs}(builder, t::Type{CppValue{s,targs}}, v::pcpp"llvm::Value")
@@ -498,11 +502,11 @@ setup_cpp_env(f::pcpp"llvm::Function") = ccall(:setup_cpp_env,Ptr{Void},(Ptr{Voi
 cleanup_cpp_env(state) = ccall(:cleanup_cpp_env,Void,(Ptr{Void},),state)
 
 dump(d::pcpp"clang::Decl") = ccall(:cdump,Void,(Ptr{Void},),d)
+dump(d::pcpp"clang::FunctionDecl") = ccall(:cdump,Void,(Ptr{Void},),d)
 dump(expr::pcpp"clang::Expr") = ccall(:exprdump,Void,(Ptr{Void},),expr)
 dump(t::pcpp"clang::Type") = ccall(:typedump,Void,(Ptr{Void},),t)
 
 function _cppcall(expr, thiscall, argt)
-    @show argt, expr
     check_args(argt, expr)
 
     pvds = pcpp"clang::ParmVarDecl"[]
@@ -526,10 +530,6 @@ function _cppcall(expr, thiscall, argt)
             push!(pvds, pvd)
             dre = CreateDeclRefExpr(pvd,ct)
         end
-        @show dre
-        @show ct
-        @show argt[1] <: CppPtr
-        dump(ct)
         me = BuildMemberReference(dre, ct, argt[1] <: CppPtr, fname)
 
         if me == C_NULL
@@ -539,8 +539,6 @@ function _cppcall(expr, thiscall, argt)
         # And now the expressions for all the arguments
         callargs, callpvds = buildargexprs(argt[2:end])
         append!(pvds, callpvds)
-
-        @show me
         # The actual call expression
         mce = BuildCallToMemberFunction(me,callargs)
 
@@ -548,7 +546,7 @@ function _cppcall(expr, thiscall, argt)
         # and can move on to llvm code generation
 
         # First we need to get the return type of the C++ expression
-        rt = DeduceReturnType(mce)
+        rt = getCalleeReturnType(pcpp"clang::CallExpr"(mce.ptr))
         rett = juliatype(rt)
         llvmrt = julia_to_llvm(rett)
         llvmargt = argt
@@ -631,13 +629,10 @@ function _cppcall(expr, thiscall, argt)
                 :( r = ($(T))(Array(Uint8,$size)) ),
                 Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
                 :r)
-            @show rr
             return rr
         else
             myctx = getContext(d)
-            @show fname
             dne = BuildDeclarationNameExpr(split(fname,"::")[end],myctx)
-            dump(dne)
 
             # And now the expressions for all the arguments
             callargs, callpvds = buildargexprs(argt)
@@ -647,9 +642,7 @@ function _cppcall(expr, thiscall, argt)
 
             # First we need to get the return type of the C++ expression
             rt = DeduceReturnType(ce)
-            dump(rt)
             rett = juliatype(rt)
-            println("ABC")
 
             llvmargt = [argt...]
 
@@ -661,8 +654,6 @@ function _cppcall(expr, thiscall, argt)
 
             llvmrt = julia_to_llvm(rett)
 
-            @show rett
-            @show llvmargt
             # Let's create an LLVM fuction
             f = CreateFunction(issret ? julia_to_llvm(Void) : llvmrt,
                 map(julia_to_llvm,llvmargt))
@@ -712,9 +703,7 @@ function _cppcall(expr, thiscall, argt)
 
     cleanup_cpp_env(state)
 
-    @show rett
     if (rett != None) && rett <: CppValue
-        println("Emitting SRET for ", fname)
         arguments = [:(pointer(r.data)), [:(args[$i]) for i = 1:length(argt)]]
         size = cxxsizeof(rt)
         return Expr(:block,
@@ -786,8 +775,6 @@ function build_cpp_call(cexpr, this, prefix = "")
     # The actual call to the staged function
     ret = Expr(:call, this === nothing ? :cppcall : :cppcall_member,
         :(CppExpr{$(quot(symbol(fname))),$(quot(targs))}()), arguments...)
-
-    @show ret
 
     ret
 end
