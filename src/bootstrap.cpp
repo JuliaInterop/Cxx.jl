@@ -1,5 +1,9 @@
-// clang state
 #undef B0 //rom termios
+#define __STDC_LIMIT_MACROS
+#define __STDC_CONSTANT_MACROS
+
+#include <iostream>
+
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "clang/Sema/ScopeInfo.h"
@@ -33,6 +37,15 @@
 #include "CodeGen/CodeGenModule.h"
 #include <CodeGen/CodeGenTypes.h>
 #include <CodeGen/CodeGenFunction.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+
+#include "dtypes.h"
+
+// From julia
+using namespace llvm;
+extern LLVMContext &jl_LLVMContext;
+extern ExecutionEngine *jl_ExecutionEngine;
+
 
 static clang::ASTContext *clang_astcontext;
 static clang::CompilerInstance *clang_compiler;
@@ -66,6 +79,8 @@ extern "C" {
   DLLEXPORT const clang::Type *cT_void;
   DLLEXPORT const clang::Type *cT_pvoid;
 }
+
+static llvm::Type *T_int32;
 
 static bool in_cpp = false;
 
@@ -104,7 +119,7 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
     /// (because these can be defined in declspecs).
     virtual void HandleTagDeclDefinition(clang::TagDecl *D) {
       clang_cgm->UpdateCompletedType(D);
-      
+
       // In C++, we may have member functions that need to be emitted at this 
       // point.
       if (clang_astcontext->getLangOpts().CPlusPlus && !D->isDependentContext()) {
@@ -127,17 +142,6 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
       clang_cgm->EmitVTable(RD, DefinitionRequired);
     }
 };
-
-struct FooBar {
-  void *CIdx;
-  clang::ASTUnit *TheASTUnit;
-  void *StringPool;
-  void *Diagnostics;
-  void *OverridenCursorsPool;
-  void *FormatContext;
-  unsigned FormatInMemoryUniqueId;
-};
-
 
 extern "C" {
 
@@ -205,7 +209,7 @@ static inline void add_directory(clang::Preprocessor &pp, clang::FileManager &fm
 {
   auto dir = fm.getDirectory(dirname);
   if (dir == NULL)
-    JL_PRINTF(JL_STDERR,"WARNING: Could not add directory %s to clang search path!\n",dirname);
+    std::cout << "WARNING: Could not add directory" << dirname << "to clang search path!\n";
   else
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,false),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 
@@ -291,6 +295,8 @@ DLLEXPORT void init_julia_clang_env() {
     clang_cgf->CurFuncDecl = NULL;
     clang_cgf->CurCodeDecl = NULL;
 
+    T_int32 = Type::getInt32Ty(jl_LLVMContext);
+
     cT_int1  = clang_astcontext->BoolTy.getTypePtrOrNull();
     cT_cchar = clang_astcontext->CharTy.getTypePtrOrNull();
     cT_int8  = clang_astcontext->SignedCharTy.getTypePtrOrNull();
@@ -367,127 +373,6 @@ DLLEXPORT void *setup_cpp_env(void *jlfunc)
     return state;
 }
 
-/*
-class FunctionMover;
-
-static Function *myCloneFunction(llvm::Function *toClone,FunctionMover *mover);
-
-class FunctionMover : public ValueMaterializer
-{
-public:
-    FunctionMover(llvm::Module *dest,llvm::Module *src) :
-        ValueMaterializer(), destModule(dest), srcModule(src), VMap()
-    {
-
-    } 
-    ValueToValueMapTy VMap;
-    llvm::Module *destModule;
-    llvm::Module *srcModule;
-    virtual Value *materializeValueFor (Value *V)
-    {
-        Function *F = dyn_cast<Function>(V);
-        if(F)
-        {
-            if(F->isIntrinsic())
-                return destModule->getOrInsertFunction(F->getName(),F->getFunctionType());
-            if(F->isDeclaration() || F->getParent() != destModule)
-            {
-                Function *shadow = srcModule->getFunction(F->getName());
-                if (shadow != NULL && !shadow->isDeclaration())
-                {
-                    // Not truly external
-                    // Check whether we already emitted it once
-                    uint64_t addr = jl_mcjmm->getSymbolAddress(F->getName());
-                    if(addr == 0)
-                    {
-                        return myCloneFunction(shadow,this);
-                    } else {
-                        return destModule->getOrInsertFunction(F->getName(),F->getFunctionType());
-                    }
-                } else if (!F->isDeclaration())
-                {
-                    return myCloneFunction(F,this);
-                }
-            }
-            // Still a declaration and still in a diffrent module
-            if(F->isDeclaration() && F->getParent() != destModule)
-            {
-                // Create forward declaration in current module
-                return destModule->getOrInsertFunction(F->getName(),F->getFunctionType());
-            }
-        } else if (isa<GlobalVariable>(V))
-        {
-            GlobalVariable *GV = cast<GlobalVariable>(V);
-            assert(GV != NULL);
-            GlobalVariable *newGV = new GlobalVariable(*destModule,
-                GV->getType()->getElementType(),
-                GV->isConstant(),
-                GlobalVariable::ExternalLinkage,
-                NULL,
-                GV->getName());
-            newGV->copyAttributesFrom(GV);
-            if (GV->isDeclaration())
-                return newGV;
-            uint64_t addr = jl_mcjmm->getSymbolAddress(GV->getName());
-            if(addr != 0)
-            {
-                newGV->setExternallyInitialized(true);
-                return newGV;
-            }
-            if(GV->getInitializer() != NULL) {
-                Value *C = MapValue(GV->getInitializer(),VMap,RF_None,NULL,this);
-                newGV->setInitializer(cast<Constant>(C));
-            }
-            return newGV;
-        }
-        return NULL;
-    };
-};
-
-static Function *myCloneFunction(llvm::Function *toClone,FunctionMover *mover)
-{
-    Function *NewF = Function::Create(toClone->getFunctionType(),
-        Function::ExternalLinkage,
-        toClone->getName(),
-        mover->destModule);    
-    ClonedCodeInfo info;
-    Function::arg_iterator DestI = NewF->arg_begin();
-    for (Function::const_arg_iterator I = toClone->arg_begin(), E = toClone->arg_end();
-      I != E; ++I) {
-        //if (mover->VMap.count(I) == 0) {   // Is this argument preserved?
-            DestI->setName(I->getName()); // Copy the name over...
-            mover->VMap[I] = DestI++;        // Add mapping to VMap
-        //}
-    }
-
-    // Necessary in case the function is self referential
-    mover->VMap[toClone] = NewF;
-
-    SmallVector<ReturnInst*, 8> Returns;
-    llvm::CloneFunctionInto(NewF,toClone,mover->VMap,true,Returns,"",NULL,NULL,mover);
-
-    return NewF;
-}*/
-
-
-DLLEXPORT void copy_into(llvm::Function *src, llvm::Function *dest)
-{
-    FunctionMover mover(dest->getParent(),src->getParent());
-    Function::arg_iterator DestI = dest->arg_begin();
-    for (Function::const_arg_iterator I = src->arg_begin(), E = src->arg_end();
-      I != E; ++I) {
-        //if (mover->VMap.count(I) == 0) {   // Is this argument preserved?
-            mover.VMap[DestI] = DestI;
-            mover.VMap[I] = DestI++;        // Add mapping to VMap
-        //}
-    }  
-
-    dest->deleteBody();
-
-    SmallVector<ReturnInst*, 8> Returns;
-    llvm::CloneFunctionInto(dest,src,mover.VMap,true,Returns,"",NULL,NULL,&mover);
-}
-
 DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
 {
     //assert(in_cpp == true);
@@ -521,75 +406,6 @@ DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
     delete state;
 }
 
-DLLEXPORT void emit_cpp_new(void *type)
-{
-    clang::Decl* MD = ((clang::Decl *)type);
-    clang::CXXRecordDecl* cdecl = dyn_cast<clang::CXXRecordDecl>(MD);
-    clang::FunctionDecl *OperatorNew = NULL;
-    clang::FunctionDecl *OperatorDelete = NULL;
-
-    clang::ASTContext &astctx = MD->getASTContext();
-    clang_compiler->setASTContext(&astctx);
-
-    bool globalNew = false;
-    clang::QualType ty = clang::QualType(cdecl->getTypeForDecl(),0);
-
-    clang::Sema &sema = clang_compiler->getSema();
-
-    // TODO: This may be incorrect.
-    sema.CurContext = MD->getDeclContext();
-
-#ifdef LLVM34
-    sema.FindAllocationFunctions(clang::SourceLocation(),clang::SourceLocation(),globalNew,
-    ty,false,clang::MultiExprArg(),OperatorNew,OperatorDelete);
-#else
-    sema.FindAllocationFunctions(clang::SourceLocation(),clang::SourceLocation(),globalNew,
-    ty,false,0,NULL,OperatorNew,OperatorDelete);
-#endif
-
-    Value *ret = clang_cgf->EmitCXXNewExpr(new (astctx) clang::CXXNewExpr(MD->getASTContext(),globalNew,OperatorNew,OperatorDelete,false,ArrayRef< clang::Expr * >(),
-        clang::SourceRange(),
-        NULL,                       //Array Size
-        clang::CXXNewExpr::NoInit,  //Initialization Style
-        clang::CXXConstructExpr::Create(
-            astctx,
-            ty,
-            clang::SourceLocation(),
-            sema.LookupDefaultConstructor(cdecl),
-            false,
-            ArrayRef< clang::Expr * >(),
-            false,
-            false,
-            false,
-            clang::CXXConstructExpr::CK_Complete,
-            clang::SourceRange()
-        ),                       //Initializer
-        astctx.getPointerType(ty),  //Allocated Type
-        NULL,                       //Type Source Info
-        clang::SourceRange(),
-        clang::SourceRange()
-        ));
-
-    clang_cgf->Builder.CreateRet(clang_cgf->Builder.CreateBitCast(ret,clang_cgf->CurFn->getReturnType()));
-}
-
-/*
-DLLEXPORT extern "C" void *construct_CXXTemporaryObjectExpr(void *d)
-{
-    clang::Decl* MD = ((clang::Decl *)type);
-    clang::CXXRecordDecl* cdecl = dyn_cast<clang::CXXRecordDecl>(MD);
-    // Find Constructor
-    clang::CXXConstructorDecl *ctor = NULL;
-    for (clang::CXXRecordDecl::ctor_iterator it = cdecl->ctor_begin(); it != cdecl->ctor_end(); it++))
-    {
-        if ((*it)->getMinRequiredArguments() == 0) {
-            ctor = *it;
-            break;
-        }
-    }
-    return new (clang_astctx) clang::CXXTemporaryObjectExpr(clang_astctx,ctor,NULL,ArrayRef<Expr*>(),SourceRange(),false,false,false);
-}
- */
 
 DLLEXPORT int RequireCompleteType(clang::Type *t)
 {
@@ -882,184 +698,6 @@ DLLEXPORT void *emit_field_ref(clang::Type *BaseType, Value *BaseVal, clang::Fie
     return LV.getAddress();
 }
 
-DLLEXPORT Value *emit_cpp_call(void *cppfunc, Value **args, clang::Type **types, clang::Expr **xexprs, size_t nargs, bool Forward, bool EmitReturn, llvm::Value *rslot)
-{
-    clang::Decl* MD = ((clang::Decl *)cppfunc);
-    clang::FunctionDecl* fdecl = dyn_cast<clang::FunctionDecl>(MD);
-
-    clang::VarDecl *decls[nargs];
-    clang::Expr *exprs[nargs];
-
-    clang::CXXMethodDecl *cxx = dyn_cast<clang::CXXMethodDecl>(fdecl);
-    bool isMemberCall = cxx != NULL && !cxx->isStatic();
-    size_t nparams = isMemberCall ? nargs-1 : nargs;
-
-    clang::FunctionDecl::param_const_iterator it = fdecl->param_begin();
-    if (xexprs == NULL) {
-        for ( int i = 0, j = 0; i < nparams; ++i )
-        {
-            clang::QualType T;
-            if (types[i] == NULL) {
-                while (j != i) {
-                    ++j;
-                    ++it;
-                }
-                T = (*it)->getOriginalType();
-            } else {
-                T = clang::QualType(types[i+isMemberCall],(unsigned)0);
-            }
-
-            
-            decls[i] = clang::ParmVarDecl::Create(   
-                *clang_astcontext,
-                fdecl, // This is wrong, hopefully it doesn't matter
-                clang::SourceLocation(),
-                clang::SourceLocation(),
-                &clang_compiler->getPreprocessor().getIdentifierTable().getOwn("dummy"),
-                T,
-                clang_astcontext->getTrivialTypeSourceInfo(T),
-                clang::SC_None,NULL);
-
-            // Associate the value with this decls
-            clang_cgf->EmitParmDecl(*decls[i], clang_cgf->Builder.CreateBitCast(args[i+isMemberCall], 
-                clang_cgf->ConvertTypeForMem(T)), false, 0);
-
-            exprs[i] = clang::DeclRefExpr::Create(*clang_astcontext, clang::NestedNameSpecifierLoc(NULL,NULL), clang::SourceLocation(), 
-                decls[i], false, clang::SourceLocation(), T.getNonReferenceType(), clang::VK_LValue);
-        }
-    } else {
-      for ( int i = 0, j = 0; i < nparams; ++i )
-        exprs[i] = xexprs[i];
-    }
-
-    const clang::CodeGen::CGFunctionInfo &cgfi = clang_cgt->arrangeFunctionDeclaration(fdecl);
-    const clang::FunctionType *FT = fdecl->getType()->getAs<clang::FunctionType>();
-
-    const clang::FunctionProtoType *FPT = dyn_cast<clang::FunctionProtoType>(FT);
-    assert(FPT);
-
-    clang::Sema &sema = clang_compiler->getSema();
-
-    SmallVector<clang::Expr *, 8> AllArgs;
-    if (nparams > 0) {
-        bool error = sema.GatherArgumentsForCall(clang::SourceLocation(),fdecl,FPT,0,
-            llvm::ArrayRef<clang::Expr*>((clang::Expr**)&exprs,nparams),
-            AllArgs,clang::Sema::VariadicDoesNotApply,false,false);
-        assert(!error);
-    }
-
-    clang::ASTContext &astctx = MD->getASTContext();
-
-    clang::DeclRefExpr *DRE =
-    new (astctx) clang::DeclRefExpr(fdecl, false, fdecl->getType(), clang::VK_LValue, clang::SourceLocation());
-
-    clang::ImplicitCastExpr *ICE = 
-    clang::ImplicitCastExpr::Create(astctx, astctx.getPointerType(fdecl->getType()), clang::CK_FunctionToPointerDecay,
-                             DRE, 0, clang::VK_RValue);
-
-
-    // emit the actual call
-    clang::CodeGen::ReturnValueSlot return_slot(rslot, false);
-    clang::CodeGen::CallArgList argvals;
-    it = fdecl->param_begin();
-    if(Forward)
-    {
-        Function::arg_iterator AI = clang_cgf->CurFn->arg_begin();
-        if(isMemberCall)
-        {
-            clang::CXXMethodDecl *cxx = dyn_cast<clang::CXXMethodDecl>(fdecl);
-            if(!cxx->isStatic())
-                argvals.add(clang::CodeGen::RValue::get(AI++),cxx->getThisType(astctx));
-        }
-        if(AI != clang_cgf->CurFn->arg_end()) {
-            for (; it != fdecl->param_end(); ++it)
-            {
-                argvals.add(clang::CodeGen::RValue::get(AI++),(*it)->getOriginalType());
-                if(AI == clang_cgf->CurFn->arg_end()) {
-                    ++it;
-                    break;
-                }
-            }
-        }
-    }
-    else
-    {
-        size_t i = 0;
-        if(isMemberCall)
-        {
-            clang::CXXMethodDecl *cxx = dyn_cast<clang::CXXMethodDecl>(fdecl);
-            if(!cxx->isStatic())
-                argvals.add(clang::CodeGen::RValue::get(args[0]),cxx->getThisType(astctx));
-        }
-        for (; i < nparams; ++i, ++it) {
-            clang::Expr *E = AllArgs[i];
-            clang::QualType T = types[i]==NULL?(*it)->getOriginalType():clang::QualType(types[i],0);
-            if (E->isGLValue()) {
-                assert(E->getObjectKind() == clang::OK_Ordinary);
-                argvals.add(clang_cgf->EmitReferenceBindingToExpr(E), T);
-            } else {
-                argvals.add(clang_cgf->EmitAnyExprToTemp(E),T);
-            }
-        }
-    }
-
-    // emit default arguments
-    for(; it != fdecl->param_end(); ++it)
-    {
-        assert((*it)->hasDefaultArg());
-        clang::QualType T = (*it)->getOriginalType();
-        clang::Expr *E = sema.BuildCXXDefaultArgExpr(clang::SourceLocation(),fdecl,*it).get();
-        if (T->isReferenceType())
-        {
-#ifdef LLVM34
-            argvals.add(clang_cgf->EmitReferenceBindingToExpr(E),T);
-#else
-            argvals.add(clang_cgf->EmitReferenceBindingToExpr(E,NULL),T);
-#endif
-        } else {
-            argvals.add(clang_cgf->EmitAnyExpr(E),T);
-        }
-    }
-
-    llvm::FunctionType *Ty = clang_cgm->getTypes().GetFunctionType(cgfi);
-    clang::CodeGen::RValue rv;
-    sema.MarkFunctionReferenced(clang::SourceLocation(),fdecl);
-    if(isa<clang::CXXMethodDecl>(fdecl))
-    {
-        clang::CXXMethodDecl *cxx = dyn_cast<clang::CXXMethodDecl>(fdecl);
-
-        // Well, let's try this, shall we?
-        //if (cxx->doesThisDeclarationHaveABody())
-        //    clang_cgm->EmitTopLevelDecl(cxx);
-
-        rv = clang_cgf->EmitCall(
-            cgfi, clang_cgm->GetAddrOfFunction(cxx,Ty), return_slot,
-            argvals, NULL, NULL);
-
-    } else {
-        rv = clang_cgf->EmitCall(
-            cgfi, clang_cgf->EmitScalarExpr(ICE), return_slot,
-            argvals, NULL, NULL);
-    }
-
-    if (rv.isAggregate() && rslot != NULL)
-      return NULL;
-
-    assert(rv.isScalar());
-    Value *ret = rv.getScalarVal();
-
-    if(EmitReturn) {
-        // Funnily the RetVoid won't actually be inserted into the basic block
-        // of the function if ret == NULL. Instead clan
-        if (ret == NULL || ret->getType() == T_void)
-            clang_cgf->Builder.CreateRetVoid();
-        else
-            clang_cgf->Builder.CreateRet(clang_cgf->Builder.CreateBitCast(ret,clang_cgf->CurFn->getReturnType()));
-    }
-
-    return ret;
-}
-
 DLLEXPORT char *decl_name(clang::NamedDecl *decl)
 {
     std::string str = decl->getQualifiedNameAsString().data();
@@ -1116,30 +754,6 @@ DLLEXPORT void *getReferenceTo(clang::Type *t)
     return (void*)clang_astcontext->getLValueReferenceType(clang::QualType(t,0)).getTypePtr();
 }
 
-DLLEXPORT void *createDeref(clang::Type *type, llvm::Value *value)
-{
-    clang::QualType T(type,0);
-
-    clang::VarDecl *decl = clang::ParmVarDecl::Create(   
-    *clang_astcontext,
-    clang_astcontext->getTranslationUnitDecl(), // This is wrong, hopefully it doesn't matter
-    clang::SourceLocation(),
-    clang::SourceLocation(),
-    &clang_compiler->getPreprocessor().getIdentifierTable().getOwn("dummy"),
-    T,
-    clang_astcontext->getTrivialTypeSourceInfo(T),
-    clang::SC_None,NULL);
-
-    // Associate the value with this decl
-    clang_cgf->EmitParmDecl(*decl, clang_cgf->Builder.CreateBitCast(value, 
-        clang_cgf->ConvertTypeForMem(T)), false, 0);
-
-    clang::Expr *expr = clang::DeclRefExpr::Create(*clang_astcontext, clang::NestedNameSpecifierLoc(NULL,NULL), clang::SourceLocation(), 
-        decl, false, clang::SourceLocation(), T, clang::VK_RValue);
-
-    return clang_compiler->getSema().CreateBuiltinUnaryOp(clang::SourceLocation(),clang::UO_Deref,expr).get();
-}
-
 DLLEXPORT void *createDerefExpr(clang::Expr *expr)
 {
   return (void*)clang_compiler->getSema().CreateBuiltinUnaryOp(clang::SourceLocation(),clang::UO_Deref,expr).get();
@@ -1150,19 +764,6 @@ DLLEXPORT void *createCast(clang::Expr *expr, clang::Type *t, int kind)
   return clang::ImplicitCastExpr::Create(*clang_astcontext,clang::QualType(t,0),(clang::CastKind)kind,expr,NULL,clang::VK_RValue);
 }
 
-/*
-Create (const ASTContext &C, bool HasUnresolvedUsing, Expr *Base, QualType BaseType, bool IsArrow, SourceLocation OperatorLoc, NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc, const DeclarationNameInfo &MemberNameInfo, const TemplateArgumentListInfo *TemplateArgs, UnresolvedSetIterator Begin, UnresolvedSetIterator End)
-*/
-/*
-Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
-00663                                SourceLocation OpLoc, bool IsArrow,
-00664                                CXXScopeSpec &SS,
-00665                                SourceLocation TemplateKWLoc,
-00666                                NamedDecl *FirstQualifierInScope,
-00667                                const DeclarationNameInfo &NameInfo,
-00668                                const TemplateArgumentListInfo *TemplateArgs,
-00669                                ActOnMemberAccessExtraArgs *ExtraArgs) {
-*/
 DLLEXPORT void *BuildMemberReference(clang::Expr *base, clang::Type *t, int IsArrow, char *name)
 {
     clang::DeclarationName DName(&clang_astcontext->Idents.get(name));

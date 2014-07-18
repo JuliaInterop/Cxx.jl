@@ -1,4 +1,4 @@
-require("../src/LLVM.jl")
+require("../src/CXX.jl")
 RequireCompleteType(d::pcpp"clang::Type") = ccall(:RequireCompleteType,Cint,(Ptr{Void},),d.ptr) > 0
 function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     executionEngine = pcpp"llvm::ExecutionEngine"(ccall(:jl_get_llvm_ee,Ptr{Void},()))
