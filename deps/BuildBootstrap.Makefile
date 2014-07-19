@@ -7,7 +7,7 @@ FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) -I$(build_includedir) \
 		-I$(call exec,$(LLVM_CONFIG) --includedir) \
 		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
 
-JULIA_LDFLAGS = -L$(build_libdir) -ljulia
+JULIA_LDFLAGS = -L$(build_libdir)
 
 CLANG_LIBS = -lclangFrontendTool -lclangBasic -lclangLex -lclangDriver -lclangFrontend -lclangParse \
     -lclangAST -lclangASTMatchers -lclangSema -lclangAnalysis -lclangEdit \
@@ -25,16 +25,16 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
     -llldbPluginObjectContainerUniversalMachO -llldbPluginObjectFileELF -llldbPluginObjectFileJIT \
     -llldbPluginObjectFileMachO -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \
     -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDBServer -llldbPluginPlatformLinux \
-    -llldbPluginPlatformMacOSX -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows \
+    -llldbPluginPlatformMacOSX -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows -llldbPluginPlatformKalimba \
     -llldbPluginProcessDarwin -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote \
     -llldbPluginProcessMachCore -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab \
     -llldbPluginSymbolVendorELF -llldbPluginSymbolVendorMacOSX -llldbPluginSystemRuntimeMacOSX \
     -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyx86 -llldbPluginUtility \
     -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols \
     -llldbSymbol -llldbTarget -llldbUtility -framework Security -lxml2 -lcurses -lpanel -framework CoreFoundation \
-    -framework Foundation -framework Carbon -lobjc
+    -framework Foundation -framework Carbon -lobjc -ledit
 
-all: usr/lib/libcxxffi.$(SHLIB_EXT)
+all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT)
 
 usr/lib:
 	@mkdir -p $(CURDIR)/usr/lib/
@@ -43,7 +43,10 @@ build:
 	@mkdir -p $(CURDIR)/build
 
 build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build
-	@$(call PRINT_CC, $(CXX) -fno-rtti -fPIC $(FLAGS) -c ../src/bootstrap.cpp -o $@)
+	@$(call PRINT_CC, $(CXX) -fno-rtti -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
 
 usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o | usr/lib
-	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) $(LDFLAGS) $(CLANG_LIBS) $< -o $@)
+	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(CLANG_LIBS) $(LLDB_LIBS) $(NO_WHOLE_ARCHIVE) $< )
+
+usr/lib/libcxxffi-debug.$(SHLIB_EXT): build/bootstrap.o | usr/lib
+	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia-debug $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(CLANG_LIBS) $(LLDB_LIBS) $(NO_WHOLE_ARCHIVE) $< )
