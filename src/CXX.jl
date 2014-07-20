@@ -613,9 +613,6 @@ function _cppcall(expr, thiscall, argt)
         llvmrt = julia_to_llvm(rett)
         llvmargt = argt
 
-        @show rett
-        @show llvmrt
-
         # Let's create an LLVM fuction
         f = CreateFunction(llvmrt,
             map(julia_to_llvm,[argt...]))
