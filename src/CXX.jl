@@ -54,12 +54,21 @@ end
 
 # Setup Search Paths
 
-addHeaderDir("/Users/kfischer/julia-upstream/usr/lib/clang/3.5.0/include/", kind = C_ExternCSystem)
-addHeaderDir("/Users/kfischer/julia/deps/llvm-3.3/projects/libcxx/include/", kind = C_ExternCSystem)
-addHeaderDir("/Users/kfischer/julia-upstream/deps/llvm-svn/tools/lldb/include");
-addHeaderDir("/Users/kfischer/julia-upstream/usr/include");
-addHeaderDir("/Users/kfischer/julia-upstream/deps/llvm-svn/tools/clang/");
-addHeaderDir("/Users/kfischer/julia-upstream/deps/llvm-svn/tools/clang/include/");
+basepath = joinpath(JULIA_HOME, "../../")
+
+@osx_only begin
+    xcode_path =
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
+    addHeaderDir(joinpath(xcode_path,"usr/lib/c++/v1/"), kind = C_ExternCSystem)
+end
+
+@linux_only add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/c++/4.8");
+@linux_only add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/x86_64-linux-gnu/c++/4.8/");
+
+addHeaderDir(joinpath(basepath,"usr/lib/clang/3.5.0/include/"), kind = C_ExternCSystem)
+addHeaderDir(joinpath(basepath,"usr/include"))
+addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/"))
+addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/include/"))
 
 
 # Load LLVM and clang libraries

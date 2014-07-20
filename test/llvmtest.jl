@@ -27,6 +27,13 @@ gt = code_graph(factorize,(typeof(rand(4,4)),))
 
 # LLDB test
 
+
+addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/lldb/include"))
+defineMacro("LLDB_DISABLE_PYTHON") # NO!
+cxxinclude("lldb/Interpreter/CommandInterpreter.h")
+cxxinclude("lldb/Interpreter/CommandReturnObject.h")
+cxxinclude("string", isAngled = true)
+
 initd() = @cxx lldb_private::Debugger::Initialize(cast(C_NULL,vcpp"lldb_private::Debugger::LoadPluginCallbackType"))
 initd()
 
