@@ -52,6 +52,7 @@ static clang::CompilerInstance *clang_compiler;
 static clang::CodeGen::CodeGenModule *clang_cgm;
 static clang::CodeGen::CodeGenTypes *clang_cgt;
 static clang::CodeGen::CodeGenFunction *clang_cgf;
+static clang::Parser *clang_parser;
 static DataLayout *TD;
 
 DLLEXPORT llvm::Module *clang_shadow_module;
@@ -158,8 +159,7 @@ void myParseAST(clang::Sema &S, bool PrintStats, bool SkipFunctionBodies) {
 
   clang::ASTConsumer *Consumer = &S.getASTConsumer();
 
-  clang::Parser *Parser = new clang::Parser(S.getPreprocessor(), S, SkipFunctionBodies);
-  clang::Parser &P = *Parser;
+  clang::Parser &P = *clang_parser;
 
   S.getPreprocessor().EnterMainSourceFile();
   P.Initialize();
@@ -205,53 +205,64 @@ void myParseAST(clang::Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   }
 }
 
-static inline void add_directory(clang::Preprocessor &pp, clang::FileManager &fm, clang::SrcMgr::CharacteristicKind flag, const char *dirname)
+DLLEXPORT void add_directory(int kind, const char *dirname)
 {
+  clang::SrcMgr::CharacteristicKind flag = (clang::SrcMgr::CharacteristicKind)kind;
+  clang::FileManager &fm = clang_compiler->getFileManager();
+  clang::Preprocessor &pp = clang_parser->getPreprocessor();
   auto dir = fm.getDirectory(dirname);
   if (dir == NULL)
     std::cout << "WARNING: Could not add directory" << dirname << "to clang search path!\n";
   else
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,false),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
-
 }
 
-DLLEXPORT void init_header(char *name)
+DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
 {
+    const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = clang_compiler->getFileManager();
-    clang::Preprocessor &pp = clang_compiler->getPreprocessor();
-    /*clang::HeaderSearchOptions &opts = pp.getHeaderSearchInfo().getHeaderSearchOpts();
-    opts.UseBuiltinIncludes = 0;
-    opts.UseStandardSystemIncludes = 0;
-    opts.UseStandardCXXIncludes = 0;
-    opts.UseLibcxx = 1;
-    opts.Verbose = 1;*/
-    #define DIR(X) pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(fm.getDirectory(X),clang::SrcMgr::C_User,false),false);
-    #ifdef OS_LINUX
-    add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/c++/4.8");
-    add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/x86_64-linux-gnu/c++/4.8/");
-    add_directory(pp,fm,clang::SrcMgr::C_System,"/home/kfischer/julia/usr/lib/clang/3.5/include/");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/home/kfischer/julia/src/support/");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/home/kfischer/julia/usr/include/");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/home/kfischer/julia/deps/llvm-svn/tools/clang/");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/home/kfischer/julia/deps/llvm-svn/tools/clang/include/");
-    #else 
-    //add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include");
-    add_directory(pp,fm,clang::SrcMgr::C_ExternCSystem,"/Users/kfischer/julia-upstream/usr/lib/clang/3.5.0/include/");
-    add_directory(pp,fm,clang::SrcMgr::C_ExternCSystem,"/Users/kfischer/julia/deps/llvm-3.3/projects/libcxx/include/");
-    //add_directory(pp,fm,clang::SrcMgr::C_User,"/Users/kfischer/julia-upstream/src/support");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/Users/kfischer/julia-upstream/deps/llvm-svn/tools/lldb/include");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/Users/kfischer/julia-upstream/usr/include");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/Users/kfischer/julia-upstream/deps/llvm-svn/tools/clang/");
-    add_directory(pp,fm,clang::SrcMgr::C_User,"/Users/kfischer/julia-upstream/deps/llvm-svn/tools/clang/include/");
-    #endif
-    clang_compiler->getDiagnosticClient().BeginSourceFile(clang_compiler->getLangOpts(), 0);
-    pp.getBuiltinInfo().InitializeBuiltins(pp.getIdentifierTable(),
-                                           clang_compiler->getLangOpts());
-    pp.enableIncrementalProcessing();
-    clang::FrontendInputFile fi = clang::FrontendInputFile(name,clang::IK_CXX);
-    clang_compiler->InitializeSourceManager(fi);
-    myParseAST(clang_compiler->getSema(),false,false);
+    clang::Preprocessor &P = clang_parser->getPreprocessor();
+
+
+    const clang::FileEntry *File = P.LookupFile(
+      clang::SourceLocation(), fname,
+      isAngled, nullptr, CurDir, nullptr,nullptr, nullptr);
+
+    if(!File)
+      return 0;
+
+    clang::SourceManager &sm = clang_compiler->getSourceManager();
+    clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
+
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+
+    clang::Sema &sema = clang_compiler->getSema();
+    clang::ASTConsumer *Consumer = &sema.getASTConsumer();
+
+    clang::Parser::DeclGroupPtrTy ADecl;
+
+    do {
+      // If we got a null return and something *was* parsed, ignore it.  This
+      // is due to a top-level semicolon, an action override, or a parse error
+      // skipping something.
+      if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
+        return 0;
+    } while (!clang_parser->ParseTopLevelDecl(ADecl));
+
     clang_compiler->getSema().PerformPendingInstantiations(false);
+
+    return 1;
+}
+
+DLLEXPORT void defineMacro(const char *Name)
+{
+  clang::Preprocessor &PP = clang_parser->getPreprocessor();
+  // Get the identifier.
+  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
+
+  clang::MacroInfo *MI = PP.AllocateMacroInfo(clang::SourceLocation());
+
+  PP.appendDefMacroDirective(Id, MI);
 }
 
 DLLEXPORT void init_julia_clang_env() {
@@ -324,6 +335,21 @@ DLLEXPORT void init_julia_clang_env() {
     cT_void = clang_astcontext->VoidTy.getTypePtrOrNull();
 
     cT_pvoid = clang_astcontext->getPointerType(clang_astcontext->VoidTy).getTypePtrOrNull();
+
+    clang::Sema &sema = clang_compiler->getSema();
+    clang_parser = new clang::Parser(sema.getPreprocessor(), sema, false);
+
+    clang::Preprocessor &pp = clang_parser->getPreprocessor();
+    clang_compiler->getDiagnosticClient().BeginSourceFile(clang_compiler->getLangOpts(), 0);
+    pp.getBuiltinInfo().InitializeBuiltins(pp.getIdentifierTable(),
+                                           clang_compiler->getLangOpts());
+    pp.enableIncrementalProcessing();
+
+    clang::SourceManager &sm = clang_compiler->getSourceManager();
+    sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0), clang::SrcMgr::C_User));
+
+    sema.getPreprocessor().EnterMainSourceFile();
+    clang_parser->Initialize();
 }
 
 static llvm::Module *cur_module = NULL;

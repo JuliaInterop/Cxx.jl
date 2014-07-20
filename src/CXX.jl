@@ -30,9 +30,60 @@ const libcxxffi = joinpath(dirname(Base.source_path()),string("../deps/usr/lib/l
 
 function init()
     ccall((:init_julia_clang_env,libcxxffi),Void,())
-    ccall((:init_header,libcxxffi),Void,(Ptr{Uint8},),joinpath(dirname(Base.source_path()),"test.h"))
 end
 init()
+
+function cxxinclude(fname; dir = dirname(Base.source_path()), isAngled = false)
+    if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{Uint8}, Ptr{Uint8} ,Cint),
+        fname, dir, isAngled) == 0
+        error("Could not include file $fname")
+    end
+end
+
+const C_User            = 0
+const C_System          = 1
+const C_ExternCSystem   = 2
+
+function addHeaderDir(dirname; kind = C_User)
+    ccall((:add_directory, libcxxffi), Void, (Cint, Ptr{Uint8}), kind, dirname)
+end
+
+function defineMacro(Name)
+    ccall((:defineMacro, libcxxffi), Void, (Ptr{Uint8},), Name)
+end
+
+# Setup Search Paths
+
+addHeaderDir("/Users/kfischer/julia-upstream/usr/lib/clang/3.5.0/include/", kind = C_ExternCSystem)
+addHeaderDir("/Users/kfischer/julia/deps/llvm-3.3/projects/libcxx/include/", kind = C_ExternCSystem)
+addHeaderDir("/Users/kfischer/julia-upstream/deps/llvm-svn/tools/lldb/include");
+addHeaderDir("/Users/kfischer/julia-upstream/usr/include");
+addHeaderDir("/Users/kfischer/julia-upstream/deps/llvm-svn/tools/clang/");
+addHeaderDir("/Users/kfischer/julia-upstream/deps/llvm-svn/tools/clang/include/");
+
+
+# Load LLVM and clang libraries
+
+defineMacro("__STDC_LIMIT_MACROS")
+defineMacro("__STDC_CONSTANT_MACROS")
+
+cxxinclude("llvm/Support/MemoryBuffer.h")
+cxxinclude("llvm/BitCode/ReaderWriter.h")
+cxxinclude("llvm/IR/Module.h")
+cxxinclude("llvm/IR/IRBuilder.h")
+cxxinclude("llvm/IR/Constants.h")
+cxxinclude("llvm/IR/CFG.h")
+cxxinclude("llvm/Support/GraphWriter.h")
+cxxinclude("llvm/ExecutionEngine/ExecutionEngine.h")
+cxxinclude("lib/CodeGen/CGValue.h")
+cxxinclude("lib/CodeGen/CodeGenTypes.h")
+cxxinclude("clang/AST/DeclBase.h")
+cxxinclude("clang/AST/Type.h")
+cxxinclude("clang/Basic/SourceLocation.h")
+cxxinclude("clang/Frontend/CompilerInstance.h")
+cxxinclude("clang/AST/DeclTemplate.h")
+cxxinclude("llvm/ADT/ArrayRef.h")
+cxxinclude("llvm/Analysis/CallGraph.h")
 
 # # # Types we will use to represent C++ values
 
