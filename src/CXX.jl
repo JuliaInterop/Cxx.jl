@@ -44,8 +44,8 @@ const C_User            = 0
 const C_System          = 1
 const C_ExternCSystem   = 2
 
-function addHeaderDir(dirname; kind = C_User)
-    ccall((:add_directory, libcxxffi), Void, (Cint, Ptr{Uint8}), kind, dirname)
+function addHeaderDir(dirname; kind = C_User, isFramework = false)
+    ccall((:add_directory, libcxxffi), Void, (Cint, Cint, Ptr{Uint8}), kind, isFramework, dirname)
 end
 
 function defineMacro(Name)
@@ -66,33 +66,6 @@ end
 @linux_only add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/x86_64-linux-gnu/c++/4.8/");
 
 addHeaderDir(joinpath(basepath,"usr/lib/clang/3.5.0/include/"), kind = C_ExternCSystem)
-addHeaderDir(joinpath(basepath,"usr/include"))
-addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/"))
-addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/include/"))
-
-
-# Load LLVM and clang libraries
-
-defineMacro("__STDC_LIMIT_MACROS")
-defineMacro("__STDC_CONSTANT_MACROS")
-
-cxxinclude("llvm/Support/MemoryBuffer.h")
-cxxinclude("llvm/BitCode/ReaderWriter.h")
-cxxinclude("llvm/IR/Module.h")
-cxxinclude("llvm/IR/IRBuilder.h")
-cxxinclude("llvm/IR/Constants.h")
-cxxinclude("llvm/IR/CFG.h")
-cxxinclude("llvm/Support/GraphWriter.h")
-cxxinclude("llvm/ExecutionEngine/ExecutionEngine.h")
-cxxinclude("lib/CodeGen/CGValue.h")
-cxxinclude("lib/CodeGen/CodeGenTypes.h")
-cxxinclude("clang/AST/DeclBase.h")
-cxxinclude("clang/AST/Type.h")
-cxxinclude("clang/Basic/SourceLocation.h")
-cxxinclude("clang/Frontend/CompilerInstance.h")
-cxxinclude("clang/AST/DeclTemplate.h")
-cxxinclude("llvm/ADT/ArrayRef.h")
-cxxinclude("llvm/Analysis/CallGraph.h")
 
 # # # Types we will use to represent C++ values
 
@@ -307,8 +280,8 @@ immutable CppExpr{T,targs}; end
 function check_args(argt,f)
     for (i,t) in enumerate(argt)
         if isa(t,UnionType) || (isa(t,DataType) && t.abstract) ||
-            (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) && !in(t,
-                [Bool, Uint8, Uint32, Uint64, Int64, Ptr{Void}, Ptr{Uint8}]))
+            (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) && !(t <: Ptr) &&
+                !in(t,[Bool, Uint8, Int32, Uint32, Int64, Uint64]))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
     end
@@ -470,11 +443,11 @@ stripmodifier{s,targs}(p::Union(Type{CppPtr{s,targs}},
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
 stripmodifier{T}(p::Type{CppDeref{T}}) = T
 stripmodifier{T}(p::Type{Ptr{T}}) = Ptr{T}
-stripmodifier(p::Union(Type{Bool},Type{Int64},Type{Uint32})) = p
+stripmodifier(p::Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32})) = p
 
 resolvemodifier{s,targs}(p::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}},
     Type{CppValue{s,targs}}), e::pcpp"clang::Expr") = e
-resolvemodifier(p::Union(Type{Bool},Type{Int64}, Type{Uint32}), e::pcpp"clang::Expr") = e
+resolvemodifier(p::Union(Type{Bool}, Type{Int32}, Type{Int64}, Type{Uint32}), e::pcpp"clang::Expr") = e
 resolvemodifier{T}(p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T,To}(p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") =
     createCast(e,cpptype(To),CK_BitCast)
@@ -488,7 +461,7 @@ resolvemodifier_llvm{s,targs}(builder, t::Union(Type{CppPtr{s,targs}}, Type{CppR
         v::pcpp"llvm::Value") = ExtractValue(v,0)
 
 resolvemodifier_llvm{ptr}(builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
-resolvemodifier_llvm(builder, t::Union(Type{Int64},Type{Uint32},Type{Bool}), v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(builder, t::Union(Type{Int64},Type{Int32},Type{Uint32},Type{Bool}), v::pcpp"llvm::Value") = v
 #resolvemodifier_llvm(builder, t::Type{Uint8}, v::pcpp"llvm::Value") = v
 
 function resolvemodifier_llvm{s,targs}(builder, t::Type{CppValue{s,targs}}, v::pcpp"llvm::Value")

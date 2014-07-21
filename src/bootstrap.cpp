@@ -205,7 +205,7 @@ void myParseAST(clang::Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   }
 }
 
-DLLEXPORT void add_directory(int kind, const char *dirname)
+DLLEXPORT void add_directory(int kind, int isFramework, const char *dirname)
 {
   clang::SrcMgr::CharacteristicKind flag = (clang::SrcMgr::CharacteristicKind)kind;
   clang::FileManager &fm = clang_compiler->getFileManager();
@@ -214,7 +214,7 @@ DLLEXPORT void add_directory(int kind, const char *dirname)
   if (dir == NULL)
     std::cout << "WARNING: Could not add directory" << dirname << "to clang search path!\n";
   else
-    pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,false),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
+    pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
 
 DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
@@ -491,7 +491,15 @@ DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nex
 
 DLLEXPORT void *build_call_to_member(clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
 {
+  if (MemExprE->getType() == clang_astcontext->BoundMemberTy ||
+         MemExprE->getType() == clang_astcontext->OverloadTy)
     return (void*)clang_compiler->getSema().BuildCallToMemberFunction(NULL,MemExprE,clang::SourceLocation(),clang::MultiExprArg(exprs,nexprs),clang::SourceLocation()).get();
+  else {
+    return (void*) new (clang_astcontext) clang::CXXMemberCallExpr(*clang_astcontext,
+        MemExprE,ArrayRef<clang::Expr*>(exprs,nexprs),
+        cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
+        clang::VK_RValue,clang::SourceLocation());
+  }
 }
 
 /*
