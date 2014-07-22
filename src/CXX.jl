@@ -66,6 +66,7 @@ end
 @linux_only add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/x86_64-linux-gnu/c++/4.8/");
 
 addHeaderDir(joinpath(basepath,"usr/lib/clang/3.5.0/include/"), kind = C_ExternCSystem)
+cxxinclude("stdint.h",isAngled = true)
 
 # # # Types we will use to represent C++ values
 
@@ -174,6 +175,13 @@ CreateBitCast(builder,val,ty) =
 BuildCXXTypeConstructExpr(t::pcpp"clang::Type", exprs::Vector{pcpp"clang::Expr"}) =
     pcpp"clang::Expr"(ccall((:typeconstruct,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
         t,[expr.ptr for expr in exprs],length(exprs)))
+
+#BuildCXXNewExpr(E::pcpp"clang::Expr") = pcpp"clang::Expr"(ccall((:BuildCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
+BuildCXXNewExpr(T::pcpp"clang::Type",exprs::Vector{pcpp"clang::Expr"}) =
+    pcpp"clang::Expr"(ccall((:BuildCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
+        T,[expr.ptr for expr in exprs],length(exprs)))
+
+EmitCXXNewExpr(E::pcpp"clang::Expr") = pcpp"llvm::Value"(ccall((:EmitCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
 
 cxxsizeof(t::pcpp"clang::CXXRecordDecl") = ccall((:cxxsizeof,libcxxffi),Csize_t,(Ptr{Void},),t)
 cxxsizeof(t::pcpp"clang::Type") = ccall((:cxxsizeofType,libcxxffi),Csize_t,(Ptr{Void},),t)
@@ -541,7 +549,7 @@ dump(d::pcpp"clang::FunctionDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),
 dump(expr::pcpp"clang::Expr") = ccall((:exprdump,libcxxffi),Void,(Ptr{Void},),expr)
 dump(t::pcpp"clang::Type") = ccall((:typedump,libcxxffi),Void,(Ptr{Void},),t)
 
-function _cppcall(expr, thiscall, argt)
+function _cppcall(expr, thiscall, isnew, argt)
     check_args(argt, expr)
 
     pvds = pcpp"clang::ParmVarDecl"[]
@@ -630,15 +638,24 @@ function _cppcall(expr, thiscall, argt)
 
             # The arguments to llvmcall will have an extra
             # argument for the return slot
-            llvmargt = [Ptr{Uint8},argt...]
+            llvmargt = [argt...]
+            if !isnew
+                llvmargt = [Ptr{Uint8}, llvmargt]
+            end
 
             # And now the expressions for all the arguments
             callargs, callpvds = buildargexprs(argt)
             append!(pvds, callpvds)
 
+            rett = Void
+            if isnew
+                rett = CppPtr{symbol(fname),()}
+            end
+            llvmrt = julia_to_llvm(rett)
+
             # Let's create an LLVM fuction
-            f = CreateFunction(julia_to_llvm(Void),
-                map(julia_to_llvm,map(stripmodifier,llvmargt)))
+            f = CreateFunction(llvmrt,
+                map(julia_to_llvm,llvmargt))
 
             state = setup_cpp_env(f)
             builder = irbuilder()
@@ -646,25 +663,30 @@ function _cppcall(expr, thiscall, argt)
             # First compute the llvm arguments (unpacking them from their julia wrappers),
             # then associate them with the clang level variables
             args = llvmargs(builder, f, llvmargt)
-            associateargs(builder,argt,args[2:end],pvds)
+            associateargs(builder,argt,isnew ? args : args[2:end],pvds)
 
-            ctce = BuildCXXTypeConstructExpr(typeForDecl(cxxd),callargs)
+            if isnew
+                nE = BuildCXXNewExpr(typeForDecl(cxxd),callargs)
+                ret = EmitCXXNewExpr(nE)
+            else
+                ctce = BuildCXXTypeConstructExpr(typeForDecl(cxxd),callargs)
 
-            ccall((:emitexprtomem,libcxxffi),Void,(Ptr{Void},Ptr{Void},Cint),ctce,args[1],1)
-            ret = Void
+                ccall((:emitexprtomem,libcxxffi),Void,(Ptr{Void},Ptr{Void},Cint),ctce,args[1],1)
+                ret = Void
 
-            CreateRetVoid(builder)
+                CreateRetVoid(builder)
 
-            cleanup_cpp_env(state)
+                cleanup_cpp_env(state)
 
-            arguments = [:(pointer(r.data)), [:(args[$i]) for i = 1:length(argt)]]
+                arguments = [:(pointer(r.data)), [:(args[$i]) for i = 1:length(argt)]]
 
-            size = cxxsizeof(cxxd)
-            rr = Expr(:block,
-                :( r = ($(T))(Array(Uint8,$size)) ),
-                Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
-                :r)
-            return rr
+                size = cxxsizeof(cxxd)
+                rr = Expr(:block,
+                    :( r = ($(T))(Array(Uint8,$size)) ),
+                    Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
+                    :r)
+                return rr
+            end
         else
             myctx = getContext(d)
             dne = BuildDeclarationNameExpr(split(fname,"::")[end],myctx)
@@ -753,11 +775,15 @@ function _cppcall(expr, thiscall, argt)
 end
 
 stagedfunction cppcall(expr, args...)
-    _cppcall(expr, false, args)
+    _cppcall(expr, false, false, args)
 end
 
 stagedfunction cppcall_member(expr, args...)
-    _cppcall(expr, true, args)
+    _cppcall(expr, true, false, args)
+end
+
+stagedfunction cxxnewcall(expr, args...)
+    _cppcall(expr, false, true, args)
 end
 
 # Builds a call to the cppcall staged functions that represents a
@@ -778,7 +804,7 @@ end
 #       - this == :( m )
 #       - prefix = ""
 #
-function build_cpp_call(cexpr, this, prefix = "")
+function build_cpp_call(cexpr, this, prefix = "", isnew = false)
     @assert isexpr(cexpr,:call)
     targs = []
 
@@ -808,7 +834,7 @@ function build_cpp_call(cexpr, this, prefix = "")
     this !== nothing && unshift!(arguments, this)
 
     # The actual call to the staged function
-    ret = Expr(:call, this === nothing ? :cppcall : :cppcall_member,
+    ret = Expr(:call, isnew ? :cxxnewcall : this === nothing ? :cppcall : :cppcall_member,
         :(CppExpr{$(quot(symbol(fname))),$(quot(targs))}()), arguments...)
 
     ret
@@ -857,4 +883,8 @@ end
 
 macro cxx(expr)
     cpps_impl(expr)
+end
+
+macro cxxnew(expr)
+    build_cpp_call(expr, nothing, "", true)
 end

@@ -489,6 +489,27 @@ DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nex
     return Result.get();
 }
 
+DLLEXPORT void *BuildCXXNewExpr(clang::Type *T, clang::Expr **exprs, size_t nexprs)
+{
+  clang::QualType Ty(T,0);
+    clang::SourceManager &sm = clang_compiler->getSourceManager();
+  return (void*) clang_compiler->getSema().BuildCXXNew(clang::SourceRange(),
+    false, clang::SourceLocation(),
+    clang::MultiExprArg(), clang::SourceLocation(), clang::SourceRange(),
+    Ty, clang_astcontext->getTrivialTypeSourceInfo(Ty),
+    NULL, clang::SourceRange(sm.getLocForStartOfFile(sm.getMainFileID()),
+      sm.getLocForStartOfFile(sm.getMainFileID())),
+    new (clang_astcontext) clang::ParenListExpr(*clang_astcontext,clang::SourceLocation(),
+      ArrayRef<clang::Expr*>(exprs, nexprs), clang::SourceLocation()), false).get();
+  //return (clang_astcontext) new clang::CXXNewExpr(clang_astcontext, false, nE, dE, )
+}
+
+DLLEXPORT void *EmitCXXNewExpr(clang::Expr *E)
+{
+  assert(isa<clang::CXXNewExpr>(E));
+  return (void*)clang_cgf->EmitCXXNewExpr(cast<clang::CXXNewExpr>(E));
+}
+
 DLLEXPORT void *build_call_to_member(clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
 {
   if (MemExprE->getType() == clang_astcontext->BoundMemberTy ||
