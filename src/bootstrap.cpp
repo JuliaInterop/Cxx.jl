@@ -276,6 +276,8 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->getLangOpts().WChar = 1;
     clang_compiler->getLangOpts().C99 = 1;
     clang_compiler->getLangOpts().ImplicitInt = 0;
+    // TODO: Decide how we want to handle this
+    // clang_compiler->getLangOpts().AccessControl = 0;
     clang_compiler->getHeaderSearchOpts().UseBuiltinIncludes = 1;
     clang_compiler->getHeaderSearchOpts().UseLibcxx = 1;
     clang_compiler->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
@@ -562,11 +564,13 @@ DLLEXPORT void AssociateValue(clang::Decl *d, clang::Type *type, llvm::Value *V)
     clang_cgf->EmitParmDecl(*vd, clang_cgf->Builder.CreateBitCast(V, Ty), false, 0);
 }
 
-DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::Type *type)
+DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::NestedNameSpecifierLocBuilder *builder, int islvalue)
 {
-    clang::QualType T(type,0);
-    return (void*)clang::DeclRefExpr::Create(*clang_astcontext, clang::NestedNameSpecifierLoc(NULL,NULL), clang::SourceLocation(), 
-            D, false, clang::SourceLocation(), T.getNonReferenceType(), clang::VK_LValue);
+    clang::QualType T = D->getType();
+    return (void*)clang::DeclRefExpr::Create(*clang_astcontext, builder ?
+            builder->getWithLocInContext(*clang_astcontext) : clang::NestedNameSpecifierLoc(NULL,NULL),
+            clang::SourceLocation(), D, false, clang::SourceLocation(),
+            T.getNonReferenceType(), islvalue ? clang::VK_LValue : clang::VK_RValue);
 }
 
 DLLEXPORT void *CreateMemberExpr(clang::Expr *base, int isarrow, clang::ValueDecl *memberdecl)
@@ -653,6 +657,14 @@ DLLEXPORT void emitexprtomem(clang::Expr *E, llvm::Value *addr, int isInit)
     clang_cgf->EmitAnyExprToMem(E, addr, clang::Qualifiers(), isInit);
 }
 
+DLLEXPORT void *EmitAnyExpr(clang::Expr *E, llvm::Value *rslot)
+{
+    clang::CodeGen::RValue ret = clang_cgf->EmitAnyExpr(E);
+    if (ret.isScalar())
+      return ret.getScalarVal();
+    else
+      return ret.getAggregateAddr();
+}
 /*
 Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
                                 SourceLocation LParenLoc,
@@ -677,9 +689,9 @@ DLLEXPORT void *create_extract_value(Value *agg, size_t idx)
     return clang_cgf->Builder.CreateExtractValue(agg,ArrayRef<unsigned>((unsigned)idx));
 }
 
-DLLEXPORT void *create_insert_value(Value *agg, Value *val, size_t idx)
+DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *agg, Value *val, size_t idx)
 {
-    return clang_cgf->Builder.CreateInsertValue(agg,val,ArrayRef<unsigned>((unsigned)idx));
+    return builder->CreateInsertValue(agg,val,ArrayRef<unsigned>((unsigned)idx));
 }
 
 DLLEXPORT void *lookup_name(char *name, clang::DeclContext *ctx)
@@ -814,6 +826,11 @@ DLLEXPORT void *createDerefExpr(clang::Expr *expr)
   return (void*)clang_compiler->getSema().CreateBuiltinUnaryOp(clang::SourceLocation(),clang::UO_Deref,expr).get();
 }
 
+DLLEXPORT void *createAddrOfExpr(clang::Expr *expr)
+{
+  return (void*)clang_compiler->getSema().CreateBuiltinUnaryOp(clang::SourceLocation(),clang::UO_AddrOf,expr).get();
+}
+
 DLLEXPORT void *createCast(clang::Expr *expr, clang::Type *t, int kind)
 {
   return clang::ImplicitCastExpr::Create(*clang_astcontext,clang::QualType(t,0),(clang::CastKind)kind,expr,NULL,clang::VK_RValue);
@@ -892,6 +909,11 @@ DLLEXPORT void typedump(void *t)
     ((clang::Type*) t)->dump();
 }
 
+DLLEXPORT void llvmdump(void *t)
+{
+    ((llvm::Value*) t)->dump();
+}
+
 DLLEXPORT void *tollvmty(clang::Type *p)
 {
     clang::QualType T(p,0);
@@ -935,6 +957,10 @@ DLLEXPORT int s(clang::Type *t) \
 TMember(isVoidType)
 TMember(isBooleanType)
 TMember(isPointerType)
+TMember(isFunctionPointerType)
+TMember(isFunctionType)
+TMember(isFunctionProtoType)
+TMember(isMemberFunctionPointerType)
 TMember(isReferenceType)
 TMember(isCharType)
 TMember(isIntegerType)
@@ -960,6 +986,7 @@ DLLEXPORT void *dcast ## T(ARGT *p)  \
 
 ISAD(clang,ClassTemplateSpecializationDecl,clang::Decl)
 ISAD(clang,CXXRecordDecl,clang::Decl)
+ISAD(clang,NamespaceDecl,clang::Decl)
 
 DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
@@ -1043,6 +1070,73 @@ DLLEXPORT void *getCalleeReturnType(clang::CallExpr *e)
   if (fd == NULL)
     return NULL;
   return (void*)fd->getReturnType().getTypePtr();
+}
+
+DLLEXPORT void *newNNSBuilder()
+{
+  return (void*)new clang::NestedNameSpecifierLocBuilder();
+}
+
+DLLEXPORT void deleteNNSBuilder(clang::NestedNameSpecifierLocBuilder *builder)
+{
+  delete builder;
+}
+
+DLLEXPORT void ExtendNNS(clang::NestedNameSpecifierLocBuilder *builder, clang::NamespaceDecl *d)
+{
+  builder->Extend(*clang_astcontext,d,clang::SourceLocation(),clang::SourceLocation());
+}
+
+DLLEXPORT void ExtendNNSIdentifier(clang::NestedNameSpecifierLocBuilder *builder, const char *Name)
+{
+  clang::Preprocessor &PP = clang_parser->getPreprocessor();
+  // Get the identifier.
+  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
+  builder->Extend(*clang_astcontext,Id,clang::SourceLocation(),clang::SourceLocation());
+}
+
+DLLEXPORT void *makeFunctionType(clang::Type *rt, clang::Type **argts, size_t nargs)
+{
+  clang::QualType *qargs = (clang::QualType *)__builtin_alloca(nargs*sizeof(clang::QualType));
+  for (size_t i = 0; i < nargs; ++i)
+    qargs[i] = clang::QualType(argts[i], 0);
+  clang::FunctionProtoType::ExtProtoInfo EPI;
+  return (void*)clang_astcontext->getFunctionType(clang::QualType(rt, 0), llvm::ArrayRef<clang::QualType>(qargs, nargs), EPI).getTypePtr();
+}
+
+DLLEXPORT void *makeMemberFunctionType(clang::Type *cls, clang::Type *FT)
+{
+  return (void*)clang_astcontext->getMemberPointerType(clang::QualType(FT, 0), cls).getTypePtr();
+}
+
+DLLEXPORT void *getMemberPointerClass(clang::Type *mptr)
+{
+  return (void*)cast<clang::MemberPointerType>(mptr)->getClass();
+}
+
+DLLEXPORT void *getMemberPointerPointee(clang::Type *mptr)
+{
+  return (void*)cast<clang::MemberPointerType>(mptr)->getPointeeType().getTypePtr();
+}
+
+DLLEXPORT void *getFPTReturnType(clang::FunctionProtoType *fpt)
+{
+  return (void*)fpt->getReturnType().getTypePtr();
+}
+
+DLLEXPORT size_t getFPTNumParams(clang::FunctionProtoType *fpt)
+{
+  return fpt->getNumParams();
+}
+
+DLLEXPORT void *getFPTParam(clang::FunctionProtoType *fpt, size_t idx)
+{
+  return (void*)fpt->getParamType(idx).getTypePtr();
+}
+
+DLLEXPORT void *getLLVMStructType(llvm::Type **ts, size_t nts)
+{
+  return (void*)llvm::StructType::get(jl_LLVMContext,ArrayRef<llvm::Type*>(ts,nts));
 }
 
 }
