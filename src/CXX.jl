@@ -25,8 +25,9 @@ import Base.Intrinsics.llvmcall
 
 # # # Bootstap initialization
 
-const libcxxffi = joinpath(dirname(Base.source_path()),string("../deps/usr/lib/libcxxffi",
-    ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
+push!(DL_LOAD_PATH, dirname(Base.source_path()),string("../deps/usr/lib/"))
+
+const libcxxffi = string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
 
 function init()
     ccall((:init_julia_clang_env,libcxxffi),Void,())
