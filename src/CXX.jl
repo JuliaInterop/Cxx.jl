@@ -25,8 +25,9 @@ import Base.Intrinsics.llvmcall
 
 # # # Bootstap initialization
 
-const libcxxffi = joinpath(dirname(Base.source_path()),string("../deps/usr/lib/libcxxffi",
-    ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
+push!(DL_LOAD_PATH, dirname(Base.source_path()),string("../deps/usr/lib/"))
+
+const libcxxffi = string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
 
 function init()
     ccall((:init_julia_clang_env,libcxxffi),Void,())
@@ -62,8 +63,8 @@ basepath = joinpath(JULIA_HOME, "../../")
     addHeaderDir(joinpath(xcode_path,"usr/lib/c++/v1/"), kind = C_ExternCSystem)
 end
 
-@linux_only add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/c++/4.8");
-@linux_only add_directory(pp,fm,clang::SrcMgr::C_System,"/usr/include/x86_64-linux-gnu/c++/4.8/");
+@linux_only addHeaderDir("/usr/include/c++/4.8", kind = C_System);
+@linux_only addHeaderDir("/usr/include/x86_64-linux-gnu/c++/4.8/", kind = C_System);
 
 addHeaderDir(joinpath(basepath,"usr/lib/clang/3.5.0/include/"), kind = C_ExternCSystem)
 cxxinclude("stdint.h",isAngled = true)
