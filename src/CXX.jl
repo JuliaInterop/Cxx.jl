@@ -322,8 +322,8 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
     # @cxx llvm::isa{$rt}(t)
-    @eval $(isas)(t::$(argt)) = ccall($(quot(isas)),Int,(Ptr{Void},),t) != 0
-    @eval $(ds)(t::$(argt)) = ($rt)(ccall($(quot(ds)),Ptr{Void},(Ptr{Void},),t))
+    @eval $(isas)(t::$(argt)) = ccall(($(quot(isas)),libcxxffi),Int,(Ptr{Void},),t) != 0
+    @eval $(ds)(t::$(argt)) = ($rt)(ccall(($(quot(ds)),libcxxffi),Ptr{Void},(Ptr{Void},),t))
 end
 
 # Clang Type* Bootstrap
