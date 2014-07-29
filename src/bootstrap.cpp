@@ -278,6 +278,7 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->getLangOpts().ImplicitInt = 0;
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
+    clang_compiler->getPreprocessorOpts().UsePredefines = 1;
     clang_compiler->getHeaderSearchOpts().UseBuiltinIncludes = 1;
     clang_compiler->getHeaderSearchOpts().UseLibcxx = 1;
     clang_compiler->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
