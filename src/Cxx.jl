@@ -66,7 +66,15 @@ end
 @linux_only addHeaderDir("/usr/include/c++/4.8", kind = C_System);
 @linux_only addHeaderDir("/usr/include/x86_64-linux-gnu/c++/4.8/", kind = C_System);
 
-addHeaderDir(joinpath(basepath,"usr/lib/clang/3.5.0/include/"), kind = C_ExternCSystem)
+@windows_only begin
+  base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
+  addHeaderDir(joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
+  #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
+  addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
+  addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
+end
+
+addHeaderDir(joinpath(basepath,"usr/lib/clang/3.6.0/include/"), kind = C_ExternCSystem)
 cxxinclude("stdint.h",isAngled = true)
 
 # # # Types we will use to represent C++ values
@@ -331,12 +339,12 @@ end
 for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isCharType, :isIntegerType, :isFunctionPointerType, :isMemberFunctionPointerType,
     :isFunctionType, :isFunctionProtoType)
-    @eval ($s)(t::pcpp"clang::Type") = ccall($(quot(s)),Int,(Ptr{Void},),t) != 0
+                  @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
 end
 
 for (r,s) in ((pcpp"clang::CXXRecordDecl",:getPointeeCXXRecordDecl),
               (pcpp"clang::CXXRecordDecl",:getAsCXXRecordDecl))
-    @eval ($s)(t::pcpp"clang::Type") = ($(quot(r)))(ccall($(quot(s)),Ptr{Void},(Ptr{Void},),t))
+                  @eval ($s)(t::pcpp"clang::Type") = ($(quot(r)))(ccall(($(quot(s)),libcxxffi),Ptr{Void},(Ptr{Void},),t))
 end
 
 # Main interface
