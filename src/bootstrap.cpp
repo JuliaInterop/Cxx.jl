@@ -6,6 +6,7 @@
 
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Support/Host.h"
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/Parse/Parser.h"
@@ -121,15 +122,15 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
     virtual void HandleTagDeclDefinition(clang::TagDecl *D) {
       clang_cgm->UpdateCompletedType(D);
 
-      // In C++, we may have member functions that need to be emitted at this 
+      // In C++, we may have member functions that need to be emitted at this
       // point.
       if (clang_astcontext->getLangOpts().CPlusPlus && !D->isDependentContext()) {
-        for (clang::DeclContext::decl_iterator M = D->decls_begin(), 
+        for (clang::DeclContext::decl_iterator M = D->decls_begin(),
                                      MEnd = D->decls_end();
              M != MEnd; ++M)
           if (clang::CXXMethodDecl *Method = dyn_cast<clang::CXXMethodDecl>(*M))
             if (Method->doesThisDeclarationHaveABody() &&
-                (Method->hasAttr<clang::UsedAttr>() || 
+                (Method->hasAttr<clang::UsedAttr>() ||
                  Method->hasAttr<clang::ConstructorAttr>()))
               clang_cgm->EmitTopLevelDecl(Method);
       }
@@ -191,7 +192,7 @@ void myParseAST(clang::Sema &S, bool PrintStats, bool SkipFunctionBodies) {
        I = S.WeakTopLevelDecls().begin(),
        E = S.WeakTopLevelDecls().end(); I != E; ++I)
     Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
-  
+
   Consumer->HandleTranslationUnit(S.getASTContext());
 
   std::swap(OldCollectStats, S.CollectStats);
@@ -284,7 +285,7 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
     clang_compiler->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
     clang_compiler->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
-    clang_compiler->getTargetOpts().Triple = "x86_64-apple-darwin12.4.0";
+    clang_compiler->getTargetOpts().Triple = llvm::Triple::normalize(llvm::sys::getProcessTriple());
     clang_compiler->setTarget(clang::TargetInfo::CreateTargetInfo(
       clang_compiler->getDiagnostics(),
       std::make_shared<clang::TargetOptions>(clang_compiler->getTargetOpts())));
@@ -378,7 +379,7 @@ DLLEXPORT void *setup_cpp_env(void *jlfunc)
     cur_module = NULL;
     cur_func = w;
 
-    Function *ShadowF = (llvm::Function *)jlfunc;    
+    Function *ShadowF = (llvm::Function *)jlfunc;
 
     BasicBlock *b0 = BasicBlock::Create(clang_shadow_module->getContext(), "top", ShadowF);
 
@@ -456,7 +457,7 @@ DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nex
                                                       Exprs,
                                                       clang::SourceLocation());
     }
-  
+
     clang::ExprResult Result;
     clang::SourceManager &sm = clang_compiler->getSourceManager();
 
@@ -577,14 +578,14 @@ DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::NestedNameSpecifie
 DLLEXPORT void *CreateMemberExpr(clang::Expr *base, int isarrow, clang::ValueDecl *memberdecl)
 {
     return (void*)(clang::Expr*)clang::MemberExpr::Create (
-        *clang_astcontext, 
+        *clang_astcontext,
         base,
-        isarrow, 
-        clang::NestedNameSpecifierLoc(), 
+        isarrow,
+        clang::NestedNameSpecifierLoc(),
         clang::SourceLocation(),
-        memberdecl, 
-        clang::DeclAccessPair::make(memberdecl,clang::AS_public), 
-        clang::DeclarationNameInfo (memberdecl->getDeclName(),clang::SourceLocation()), 
+        memberdecl,
+        clang::DeclAccessPair::make(memberdecl,clang::AS_public),
+        clang::DeclarationNameInfo (memberdecl->getDeclName(),clang::SourceLocation()),
         NULL, clang_astcontext->BoundMemberTy, clang::VK_RValue, clang::OK_Ordinary);
 }
 
@@ -678,7 +679,7 @@ DLLEXPORT void *get_nth_argument(Function *f, size_t n)
     size_t i = 0;
     Function::arg_iterator AI = f->arg_begin();
     for (; AI != f->arg_end(); ++i, ++AI)
-    {  
+    {
         if (i == n)
             return (void*)((Value*)AI++);
     }
@@ -724,7 +725,7 @@ DLLEXPORT void *decl_context(clang::Decl *decl)
 {
     if(isa<clang::TypedefNameDecl>(decl))
     {
-        decl = dyn_cast<clang::TypedefNameDecl>(decl)->getUnderlyingType().getTypePtr()->getAsCXXRecordDecl(); 
+        decl = dyn_cast<clang::TypedefNameDecl>(decl)->getUnderlyingType().getTypePtr()->getAsCXXRecordDecl();
     }
     if (decl == NULL)
       return decl;
