@@ -42,6 +42,10 @@
 
 #include "dtypes.h"
 
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 6
+#define LLVM36 1
+#endif
+
 // From julia
 using namespace llvm;
 extern LLVMContext &jl_LLVMContext;
@@ -296,7 +300,11 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->createASTContext();
     clang_shadow_module = new llvm::Module("clangShadow",jl_LLVMContext);
     clang_astcontext = &clang_compiler->getASTContext();
+#ifdef LLVM36
+    clang_compiler->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(new JuliaCodeGenerator()));
+#else
     clang_compiler->setASTConsumer(new JuliaCodeGenerator());
+#endif
     clang_compiler->createSema(clang::TU_Prefix,NULL);
     TD = new DataLayout(tin.getTargetDescription());
     clang_cgm = new clang::CodeGen::CodeGenModule(
