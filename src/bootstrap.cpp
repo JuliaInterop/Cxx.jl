@@ -4,9 +4,15 @@
 
 #include <iostream>
 
+// LLVM includes
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Host.h"
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+
+// Clang includes
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/Parse/Parser.h"
@@ -16,6 +22,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Analysis/DomainSpecific/CocoaConventions.h"
+#include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -27,8 +34,6 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Initialization.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringSwitch.h"
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CodeGenOptions.h>
 #include <clang/AST/Type.h>
@@ -38,7 +43,6 @@
 #include "CodeGen/CodeGenModule.h"
 #include <CodeGen/CodeGenTypes.h>
 #include <CodeGen/CodeGenFunction.h>
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
 
 #include "dtypes.h"
 
