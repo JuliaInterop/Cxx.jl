@@ -1,8 +1,7 @@
-require("../src/CXX.jl")
+using Cxx
 
 # LLVM Headers
 
-addHeaderDir(joinpath(basepath,"usr/lib/clang/3.5.0/include/"), kind = C_ExternCSystem)
 addHeaderDir(joinpath(basepath,"usr/include"))
 addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/"))
 addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/include/"))
@@ -13,7 +12,7 @@ addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/include/"))
 defineMacro("__STDC_LIMIT_MACROS")
 defineMacro("__STDC_CONSTANT_MACROS")
 cxxinclude("llvm/Support/MemoryBuffer.h")
-cxxinclude("llvm/BitCode/ReaderWriter.h")
+cxxinclude("llvm/Bitcode/ReaderWriter.h")
 cxxinclude("llvm/IR/Module.h")
 cxxinclude("llvm/IR/IRBuilder.h")
 cxxinclude("llvm/IR/Constants.h")
@@ -41,7 +40,7 @@ function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     @assert @cxx t->isSized()
     div((@cxx dl->getTypeSizeInBits(t)),8)
 end
-@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(lookup_name(["llvm","ExecutionEngine"]).ptr)) == 152
+@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(lookup_name(["llvm","ExecutionEngine"]).ptr)) >= 152
 
 code_llvmf(f,t) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), f, t, false))
 function code_graph(f,args)
