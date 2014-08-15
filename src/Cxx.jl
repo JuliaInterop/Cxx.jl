@@ -25,11 +25,13 @@ import Base.Intrinsics.llvmcall
 
 # # # Bootstap initialization
 
-push!(DL_LOAD_PATH, dirname(Base.source_path()),string("../deps/usr/lib/"))
+push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),string("../deps/usr/lib/")))
 
 const libcxxffi = string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
 
 function init()
+    # Force libcxxffi to be opened with RTLD_GLOBAL
+    dlopen(libcxxffi, RTLD_GLOBAL)
     ccall((:init_julia_clang_env,libcxxffi),Void,())
 end
 init()
@@ -63,8 +65,11 @@ basepath = joinpath(JULIA_HOME, "../../")
     addHeaderDir(joinpath(xcode_path,"usr/lib/c++/v1/"), kind = C_ExternCSystem)
 end
 
-@linux_only addHeaderDir("/usr/include/c++/4.8", kind = C_System);
-@linux_only addHeaderDir("/usr/include/x86_64-linux-gnu/c++/4.8/", kind = C_System);
+@linux_only begin
+    addHeaderDir("/usr/include/c++/4.8", kind = C_System);
+    addHeaderDir("/usr/include/x86_64-linux-gnu/c++/4.8/", kind = C_System);
+    addHeaderDir("/usr/include", kind = C_System);
+end
 
 @windows_only begin
   base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
