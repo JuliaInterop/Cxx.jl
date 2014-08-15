@@ -42,10 +42,13 @@ endif
 ifeq ($(OS), WINNT)
 LLDB_LIBS += -llldbHostWindows -llldbPluginProcessWindows -lWs2_32
 endif
+ifeq ($(OS), Linux)
+LLDB_LIBS += -llldbHostLinux -llldbPluginProcessLinux -llldbPluginProcessPOSIX
+endif
 
 
 ifeq ($(USE_LLVM_SHLIB),1)
-LDFLAGS += -lLLVM-3.6svn
+LDFLAGS += -lLLVM-$(call exec,$(LLVM_CONFIG) --version)
 endif
 
 
