@@ -980,6 +980,14 @@ TMember(isMemberFunctionPointerType)
 TMember(isReferenceType)
 TMember(isCharType)
 TMember(isIntegerType)
+TMember(isEnumeralType)
+
+DLLEXPORT void *isIncompleteType(clang::Type *t)
+{
+    clang::NamedDecl *ND = NULL;
+    t->isIncompleteType(&ND);
+    return ND;
+}
 
 #define W(M,ARG)              \
 DLLEXPORT void *M(ARG *p)     \

@@ -140,6 +140,11 @@ immutable CppAddr{T}
 end
 CppAddr{T}(val::T) = CppAddr{T}(val)
 
+# Represent a C/C++ Enum
+immutable CppEnum{T}
+    val::Int32
+end
+
 macro pcpp_str(s)
     CppPtr{symbol(s),()}
 end
@@ -287,6 +292,8 @@ getLLVMStructType(argts::Vector{pcpp"llvm::Type"}) =
 getDirectCallee(t::pcpp"clang::CallExpr") = pcpp"clang::FunctionDecl"(ccall((:getDirectCallee,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 getCalleeReturnType(t::pcpp"clang::CallExpr") = pcpp"clang::Type"(ccall((:getCalleeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
+isIncompleteType(t::pcpp"clang::Type") = pcpp"clang::NamedDecl"(ccall((:isIncompleteType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+
 const CK_Dependent      = 0
 const CK_BitCast        = 1
 const CK_LValueBitCast  = 2
@@ -343,7 +350,7 @@ end
 
 for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isCharType, :isIntegerType, :isFunctionPointerType, :isMemberFunctionPointerType,
-    :isFunctionType, :isFunctionProtoType)
+    :isFunctionType, :isFunctionProtoType, :isEnumeralType)
                   @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
 end
 
@@ -366,7 +373,7 @@ function check_args(argt,f)
     for (i,t) in enumerate(argt)
         if isa(t,UnionType) || (isa(t,DataType) && t.abstract) ||
             (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) &&
-                !(t <: CppFptr) && !(t <: CppMFptr) &&
+                !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
                 !(t <: Ptr) &&
                 !in(t,[Bool, Uint8, Int32, Uint32, Int64, Uint64]))
             error("Got bad type information while compiling $f (got $t for argument $i)")
@@ -438,12 +445,14 @@ function cppdecl(fname,targs)
 end
 cppdecl{fname,targs}(::Union(Type{CppPtr{fname,targs}}, Type{CppValue{fname,targs}},
     Type{CppRef{fname,targs}})) = cppdecl(fname,targs)
+cppdecl{s}(::Type{CppEnum{s}}) = cppdecl(s,())
 
 # @cpp (@cpp dyn_cast{vcpp"clang::TypeDecl"}(d))->getTypeForDecl()
 typeForDecl(d::pcpp"clang::Decl") = pcpp"clang::Type"(ccall((:typeForDecl,libcxxffi),Ptr{Void},(Ptr{Void},),d))
 typeForDecl(d::pcpp"clang::CXXRecordDecl") = typeForDecl(pcpp"clang::Decl"(d.ptr))
 typeForDecl(d::pcpp"clang::ClassTemplateSpecializationDecl") = typeForDecl(pcpp"clang::Decl"(d.ptr))
 
+cpptype{s}(p::Type{CppEnum{s}}) = typeForDecl(cppdecl(p))
 cpptype{s,t}(p::Type{CppPtr{s,t}}) = pointerTo(typeForDecl(cppdecl(p)))
 cpptype{T<:CppPtr}(p::Type{CppPtr{T,()}}) = pointerTo(cpptype(T))
 cpptype{s,t}(p::Type{CppValue{s,t}}) = typeForDecl(cppdecl(p))
@@ -470,7 +479,15 @@ function simple_decl_name(d)
 end
 
 get_pointee_name(t) = _decl_name(getPointeeCXXRecordDecl(t))
-get_name(t) = _decl_name(getAsCXXRecordDecl(t))
+function get_name(t)
+    d = getAsCXXRecordDecl(t)
+    if d != C_NULL
+        return _decl_name(d)
+    end
+    d = isIncompleteType(t)
+    @assert d != C_NULL
+    return _decl_name(d)
+end
 
 function juliatype(t::pcpp"clang::Type")
     if isVoidType(t)
@@ -514,6 +531,8 @@ function juliatype(t::pcpp"clang::Type")
         return CppRef{symbol(get_name(t)),()}
     elseif isCharType(t)
         return Uint8
+    elseif isEnumeralType(t)
+        return CppEnum{symbol(get_name(t))}
     elseif isIntegerType(t)
         if t == cpptype(Int64)
             return Int64
@@ -558,6 +577,7 @@ cxxtmplt(p::pcpp"clang::Decl") = pcpp"clang::ClassTemplateDecl"(ccall((:cxxtmplt
 stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
 stripmodifier{s,targs}(p::Union(Type{CppPtr{s,targs}},
     Type{CppRef{s,targs}}, Type{CppValue{s,targs}})) = p
+stripmodifier{s}(p::Type{CppEnum{s}}) = p
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
 stripmodifier{T}(p::Type{CppDeref{T}}) = T
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
@@ -568,6 +588,8 @@ resolvemodifier{s,targs}(p::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}},
     Type{CppValue{s,targs}}), e::pcpp"clang::Expr") = e
 resolvemodifier(p::Union(Type{Bool}, Type{Int32}, Type{Int64}, Type{Uint32}), e::pcpp"clang::Expr") = e
 resolvemodifier{T}(p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
+resolvemodifier{s}(p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
+    #createCast(e,cpptype(p),CK_BitCast)
 resolvemodifier{T,To}(p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") =
     createCast(e,cpptype(To),CK_BitCast)
 resolvemodifier{T}(p::Type{CppDeref{T}}, e::pcpp"clang::Expr") =
@@ -580,6 +602,8 @@ resolvemodifier_llvm{s,targs}(builder, t::Type{CppCast{s,targs}}, v::pcpp"llvm::
 
 resolvemodifier_llvm{s,targs}(builder, t::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}}),
         v::pcpp"llvm::Value") = ExtractValue(v,0)
+
+resolvemodifier_llvm{s}(builder, t::Type{CppEnum{s}}, v::pcpp"llvm::Value") = ExtractValue(v,0)
 
 resolvemodifier_llvm{ptr}(builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
 resolvemodifier_llvm(builder, t::Union(Type{Int64},Type{Int32},Type{Uint32},Type{Bool}), v::pcpp"llvm::Value") = v
@@ -881,7 +905,7 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
         if rett == Void
             CreateRetVoid(builder)
         else
-            if rett <: CppPtr || rett <: CppRef
+            if rett <: CppPtr || rett <: CppRef || rett <: CppEnum
                 undef = getUndefValue(llvmrt)
                 elty = getStructElementType(llvmrt,0)
                 ret = CreateBitCast(builder,ret,elty)
