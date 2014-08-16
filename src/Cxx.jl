@@ -43,6 +43,12 @@ function cxxinclude(fname; dir = Base.source_path() === nothing ? pwd() : dirnam
     end
 end
 
+function cxxparse(string)
+    if ccall((:cxxparse, libcxxffi), Cint, (Ptr{Uint8}, Csize_t), string, sizeof(string)) == 0
+        error("Could not parse string")
+    end
+end
+
 const C_User            = 0
 const C_System          = 1
 const C_ExternCSystem   = 2

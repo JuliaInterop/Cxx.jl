@@ -228,23 +228,10 @@ DLLEXPORT void add_directory(int kind, int isFramework, const char *dirname)
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
 
-DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
+static int _cxxparse(clang::FileID FID, const clang::DirectoryLookup *CurDir)
 {
-    const clang::DirectoryLookup *CurDir;
-    clang::FileManager &fm = clang_compiler->getFileManager();
     clang::Preprocessor &P = clang_parser->getPreprocessor();
-
-
-    const clang::FileEntry *File = P.LookupFile(
-      getTrivialSourceLocation(), fname,
-      isAngled, nullptr, CurDir, nullptr,nullptr, nullptr);
-
-    if(!File)
-      return 0;
-
     clang::SourceManager &sm = clang_compiler->getSourceManager();
-    clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
-
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
 
     clang::Sema &sema = clang_compiler->getSema();
@@ -263,6 +250,36 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
     clang_compiler->getSema().PerformPendingInstantiations(false);
 
     return 1;
+}
+
+DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
+{
+    const clang::DirectoryLookup *CurDir;
+    clang::FileManager &fm = clang_compiler->getFileManager();
+    clang::Preprocessor &P = clang_parser->getPreprocessor();
+
+
+    const clang::FileEntry *File = P.LookupFile(
+      getTrivialSourceLocation(), fname,
+      isAngled, nullptr, CurDir, nullptr,nullptr, nullptr);
+
+    if(!File)
+      return 0;
+
+    clang::SourceManager &sm = clang_compiler->getSourceManager();
+
+    clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
+
+    return _cxxparse(FID,CurDir);
+}
+
+DLLEXPORT int cxxparse(char *data, size_t length)
+{
+    const clang::DirectoryLookup *CurDir;
+    clang::FileManager &fm = clang_compiler->getFileManager();
+    clang::SourceManager &sm = clang_compiler->getSourceManager();
+    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)));
+    return _cxxparse(FID,nullptr);
 }
 
 DLLEXPORT void defineMacro(const char *Name)
