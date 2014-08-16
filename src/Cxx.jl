@@ -995,10 +995,10 @@ stagedfunction cxxref(expr)
     state = setup_cpp_env(f)
     builder = irbuilder()
 
-    if isaddrof
+    if !needsret
         ret = EmitAnyExpr(expr)
     else
-        error("Unimplemented. (Not hard though)")
+        args = llvmargs(builder, f, [Ptr{Uint8}])
         EmitAnyExprToMem(expr, args[1])
     end
 
@@ -1031,7 +1031,9 @@ end
 #       - prefix = ""
 #
 function build_cpp_call(cexpr, this, prefix = "", isnew = false)
-    @assert isexpr(cexpr,:call)
+    if !isexpr(cexpr,:call)
+        error("Expected a :call not $cexpr")
+    end
     targs = []
 
     # Turn prefix and call expression, back into a fully qualified name
@@ -1078,12 +1080,14 @@ function to_prefix(expr, isaddrof=false)
     error("Invalid NSS $expr")
 end
 
-function cpps_impl(expr,prefix="",isaddrof=false)
+function cpps_impl(expr,prefix="",isaddrof=false, isnew=false)
     # Expands a->b to
     # llvmcall((cpp_member,typeof(a),"b"))
     if isa(expr,Symbol)
+        @assert !isnew
         return cpp_ref(expr,prefix,isaddrof)
     elseif expr.head == :(->)
+        @assert !isnew
         a = expr.args[1]
         b = expr.args[2]
         i = 1
@@ -1100,12 +1104,13 @@ function cpps_impl(expr,prefix="",isaddrof=false)
             error("Unsupported!")
         end
     elseif isexpr(expr,:(=))
+        @assert !isnew
         error("Unimplemented")
     elseif isexpr(expr,:(::))
         prefix, isaddrof = to_prefix(expr.args[1])
-        return cpps_impl(expr.args[2],string(prefix,"::"),isaddrof)
+        return cpps_impl(expr.args[2],string(prefix,"::"),isaddrof,isnew)
     elseif isexpr(expr,:call)
-        return build_cpp_call(expr,nothing,prefix)
+        return build_cpp_call(expr,nothing,prefix,isnew)
     end
     error("Unrecognized CPP Expression ",expr," (",expr.head,")")
 end
@@ -1115,5 +1120,5 @@ macro cxx(expr)
 end
 
 macro cxxnew(expr)
-    build_cpp_call(expr, nothing, "", true)
+    cpps_impl(expr, "", false, true)
 end
