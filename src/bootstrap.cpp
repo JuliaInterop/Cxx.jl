@@ -248,6 +248,7 @@ static int _cxxparse(clang::FileID FID, const clang::DirectoryLookup *CurDir)
     } while (!clang_parser->ParseTopLevelDecl(ADecl));
 
     clang_compiler->getSema().PerformPendingInstantiations(false);
+    clang_cgm->Release();
 
     return 1;
 }
@@ -278,7 +279,8 @@ DLLEXPORT int cxxparse(char *data, size_t length)
     const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = clang_compiler->getFileManager();
     clang::SourceManager &sm = clang_compiler->getSourceManager();
-    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)));
+    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
+      0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
     return _cxxparse(FID,nullptr);
 }
 
@@ -303,6 +305,8 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->getLangOpts().Bool = 1;
     clang_compiler->getLangOpts().WChar = 1;
     clang_compiler->getLangOpts().C99 = 1;
+    clang_compiler->getLangOpts().RTTI = 0;
+    clang_compiler->getLangOpts().RTTIData = 0;
     clang_compiler->getLangOpts().ImplicitInt = 0;
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
@@ -649,14 +653,33 @@ DLLEXPORT void *typeForDecl(clang::Decl *D)
     return (void *)ty->getTypeForDecl();
 }
 
-DLLEXPORT void *SpecializeClass(clang::ClassTemplateDecl *tmplt, clang::Type **types, size_t nargs)
+DLLEXPORT void *SpecializeClass(clang::ClassTemplateDecl *tmplt, clang::Type **types, uint64_t *integralValues, uint32_t *bitwidths, int8_t *integralValuePresent, size_t nargs)
 {
   clang::TemplateArgument *targs = new clang::TemplateArgument[nargs];
-  for (size_t i = 0; i < nargs; ++i)
-    targs[i] = clang::TemplateArgument(clang::QualType(types[i],0));
+  for (size_t i = 0; i < nargs; ++i) {
+    if (integralValuePresent[i] == 1)
+      targs[i] = clang::TemplateArgument(*clang_astcontext,llvm::APSInt(llvm::APInt(8,integralValues[i])),clang::QualType(types[i],0));
+    else
+      targs[i] = clang::TemplateArgument(clang::QualType(types[i],0));
+  }
   void *InsertPos;
-  auto ret = tmplt->findSpecialization(ArrayRef<clang::TemplateArgument>(targs,nargs),
+  clang::ClassTemplateSpecializationDecl *ret =
+    tmplt->findSpecialization(ArrayRef<clang::TemplateArgument>(targs,nargs),
     InsertPos);
+  if (!ret)
+  {
+    ret = clang::ClassTemplateSpecializationDecl::Create(*clang_astcontext,
+                            tmplt->getTemplatedDecl()->getTagKind(),
+                            tmplt->getDeclContext(),
+                            tmplt->getTemplatedDecl()->getLocStart(),
+                            tmplt->getLocation(),
+                            tmplt,
+                            targs,
+                            nargs, nullptr);
+    tmplt->AddSpecialization(ret, InsertPos);
+    if (tmplt->isOutOfLine())
+      ret->setLexicalDeclContext(tmplt->getLexicalDeclContext());
+  }
   delete[] targs;
   return ret;
 }
@@ -834,6 +857,21 @@ DLLEXPORT void *getTargTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
     return (void*)getTargType(const_cast<clang::TemplateArgument*>(&targs->get(i)));
 }
 
+DLLEXPORT void *getTargIntegralTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
+{
+    return (void*)targs->get(i).getIntegralType().getTypePtr();
+}
+
+DLLEXPORT int getTargKindAtIdx(clang::TemplateArgumentList *targs, size_t i)
+{
+    return targs->get(i).getKind();
+}
+
+DLLEXPORT int64_t getTargAsIntegralAtIdx(clang::TemplateArgumentList *targs, size_t i)
+{
+    return targs->get(i).getAsIntegral().getSExtValue();
+}
+
 DLLEXPORT void *referenced_type(clang::Type *t)
 {
     return (void*)t->getPointeeType().getTypePtr();
@@ -945,6 +983,11 @@ DLLEXPORT void typedump(void *t)
 DLLEXPORT void llvmdump(void *t)
 {
     ((llvm::Value*) t)->dump();
+}
+
+DLLEXPORT void llvmtdump(void *t)
+{
+    ((llvm::Type*) t)->dump();
 }
 
 DLLEXPORT void *tollvmty(clang::Type *p)
@@ -1178,6 +1221,24 @@ DLLEXPORT void *getFPTParam(clang::FunctionProtoType *fpt, size_t idx)
 DLLEXPORT void *getLLVMStructType(llvm::Type **ts, size_t nts)
 {
   return (void*)llvm::StructType::get(jl_LLVMContext,ArrayRef<llvm::Type*>(ts,nts));
+}
+
+DLLEXPORT void MarkMemberReferenced(clang::Expr *me)
+{
+  clang::Sema &sema = clang_compiler->getSema();
+  sema.MarkMemberReferenced(dyn_cast<clang::MemberExpr>(me));
+}
+
+DLLEXPORT void MarkAnyDeclReferenced(clang::Decl *d)
+{
+  clang::Sema &sema = clang_compiler->getSema();
+  sema.MarkAnyDeclReferenced(getTrivialSourceLocation(),d,true);
+}
+
+DLLEXPORT void MarkDeclarationsReferencedInExpr(clang::Expr *e)
+{
+  clang::Sema &sema = clang_compiler->getSema();
+  sema.MarkDeclarationsReferencedInExpr(e,true);
 }
 
 }
