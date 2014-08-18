@@ -1075,6 +1075,7 @@ DLLEXPORT void *dcast ## T(ARGT *p)  \
 ISAD(clang,ClassTemplateSpecializationDecl,clang::Decl)
 ISAD(clang,CXXRecordDecl,clang::Decl)
 ISAD(clang,NamespaceDecl,clang::Decl)
+ISAD(clang,VarDecl,clang::Decl)
 
 DLLEXPORT void *getUndefValue(llvm::Type *t)
 {

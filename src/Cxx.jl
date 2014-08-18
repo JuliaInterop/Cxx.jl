@@ -357,7 +357,8 @@ cpptype(::Type{Void}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxff
 
 for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl"),
                   (pcpp"clang::CXXRecordDecl",pcpp"clang::Decl"),
-                  (pcpp"clang::NamespaceDecl",pcpp"clang::Decl"))
+                  (pcpp"clang::NamespaceDecl",pcpp"clang::Decl"),
+                  (pcpp"clang::VarDecl",pcpp"clang::Decl"))
     s = split(string(rt.parameters[1]),"::")[end]
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
@@ -1110,7 +1111,7 @@ stagedfunction cxxref(expr)
         d = primary_decl
     end
 
-    expr = dre = CreateDeclRefExpr(d; islvalue=false, nnsbuilder=nnsbuilder)
+    expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d), nnsbuilder=nnsbuilder)
     deleteNNSBuilder(nnsbuilder)
 
 
