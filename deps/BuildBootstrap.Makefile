@@ -33,11 +33,12 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
 LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginABIMacOSX_i386
 ifeq ($(OS), Darwin)
 LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols -llldbHostMacOSX \
+	-llldbHostPOSIX \
     -llldbPluginDynamicLoaderMacOSX -llldbPluginDynamicLoaderDarwinKernel -llldbPluginObjectContainerUniversalMachO \
     -llldbPluginProcessDarwin  -llldbPluginProcessMachCore \
     -llldbPluginSymbolVendorMacOSX -llldbPluginSystemRuntimeMacOSX -llldbPluginObjectFileMachO \
     -framework Security  -lpanel -framework CoreFoundation \
-    -framework Foundation -framework Carbon -lobjc -ledit
+    -framework Foundation -framework Carbon -lobjc -ledit -lxml2
 endif
 ifeq ($(OS), WINNT)
 LLDB_LIBS += -llldbHostWindows -llldbPluginProcessWindows -lWs2_32
@@ -66,7 +67,7 @@ build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build
 
 ifneq (,$(wildcard $(build_shlibdir)/libjulia.$(SHLIB_EXT)))
 usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o | usr/lib
-	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(CLANG_LIBS) $(NO_WHOLE_ARCHIVE) $< )
+	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(CLANG_LIBS) $(LLDB_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 	@cp usr/lib/libcxxffi.$(SHLIB_EXT) $(build_shlibdir)
 else
 usr/lib/libcxxffi.$(SHLIB_EXT):

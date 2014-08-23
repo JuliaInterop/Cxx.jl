@@ -25,7 +25,7 @@ import Base.Intrinsics.llvmcall
 
 # # # Bootstap initialization
 
-push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),string("../deps/usr/lib/")))
+push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
 
 const libcxxffi = string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
 
@@ -1227,7 +1227,7 @@ function cpps_impl(expr,prefix="",isaddrof=false, isnew=false)
         if isexpr(b,:call)
             return build_cpp_call(b,a)
         else
-            if a.head == :&
+            if isexpr(a,:&)
                 a = a.args[1]
                 isaddrof = true
             end
