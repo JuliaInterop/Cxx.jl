@@ -75,6 +75,7 @@ end
     addHeaderDir("/usr/include/c++/4.8", kind = C_System);
     addHeaderDir("/usr/include/x86_64-linux-gnu/c++/4.8/", kind = C_System);
     addHeaderDir("/usr/include", kind = C_System);
+    addHeaderDir("/usr/include/x86_64-linux-gnu", kind = C_System);
 end
 
 @windows_only begin
