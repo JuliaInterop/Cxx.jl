@@ -182,6 +182,7 @@ CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL
 CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true) = CreateDeclRefExpr(tovdecl(p);islvalue=islvalue,nnsbuilder=nnsbuilder)
 
 CreateParmVarDecl(p::pcpp"clang::Type") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
+CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
 
 CreateMemberExpr(base::pcpp"clang::Expr",isarrow::Bool,member::pcpp"clang::ValueDecl") = pcpp"clang::Expr"(ccall((:CreateMemberExpr,libcxxffi),Ptr{Void},(Ptr{Void},Cint,Ptr{Void}),base.ptr,isarrow,member.ptr))
 BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}) = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
@@ -310,10 +311,19 @@ getParam(ft::pcpp"clang::FunctionProtoType", idx) =
 getLLVMStructType(argts::Vector{pcpp"llvm::Type"}) =
     pcpp"llvm::Type"(ccall((:getLLVMStructType,libcxxffi), Ptr{Void}, (Ptr{Void},Csize_t), argts, length(argts)))
 
+getConstantFloat(llvmt::pcpp"llvm::Type",x::Float64) = pcpp"llvm::Constant"(ccall((:getConstantFloat,libcxxffi),Ptr{Void},(Ptr{Void},Float64),llvmt,x))
+getConstantInt(llvmt::pcpp"llvm::Type",x::Uint64) = pcpp"llvm::Constant"(ccall((:getConstantInt,libcxxffi),Ptr{Void},(Ptr{Void},Uint64),llvmt,x))
+getConstantStruct(llvmt::pcpp"llvm::Type",x::Vector{pcpp"llvm::Constant"}) = pcpp"llvm::Constant"(ccall((:getConstantStruct,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),llvmt,x,length(x)))
+
 getDirectCallee(t::pcpp"clang::CallExpr") = pcpp"clang::FunctionDecl"(ccall((:getDirectCallee,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 getCalleeReturnType(t::pcpp"clang::CallExpr") = pcpp"clang::Type"(ccall((:getCalleeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
 isIncompleteType(t::pcpp"clang::Type") = pcpp"clang::NamedDecl"(ccall((:isIncompleteType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+
+createNamespace(name) = pcpp"clang::NamespaceDecl"(ccall((:createNamespace,libcxxffi),Ptr{Void},(Ptr{Uint8},),bytestring(name)))
+
+AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
+    ccall((:AddDeclToDeclCtx,libcxxffi),Void,(Ptr{Void},Ptr{Void}),DC,D)
 
 const CK_Dependent      = 0
 const CK_BitCast        = 1
@@ -637,6 +647,8 @@ julia_to_llvm(x::ANY) = pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(An
 # @cxx llvm::dyn_cast{vcpp"clang::ClassTemplateDecl"}
 cxxtmplt(p::pcpp"clang::Decl") = pcpp"clang::ClassTemplateDecl"(ccall((:cxxtmplt,libcxxffi),Ptr{Void},(Ptr{Void},),p))
 
+const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32},Type{Uint64})
+
 stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
 stripmodifier{s,targs}(p::Union(Type{CppPtr{s,targs}},
     Type{CppRef{s,targs}}, Type{CppValue{s,targs}})) = p
@@ -646,11 +658,11 @@ stripmodifier{T}(p::Type{CppDeref{T}}) = T
 stripmodifier{T}(p::Type{CppAddr{T}}) = T
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = Ptr{T}
-stripmodifier(p::Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32})) = p
+stripmodifier(p::CxxBuiltinTypes) = p
 
 resolvemodifier{s,targs}(p::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}},
     Type{CppValue{s,targs}}), e::pcpp"clang::Expr") = e
-resolvemodifier(p::Union(Type{Bool}, Type{Int32}, Type{Int64}, Type{Uint32}), e::pcpp"clang::Expr") = e
+resolvemodifier(p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
 resolvemodifier{T}(p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
 resolvemodifier{s}(p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
     #createCast(e,cpptype(p),CK_BitCast)
@@ -672,7 +684,7 @@ resolvemodifier_llvm{s,targs}(builder, t::Union(Type{CppPtr{s,targs}}, Type{CppR
 resolvemodifier_llvm{s}(builder, t::Type{CppEnum{s}}, v::pcpp"llvm::Value") = ExtractValue(v,0)
 
 resolvemodifier_llvm{ptr}(builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
-resolvemodifier_llvm(builder, t::Union(Type{Int64},Type{Int32},Type{Uint32},Type{Bool}), v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 #resolvemodifier_llvm(builder, t::Type{Uint8}, v::pcpp"llvm::Value") = v
 function resolvemodifier_llvm{base,fptr}(builder, t::Type{CppMFptr{base,fptr}}, v::pcpp"llvm::Value")
     t = getLLVMStructType([julia_to_llvm(Uint64),julia_to_llvm(Uint64)])
@@ -1239,6 +1251,8 @@ function cpps_impl(expr,prefix="",isaddrof=false, isnew=false)
     elseif isexpr(expr,:(::))
         prefix, isaddrof = to_prefix(expr.args[1])
         return cpps_impl(expr.args[2],string(prefix,"::"),isaddrof,isnew)
+    elseif isexpr(expr,:&)
+        return cpps_impl(expr.args[1],prefix,true,isnew)
     elseif isexpr(expr,:call)
         return build_cpp_call(expr,nothing,prefix,isnew)
     end
@@ -1251,4 +1265,92 @@ end
 
 macro cxxnew(expr)
     cpps_impl(expr, "", false, true)
+end
+
+# cxx"" string implementation (global scope)
+
+global varnum = 1
+
+const jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
+
+#
+# Takes a julia value and makes in into an llvm::Constant
+#
+function llvmconst(val::ANY)
+    T = typeof(val)
+    if isbits(T)
+        if !Base.isstructtype(T)
+            if T <: FloatingPoint
+                return getConstantFloat(julia_to_llvm(T),float64(val))
+            else
+                return getConstantInt(julia_to_llvm(T),uint64(val))
+            end
+        else
+            vals = [getfield(val,i) for i = 1:length(T.names)]
+            return getConstantStruct(julia_to_llvm(T),vals)
+        end
+    end
+    error("Cannot turn this julia value into a constant")
+end
+
+function SetDeclInitializer(decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant")
+    ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{Void},Ptr{Void}),decl,val)
+end
+
+function process_cxx_string(str)
+    # First we transform the source buffer by pulling out julia expressions
+    # and replaceing them by expression like __julia::var1, which we can
+    # later intercept in our external sema source
+    # TODO: Consider if we need more advanced scope information in which
+    # case we should probably switch to __julia_varN instead of putting
+    # things in namespaces.
+    pos = 1
+    sourcebuf = IOBuffer()
+    exprs = Any[]
+    global varnum
+    startvarnum = varnum
+    while true
+        idx = search(str,'$',pos)
+        if idx == 0
+            write(sourcebuf,str[pos:end])
+            break
+        end
+        write(sourcebuf,str[pos:(idx-1)])
+        # Parse the first expression after `$`
+        expr,pos = parse(str, idx + 1; greedy=false)
+        push!(exprs,expr)
+        write(sourcebuf,"__julia::var",string(varnum))
+        varnum += 1
+    end
+    argsetup = Expr(:block)
+    argcleanup = Expr(:block)
+    for expr in exprs
+        s = gensym()
+        sv = gensym()
+        push!(argsetup.args,:($s = $expr))
+        push!(argsetup.args,:($sv = CreateVarDecl(ctx,$(string("var",startvarnum)),cpptype(typeof($s)))))
+        push!(argsetup.args,:(AddDeclToDeclCtx(ctx,pcpp"clang::Decl"($(sv).ptr))))
+        startvarnum += 1
+        push!(argcleanup.args,:(SetDeclInitializer($sv,llvmconst($s))))
+    end
+    quote
+        let
+            jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
+            ns = createNamespace("julia")
+            ctx = toctx(pcpp"clang::Decl"(ns.ptr))
+            unsafe_store!(jns,ns.ptr)
+            $argsetup
+            cxxparse($(takebuf_string(sourcebuf)))
+            unsafe_store!(jns,C_NULL)
+            $argcleanup
+        end
+    end
+end
+
+macro cxx_str(str)
+    process_cxx_string(str)
+end
+
+macro cxx_mstr(str)
+    process_cxx_string(str)
 end

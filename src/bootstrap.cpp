@@ -52,9 +52,8 @@
 
 // From julia
 using namespace llvm;
-extern LLVMContext &jl_LLVMContext;
 extern ExecutionEngine *jl_ExecutionEngine;
-
+extern llvm::LLVMContext &jl_LLVMContext;
 
 static clang::ASTContext *clang_astcontext;
 static clang::CompilerInstance *clang_compiler;
@@ -62,6 +61,7 @@ static clang::CodeGen::CodeGenModule *clang_cgm;
 static clang::CodeGen::CodeGenTypes *clang_cgt;
 static clang::CodeGen::CodeGenFunction *clang_cgf;
 static clang::Parser *clang_parser;
+static clang::Preprocessor *clang_preprocessor;
 static DataLayout *TD;
 
 DLLEXPORT llvm::Module *clang_shadow_module;
@@ -112,6 +112,33 @@ clang::SourceLocation getTrivialSourceLocation()
     return sm.getLocForStartOfFile(sm.getMainFileID());
 }
 
+extern "C" {
+  extern void jl_error(const char *str);
+  void *julia_namespace = 0;
+  void *createNamespace(char *name)
+  {
+    clang::IdentifierInfo *Id = clang_preprocessor->getIdentifierInfo(name);
+    return (void*)clang::NamespaceDecl::Create(
+          *clang_astcontext,
+          clang_astcontext->getTranslationUnitDecl(),
+          false,
+          getTrivialSourceLocation(),
+          getTrivialSourceLocation(),
+          Id,
+          nullptr
+          );
+  }
+  DLLEXPORT void SetDeclInitializer(clang::VarDecl *D, llvm::Constant *CI)
+  {
+      llvm::Constant *C = clang_cgm->GetAddrOfGlobalVar(D);
+      if (!isa<llvm::GlobalVariable>(C))
+        jl_error("Clang did not create a global variable for the given VarDecl");
+      llvm::GlobalVariable *GV = cast<llvm::GlobalVariable>(C);
+      GV->setInitializer(CI);
+      GV->setConstant(true);
+  }
+}
+
 class JuliaCodeGenerator : public clang::ASTConsumer {
   public:
     JuliaCodeGenerator() {}
@@ -124,8 +151,9 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
 
     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
       // Make sure to emit all elements of a Decl.
-      for (clang::DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I)
+      for (clang::DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I) {
         clang_cgm->EmitTopLevelDecl(*I);
+      }
       return true;
     }
 
@@ -157,6 +185,23 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
     virtual void HandleVTable(clang::CXXRecordDecl *RD, bool DefinitionRequired) {
       clang_cgm->EmitVTable(RD, DefinitionRequired);
     }
+};
+
+class JuliaSemaSource : public clang::ExternalSemaSource
+{
+public:
+    JuliaSemaSource() {}
+    virtual ~JuliaSemaSource() {}
+
+    virtual bool LookupUnqualified (clang::LookupResult &R, clang::Scope *S)
+    {
+        if (R.getLookupName().getAsString() == "__julia" && julia_namespace != nullptr) {
+            R.addDecl((clang::NamespaceDecl*)julia_namespace);
+            return true;
+        }
+        return false;
+    }
+
 };
 
 extern "C" {
@@ -302,6 +347,7 @@ DLLEXPORT void defineMacro(const char *Name)
 DLLEXPORT void init_julia_clang_env() {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     clang_compiler = new clang::CompilerInstance;
+    clang_compiler->getDiagnosticOpts().ShowColors = 1;
     clang_compiler->createDiagnostics();
     clang_compiler->getLangOpts().CPlusPlus = 1;
     clang_compiler->getLangOpts().CPlusPlus11 = 1;
@@ -328,6 +374,7 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->createFileManager();
     clang_compiler->createSourceManager(clang_compiler->getFileManager());
     clang_compiler->createPreprocessor(clang::TU_Prefix);
+    clang_preprocessor = &clang_compiler->getPreprocessor();
     clang_compiler->createASTContext();
     clang_shadow_module = new llvm::Module("clangShadow",jl_LLVMContext);
     clang_astcontext = &clang_compiler->getASTContext();
@@ -337,6 +384,7 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->setASTConsumer(new JuliaCodeGenerator());
 #endif
     clang_compiler->createSema(clang::TU_Prefix,NULL);
+    clang_compiler->getSema().addExternalSource(new JuliaSemaSource());
     TD = new DataLayout(tin.getTargetDescription());
     clang_cgm = new clang::CodeGen::CodeGenModule(
         *clang_astcontext,
@@ -578,6 +626,16 @@ DLLEXPORT void *CreateCallExpr(clang::Expr *Fn,clang::Expr **exprs, size_t nexpr
       clang::MultiExprArg(exprs,nexprs), getTrivialSourceLocation(), NULL, false).get();
 }
 
+DLLEXPORT void *CreateVarDecl(void *DC, char* name, clang::Type *type)
+{
+  clang::QualType T(type,0);
+  clang::VarDecl *D = clang::VarDecl::Create(*clang_astcontext, (clang::DeclContext *)DC,
+    getTrivialSourceLocation(), getTrivialSourceLocation(),
+      clang_preprocessor->getIdentifierInfo(name),
+      T, clang_astcontext->getTrivialTypeSourceInfo(T), clang::SC_Extern);
+  return D;
+}
+
 DLLEXPORT void *CreateParmVarDecl(clang::Type *type)
 {
     clang::QualType T(type,0);
@@ -603,6 +661,11 @@ DLLEXPORT void AssociateValue(clang::Decl *d, clang::Type *type, llvm::Value *V)
       V = clang_cgf->Builder.CreateZExt(V, Ty);
     // Associate the value with this decl
     clang_cgf->EmitParmDecl(*vd, clang_cgf->Builder.CreateBitCast(V, Ty), false, 0);
+}
+
+DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
+{
+    DC->addDecl(D);
 }
 
 DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::NestedNameSpecifierLocBuilder *builder, int islvalue)
@@ -1244,6 +1307,19 @@ DLLEXPORT void MarkDeclarationsReferencedInExpr(clang::Expr *e)
 {
   clang::Sema &sema = clang_compiler->getSema();
   sema.MarkDeclarationsReferencedInExpr(e,true);
+}
+
+DLLEXPORT void *getConstantFloat(llvm::Type *llvmt, double x)
+{
+  return ConstantFP::get(llvmt,x);
+}
+DLLEXPORT void *getConstantInt(llvm::Type *llvmt, uint64_t x)
+{
+  return ConstantInt::get(llvmt,x);
+}
+DLLEXPORT void *getConstantStruct(llvm::Type *llvmt, llvm::Constant **vals, size_t nvals)
+{
+  return ConstantStruct::get(cast<StructType>(llvmt),ArrayRef<llvm::Constant*>(vals,nvals));
 }
 
 }

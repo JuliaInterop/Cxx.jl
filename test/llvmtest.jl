@@ -56,6 +56,30 @@ gt = code_graph(factorize,(typeof(rand(4,4)),))
 
 @assert sizeof(gt) > 0
 
+jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
+ns = createNamespace("julia")
+
+# This is basically the manual expansion of the cxx_str macro
+unsafe_store!(jns,ns.ptr)
+ctx = toctx(pcpp"clang::Decl"(ns.ptr))
+d = CreateVarDecl(ctx,"var1",cpptype(Int64))
+AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(d.ptr))
+cxxparse("""
+extern llvm::Module *clang_shadow_module;
+extern llvm::LLVMContext &jl_LLVMContext;
+uint64_t foo() {
+    return __julia::var1;
+}
+""")
+unsafe_store!(jns,C_NULL)
+#GV = @cxx dyn_cast{llvm::GlobalVariable}(@cxx (@cxx clang_shadow_module)->getNamedValue(pointer("_ZN5julia4var1E")))
+GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module)->getNamedValue(pointer("_ZN5julia4var1E"))).ptr)
+@assert GV != C_NULL
+@cxx (@cxx GV->getType())->dump()
+@cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),uint64(0)))
+@cxx GV->setConstant(true)
+@assert @cxx foo() = uint64(0)
+
 # LLDB test
 
 
