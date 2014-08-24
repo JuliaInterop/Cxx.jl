@@ -6,4 +6,5 @@ uint64_t foo() {
 }
 """
 
-@assert (@cxx foo()) = uint64(1)
+x = @cxx foo()
+@assert x == uint64(1)
