@@ -183,6 +183,7 @@ CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true) = CreateDeclRefExpr(tovde
 
 CreateParmVarDecl(p::pcpp"clang::Type") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
+CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
 
 CreateMemberExpr(base::pcpp"clang::Expr",isarrow::Bool,member::pcpp"clang::ValueDecl") = pcpp"clang::Expr"(ccall((:CreateMemberExpr,libcxxffi),Ptr{Void},(Ptr{Void},Cint,Ptr{Void}),base.ptr,isarrow,member.ptr))
 BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}) = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
@@ -325,6 +326,9 @@ createNamespace(name) = pcpp"clang::NamespaceDecl"(ccall((:createNamespace,libcx
 AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
     ccall((:AddDeclToDeclCtx,libcxxffi),Void,(Ptr{Void},Ptr{Void}),DC,D)
 
+ReplaceFunctionForDecl(sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function") =
+    ccall((:ReplaceFunctionForDecl,libcxxffi),Void,(Ptr{Void},Ptr{Void}),sv,f)
+
 const CK_Dependent      = 0
 const CK_BitCast        = 1
 const CK_LValueBitCast  = 2
@@ -355,6 +359,7 @@ const CK_IntegralCast = 25
 createCast(arg,t,kind) = pcpp"clang::Expr"(ccall((:createCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),arg,t,kind))
 # Built-in clang types
 chartype() = pcpp"clang::Type"(unsafe_load(cglobal((:cT_cchar,libcxxffi),Ptr{Void})))
+cpptype(::Type{Nothing}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void})))
 cpptype(::Type{Uint8}) = chartype()#pcpp"clang::Type"(unsafe_load(cglobal(:cT_uint8,Ptr{Void})))
 cpptype(::Type{Int8}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int8,libcxxffi),Ptr{Void})))
 cpptype(::Type{Uint32}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_uint32,libcxxffi),Ptr{Void})))
@@ -1297,6 +1302,41 @@ function SetDeclInitializer(decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant"
     ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{Void},Ptr{Void}),decl,val)
 end
 
+function ssv(e::ANY,ctx,varnum)
+    T = typeof(e)
+    if isa(e,Expr) || isa(e,Symbol)
+        # Create a thunk that contains this expression
+        thunk = eval(:( ()->($e) ))
+        linfo = thunk.code
+        (tree, ty) = Base.typeinf(linfo,(),())
+        T = ty
+        thunk.code.ast = tree
+        # Pretend we're a specialized generic function
+        # to get the good calling convention. The compiler
+        # will never know :)
+        setfield!(thunk.code,6,())
+        if isa(T,UnionType) || T.abstract
+            error("Inferred Union or abstract type $T for expression $e")
+        end
+        sv = CreateFunctionDecl(ctx,string("call",varnum),makeFunctionType(cpptype(T),pcpp"clang::Type"[]))
+        e = thunk
+    else
+        name = string("var",varnum)
+        sv = CreateVarDecl(ctx,name,cpptype(T))
+    end
+    AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(sv.ptr))
+    e, sv
+end
+
+function ArgCleanup(e,sv)
+    if isa(sv,pcpp"clang::FunctionDecl")
+        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool), e, C_NULL, false))
+        ReplaceFunctionForDecl(sv,f)
+    else
+        SetDeclInitializer(sv,llvmconst(e))
+    end
+end
+
 function process_cxx_string(str)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
@@ -1319,7 +1359,11 @@ function process_cxx_string(str)
         # Parse the first expression after `$`
         expr,pos = parse(str, idx + 1; greedy=false)
         push!(exprs,expr)
-        write(sourcebuf,"__julia::var",string(varnum))
+        if str[idx+1] == ':'
+            write(sourcebuf,"__julia::call",string(varnum),"()")
+        else
+            write(sourcebuf,"__julia::var",string(varnum))
+        end
         varnum += 1
     end
     argsetup = Expr(:block)
@@ -1327,11 +1371,9 @@ function process_cxx_string(str)
     for expr in exprs
         s = gensym()
         sv = gensym()
-        push!(argsetup.args,:($s = $expr))
-        push!(argsetup.args,:($sv = CreateVarDecl(ctx,$(string("var",startvarnum)),cpptype(typeof($s)))))
-        push!(argsetup.args,:(AddDeclToDeclCtx(ctx,pcpp"clang::Decl"($(sv).ptr))))
+        push!(argsetup.args,:(($s, $sv) = ssv($expr,ctx,$startvarnum)))
         startvarnum += 1
-        push!(argcleanup.args,:(SetDeclInitializer($sv,llvmconst($s))))
+        push!(argcleanup.args,:(ArgCleanup($s,$sv)))
     end
     quote
         let

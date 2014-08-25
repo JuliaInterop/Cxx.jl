@@ -78,7 +78,7 @@ GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module)->getNamedValue(
 @cxx (@cxx GV->getType())->dump()
 @cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),uint64(0)))
 @cxx GV->setConstant(true)
-@assert @cxx foo() = uint64(0)
+@assert (@cxx foo()) == uint64(0)
 
 # LLDB test
 

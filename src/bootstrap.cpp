@@ -11,6 +11,8 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Host.h"
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include "llvm/IR/ValueMap.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 // Clang includes
 #include "clang/Sema/ScopeInfo.h"
@@ -136,6 +138,37 @@ extern "C" {
       llvm::GlobalVariable *GV = cast<llvm::GlobalVariable>(C);
       GV->setInitializer(CI);
       GV->setConstant(true);
+  }
+  DLLEXPORT void ReplaceFunctionForDecl(clang::FunctionDecl *D, llvm::Function *F)
+  {
+      llvm::Constant *C = clang_cgm->GetAddrOfFunction(D);
+      if (!isa<llvm::Function>(C))
+        jl_error("Clang did not create function for the given FunctionDecl");
+      llvm::Function *OF = cast<llvm::Function>(C);
+      llvm::ValueToValueMapTy VMap;
+      llvm::ClonedCodeInfo CCI;
+      llvm::Function *NF = llvm::CloneFunction(F,VMap,true,&CCI);
+      // TODO: Ideally we would delete the cloned function
+      // once we're done with the inlineing, but clang delays
+      // emitting some functions (e.g. constructors) until
+      // they're used.
+      clang_shadow_module->getFunctionList().push_back(NF);
+      StringRef Name = OF->getName();
+      OF->replaceAllUsesWith(NF);
+      OF->removeFromParent();
+      NF->setName(Name);
+      while (true)
+      {
+        if (NF->getNumUses() == 0)
+          return;
+        Value::user_iterator I = NF->user_begin();
+        if (llvm::isa<llvm::CallInst>(*I)) {
+          llvm::InlineFunctionInfo IFI;
+          llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,true);
+        } else {
+          jl_error("Tried to do something other than calling it to a julia expression");
+        }
+      }
   }
 }
 
@@ -635,6 +668,17 @@ DLLEXPORT void *CreateVarDecl(void *DC, char* name, clang::Type *type)
       T, clang_astcontext->getTrivialTypeSourceInfo(T), clang::SC_Extern);
   return D;
 }
+
+DLLEXPORT void *CreateFunctionDecl(void *DC, char* name, clang::Type *type)
+{
+  clang::QualType T(type,0);
+  clang::FunctionDecl *D = clang::FunctionDecl::Create(*clang_astcontext, (clang::DeclContext *)DC,
+    getTrivialSourceLocation(), getTrivialSourceLocation(),
+      clang::DeclarationName(clang_preprocessor->getIdentifierInfo(name)),
+      T, clang_astcontext->getTrivialTypeSourceInfo(T), clang::SC_Extern);
+  return D;
+}
+
 
 DLLEXPORT void *CreateParmVarDecl(clang::Type *type)
 {
