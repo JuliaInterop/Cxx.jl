@@ -17,7 +17,10 @@
 // Clang includes
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/AST/ASTContext.h"
+// Well, yes this is cheating
+#define private public
 #include "clang/Parse/Parser.h"
+#undef private
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtVisitor.h"
@@ -310,12 +313,8 @@ DLLEXPORT void add_directory(int kind, int isFramework, const char *dirname)
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
 
-static int _cxxparse(clang::FileID FID, const clang::DirectoryLookup *CurDir)
+static int _cxxparse(const clang::DirectoryLookup *CurDir)
 {
-    clang::Preprocessor &P = clang_parser->getPreprocessor();
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
-
     clang::Sema &sema = clang_compiler->getSema();
     clang::ASTConsumer *Consumer = &sema.getASTConsumer();
 
@@ -353,17 +352,63 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
 
     clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
 
-    return _cxxparse(FID,CurDir);
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+    return _cxxparse(CurDir);
 }
 
-DLLEXPORT int cxxparse(char *data, size_t length)
+DLLEXPORT void *ActOnStartOfFunction(clang::Decl *D)
+{
+    clang::Sema &sema = clang_compiler->getSema();
+    return (void*)sema.ActOnStartOfFunctionDef(clang_parser->getCurScope(), D);
+}
+
+DLLEXPORT void ParseFunctionStatementBody(clang::Decl *D)
+{
+    clang::Parser::ParseScope BodyScope(clang_parser, clang::Scope::FnScope|clang::Scope::DeclScope);
+    clang_parser->ConsumeToken();
+    clang_parser->ParseFunctionStatementBody(D,BodyScope);
+    //clang::Sema &sema = clang_compiler->getSema();
+    //sema.PopDeclContext();
+}
+
+DLLEXPORT void *ActOnStartNamespaceDef(char *name)
+{
+  clang_parser->EnterScope(clang::Scope::DeclScope);
+  clang::ParsedAttributes attrs(clang_parser->getAttrFactory());
+  return clang_compiler->getSema().ActOnStartNamespaceDef(
+      clang_parser->getCurScope(),
+      getTrivialSourceLocation(),
+      getTrivialSourceLocation(),
+      getTrivialSourceLocation(),
+      clang_parser->getPreprocessor().getIdentifierInfo(name),
+      getTrivialSourceLocation(),
+      attrs.getList()
+      );
+}
+
+DLLEXPORT void ActOnFinishNamespaceDef(clang::Decl *D)
+{
+  clang_parser->ExitScope();
+  clang_compiler->getSema().ActOnFinishNamespaceDef(
+      D, getTrivialSourceLocation()
+      );
+}
+
+DLLEXPORT void EnterSourceFile(char *data, size_t length)
 {
     const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = clang_compiler->getFileManager();
     clang::SourceManager &sm = clang_compiler->getSourceManager();
     clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
       0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
-    return _cxxparse(FID,nullptr);
+    clang::Preprocessor &P = clang_parser->getPreprocessor();
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+}
+
+DLLEXPORT int cxxparse(char *data, size_t length)
+{
+    EnterSourceFile(data, length);
+    return _cxxparse(nullptr);
 }
 
 DLLEXPORT void defineMacro(const char *Name)
@@ -523,6 +568,11 @@ DLLEXPORT void *setup_cpp_env(void *jlfunc)
     return state;
 }
 
+DLLEXPORT void EmitTopLevelDecl(clang::Decl *D)
+{
+    clang_cgm->EmitTopLevelDecl(D);
+}
+
 DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
 {
     //assert(in_cpp == true);
@@ -669,13 +719,13 @@ DLLEXPORT void *CreateVarDecl(void *DC, char* name, clang::Type *type)
   return D;
 }
 
-DLLEXPORT void *CreateFunctionDecl(void *DC, char* name, clang::Type *type)
+DLLEXPORT void *CreateFunctionDecl(void *DC, char* name, clang::Type *type, int isextern)
 {
   clang::QualType T(type,0);
   clang::FunctionDecl *D = clang::FunctionDecl::Create(*clang_astcontext, (clang::DeclContext *)DC,
     getTrivialSourceLocation(), getTrivialSourceLocation(),
       clang::DeclarationName(clang_preprocessor->getIdentifierInfo(name)),
-      T, clang_astcontext->getTrivialTypeSourceInfo(T), clang::SC_Extern);
+      T, clang_astcontext->getTrivialTypeSourceInfo(T), isextern ? clang::SC_Extern : clang::SC_None);
   return D;
 }
 

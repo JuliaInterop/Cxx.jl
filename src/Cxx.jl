@@ -183,7 +183,7 @@ CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true) = CreateDeclRefExpr(tovde
 
 CreateParmVarDecl(p::pcpp"clang::Type") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
-CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
+CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type",isextern=true) = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void},Cint),DC,name,T,isextern))
 
 CreateMemberExpr(base::pcpp"clang::Expr",isarrow::Bool,member::pcpp"clang::ValueDecl") = pcpp"clang::Expr"(ccall((:CreateMemberExpr,libcxxffi),Ptr{Void},(Ptr{Void},Cint,Ptr{Void}),base.ptr,isarrow,member.ptr))
 BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}) = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
@@ -1002,59 +1002,67 @@ function _cppcall(expr, thiscall, isnew, argt)
             myctx = getContext(d)
             dne = BuildDeclarationNameExpr(split(fname,"::")[end],myctx)
 
-            # And now the expressions for all the arguments
-            callargs, callpvds = buildargexprs(argt)
-            append!(pvds, callpvds)
-
-            ce = CreateCallExpr(dne,callargs)
-
-            if ce == C_NULL
-                error("Failed to create CallExpr")
-            end
-
-            # First we need to get the return type of the C++ expression
-            rt = DeduceReturnType(ce)
-            rett = juliatype(rt)
-
-            llvmargt = [argt...]
-
-            issret = (rett != None) && rett <: CppValue
-
-            if issret
-                llvmargt = [Ptr{Uint8},llvmargt]
-            end
-
-            llvmrt = julia_to_llvm(rett)
-
-            # Let's create an LLVM fuction
-            f = CreateFunction(issret ? julia_to_llvm(Void) : llvmrt,
-                map(julia_to_llvm,llvmargt))
-
-            # Clang's code emitter needs some extra information about the function, so let's
-            # initialize that as well
-            state = setup_cpp_env(f)
-
-            builder = irbuilder()
-
-            args = llvmargs(builder, f, llvmargt)
-            associateargs(builder,argt,issret ? args[2:end] : args,pvds)
-
-            if issret
-                rslot = CreateBitCast(builder,args[1],getPointerTo(toLLVM(rt)))
-            end
-
-            MarkDeclarationsReferencedInExpr(ce)
-            ret = pcpp"llvm::Value"(ccall((:emitcallexpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),ce,rslot))
-
-            if rett <: CppValue
-                ret = C_NULL
-            end
-            #return createReturn(builder,f,argt,llvmrt,rt,ret,state)
+            return CallDNE(dne,argt)
         end
     end
 
     # Common return path for everything that's calling a normal function
     # (i.e. everything but constructors)
+    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
+end
+
+function CallDNE(dne,argt)
+    pvds = pcpp"clang::ParmVarDecl"[]
+    rslot = C_NULL
+
+    # And now the expressions for all the arguments
+    callargs, callpvds = buildargexprs(argt)
+    append!(pvds, callpvds)
+
+    ce = CreateCallExpr(dne,callargs)
+
+    if ce == C_NULL
+        error("Failed to create CallExpr")
+    end
+
+    # First we need to get the return type of the C++ expression
+    rt = DeduceReturnType(ce)
+    rett = juliatype(rt)
+
+    llvmargt = [argt...]
+
+    issret = (rett != None) && rett <: CppValue
+
+    if issret
+        llvmargt = [Ptr{Uint8},llvmargt]
+    end
+
+    llvmrt = julia_to_llvm(rett)
+
+    # Let's create an LLVM fuction
+    f = CreateFunction(issret ? julia_to_llvm(Void) : llvmrt,
+        map(julia_to_llvm,llvmargt))
+
+    # Clang's code emitter needs some extra information about the function, so let's
+    # initialize that as well
+    state = setup_cpp_env(f)
+
+    builder = irbuilder()
+
+    args = llvmargs(builder, f, llvmargt)
+    associateargs(builder,argt,issret ? args[2:end] : args,pvds)
+
+    if issret
+        rslot = CreateBitCast(builder,args[1],getPointerTo(toLLVM(rt)))
+    end
+
+    MarkDeclarationsReferencedInExpr(ce)
+    ret = pcpp"llvm::Value"(ccall((:emitcallexpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),ce,rslot))
+
+    if rett <: CppValue
+        ret = C_NULL
+    end
+
     createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
 end
 
@@ -1337,7 +1345,60 @@ function ArgCleanup(e,sv)
     end
 end
 
-function process_cxx_string(str)
+const sourcebuffers = String[]
+
+immutable SourceBuf{id}; end
+sourceid{id}(::Type{SourceBuf{id}}) = id
+
+icxxcounter = 0
+
+EnterBuffer(buf) = ccall((:EnterSourceFile,libcxxffi),Void,(Ptr{Uint8},Csize_t),buf,sizeof(buf))
+ActOnStartOfFunction(D) = pcpp"clang::Decl"(ccall((:ActOnStartOfFunction,libcxxffi),Ptr{Void},(Ptr{Void},),D))
+ParseFunctionStatementBody(D) = ccall((:ParseFunctionStatementBody,libcxxffi),Void,(Ptr{Void},),D)
+
+ActOnStartNamespaceDef(name) = pcpp"clang::Decl"(ccall((:ActOnStartNamespaceDef,libcxxffi),Ptr{Void},(Ptr{Uint8},),name))
+ActOnFinishNamespaceDef(D) = ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Ptr{Void},),D)
+
+const icxx_ns = createNamespace("__icxx")
+
+EmitTopLevelDecl(D::pcpp"clang::Decl") = ccall((:EmitTopLevelDecl,libcxxffi),Void,(Ptr{Void},),D)
+
+stagedfunction cxxstr_impl(sourcebuf, args...)
+    id = sourceid(sourcebuf)
+    buf = sourcebuffers[id]
+
+    # Set up a function decl which we will later
+    # inline
+
+    argtypes = pcpp"clang::Type"[cpptype(arg) for arg in args]
+
+    global icxxcounter
+
+    EnterBuffer(buf)
+
+    local FD
+    local dne
+    try
+        ND = ActOnStartNamespaceDef("__icxx")
+        fname = string("icxx",icxxcounter)
+        icxxcounter += 1
+        ctx = toctx(ND)
+        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(cpptype(Nothing),argtypes),false)
+        FD = ActOnStartOfFunction(pcpp"clang::Decl"(FD.ptr))
+        ParseFunctionStatementBody(FD)
+        ActOnFinishNamespaceDef(ND)
+    catch e
+        @show e
+    end
+
+    #dump(FD)
+
+    EmitTopLevelDecl(FD)
+
+    return CallDNE(CreateDeclRefExpr(FD),args)
+end
+
+function process_cxx_string(str,global_scope = true)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
@@ -1346,9 +1407,12 @@ function process_cxx_string(str)
     # things in namespaces.
     pos = 1
     sourcebuf = IOBuffer()
+    !global_scope && write(sourcebuf,"{\n")
     exprs = Any[]
+    isexprs = Bool[]
     global varnum
     startvarnum = varnum
+    localvarnum = 0
     while true
         idx = search(str,'$',pos)
         if idx == 0
@@ -1359,40 +1423,68 @@ function process_cxx_string(str)
         # Parse the first expression after `$`
         expr,pos = parse(str, idx + 1; greedy=false)
         push!(exprs,expr)
-        if str[idx+1] == ':'
-            write(sourcebuf,"__julia::call",string(varnum),"()")
+        isexpr = (str[idx+1] == ':')
+        push!(isexprs,isexpr)
+        if global_scope
+            write(sourcebuf,
+                isexpr ? string("__julia::call",varnum,"()") :
+                         string("__julia::var",varnum))
+            varnum += 1
+        elseif isexpr
+            write(sourcebuf, string("__julia::call",varnum,"()"))
+            varnum += 1
         else
-            write(sourcebuf,"__julia::var",string(varnum))
+            write(sourcebuf, string("__juliavar",localvarnum,"()"))
+            localvarnum += 1
         end
-        varnum += 1
     end
-    argsetup = Expr(:block)
-    argcleanup = Expr(:block)
-    for expr in exprs
-        s = gensym()
-        sv = gensym()
-        push!(argsetup.args,:(($s, $sv) = ssv($expr,ctx,$startvarnum)))
-        startvarnum += 1
-        push!(argcleanup.args,:(ArgCleanup($s,$sv)))
-    end
-    quote
-        let
-            jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
-            ns = createNamespace("julia")
-            ctx = toctx(pcpp"clang::Decl"(ns.ptr))
-            unsafe_store!(jns,ns.ptr)
-            $argsetup
-            cxxparse($(takebuf_string(sourcebuf)))
-            unsafe_store!(jns,C_NULL)
-            $argcleanup
+    if global_scope
+        argsetup = Expr(:block)
+        argcleanup = Expr(:block)
+        for expr in exprs
+            s = gensym()
+            sv = gensym()
+            push!(argsetup.args,:(($s, $sv) = ssv($expr,ctx,$startvarnum)))
+            startvarnum += 1
+            push!(argcleanup.args,:(ArgCleanup($s,$sv)))
         end
+        return quote
+            let
+                jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
+                ns = createNamespace("julia")
+                ctx = toctx(pcpp"clang::Decl"(ns.ptr))
+                unsafe_store!(jns,ns.ptr)
+                $argsetup
+                cxxparse($(takebuf_string(sourcebuf)))
+                unsafe_store!(jns,C_NULL)
+                $argcleanup
+            end
+        end
+    else
+        write(sourcebuf,"\n}")
+        push!(sourcebuffers,takebuf_string(sourcebuf))
+        id = length(sourcebuffers)
+        ret = Expr(:call,cxxstr_impl,:(SourceBuf{$id}()))
+        for (i,e) in enumerate(exprs)
+            @assert !isexprs[i]
+            push!(ret.args,e)
+        end
+        return ret
     end
 end
 
 macro cxx_str(str)
-    process_cxx_string(str)
+    process_cxx_string(str,true)
+end
+
+macro icxx_str(str)
+    process_cxx_string(str,false)
+end
+
+macro icxx_mstr(str)
+    process_cxx_string(str,false)
 end
 
 macro cxx_mstr(str)
-    process_cxx_string(str)
+    process_cxx_string(str,true)
 end
