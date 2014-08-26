@@ -39,6 +39,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Initialization.h"
+#include "clang/Sema/PrettyDeclStackTrace.h"
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CodeGenOptions.h>
 #include <clang/AST/Type.h>
@@ -93,6 +94,7 @@ extern "C" {
   DLLEXPORT const clang::Type *cT_float64;
   DLLEXPORT const clang::Type *cT_void;
   DLLEXPORT const clang::Type *cT_pvoid;
+  DLLEXPORT const clang::Type *cT_wint;
 }
 
 static llvm::Type *T_int32;
@@ -366,9 +368,41 @@ DLLEXPORT void ParseFunctionStatementBody(clang::Decl *D)
 {
     clang::Parser::ParseScope BodyScope(clang_parser, clang::Scope::FnScope|clang::Scope::DeclScope);
     clang_parser->ConsumeToken();
-    clang_parser->ParseFunctionStatementBody(D,BodyScope);
-    //clang::Sema &sema = clang_compiler->getSema();
-    //sema.PopDeclContext();
+
+    clang::Sema &sema = clang_compiler->getSema();
+
+    // Slightly modified
+    assert(clang_parser->getCurToken().is(clang::tok::l_brace));
+    clang::SourceLocation LBraceLoc = clang_parser->getCurToken().getLocation();
+
+    clang::PrettyDeclStackTraceEntry CrashInfo(sema, D, LBraceLoc,
+                                        "parsing function body");
+
+    // Do not enter a scope for the brace, as the arguments are in the same scope
+    // (the function body) as the body itself.  Instead, just read the statement
+    // list and put it into a CompoundStmt for safe keeping.
+    clang::StmtResult FnBody(clang_parser->ParseCompoundStatementBody(true));
+
+    // If the function body could not be parsed, make a bogus compoundstmt.
+    if (FnBody.isInvalid()) {
+      clang::Sema::CompoundScopeRAII CompoundScope(sema);
+      FnBody = sema.ActOnCompoundStmt(LBraceLoc, LBraceLoc, None, false);
+    }
+
+    clang::CompoundStmt *Body = cast<clang::CompoundStmt>(FnBody.get());
+
+    // If we don't yet have a return statement, implicitly return
+    // the result of the last statement
+    if (cast<clang::FunctionDecl>(D)->getReturnType()->isUndeducedType())
+    {
+      clang::Stmt *last = Body->body_back();
+      if (last && isa<clang::Expr>(last))
+        Body->setLastStmt(
+          sema.BuildReturnStmt(getTrivialSourceLocation(), cast<clang::Expr>(last)).get());
+    }
+
+    BodyScope.Exit();
+    sema.ActOnFinishFunctionBody(D, Body);
 }
 
 DLLEXPORT void *ActOnStartNamespaceDef(char *name)
@@ -429,6 +463,7 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->createDiagnostics();
     clang_compiler->getLangOpts().CPlusPlus = 1;
     clang_compiler->getLangOpts().CPlusPlus11 = 1;
+    clang_compiler->getLangOpts().CPlusPlus14 = 1;
     clang_compiler->getLangOpts().LineComment = 1;
     clang_compiler->getLangOpts().Bool = 1;
     clang_compiler->getLangOpts().WChar = 1;
@@ -504,6 +539,8 @@ DLLEXPORT void init_julia_clang_env() {
     cT_void = clang_astcontext->VoidTy.getTypePtrOrNull();
 
     cT_pvoid = clang_astcontext->getPointerType(clang_astcontext->VoidTy).getTypePtrOrNull();
+
+    cT_wint = clang_astcontext->WIntTy.getTypePtrOrNull();
 
     clang::Sema &sema = clang_compiler->getSema();
     clang_parser = new clang::Parser(sema.getPreprocessor(), sema, false);
@@ -730,7 +767,7 @@ DLLEXPORT void *CreateFunctionDecl(void *DC, char* name, clang::Type *type, int 
 }
 
 
-DLLEXPORT void *CreateParmVarDecl(clang::Type *type)
+DLLEXPORT void *CreateParmVarDecl(clang::Type *type, char *name)
 {
     clang::QualType T(type,0);
     clang::ParmVarDecl *d = clang::ParmVarDecl::Create(
@@ -738,12 +775,17 @@ DLLEXPORT void *CreateParmVarDecl(clang::Type *type)
         clang_astcontext->getTranslationUnitDecl(), // This is wrong, hopefully it doesn't matter
         getTrivialSourceLocation(),
         getTrivialSourceLocation(),
-        &clang_compiler->getPreprocessor().getIdentifierTable().getOwn("dummy"),
+        &clang_compiler->getPreprocessor().getIdentifierTable().getOwn(name),
         T,
         clang_astcontext->getTrivialTypeSourceInfo(T),
         clang::SC_None,NULL);
     d->setIsUsed();
     return (void*)d;
+}
+
+DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, size_t npvds)
+{
+    FD->setParams(ArrayRef<clang::ParmVarDecl*>(PVDs,npvds));
 }
 
 DLLEXPORT void AssociateValue(clang::Decl *d, clang::Type *type, llvm::Value *V)
@@ -1343,11 +1385,19 @@ DLLEXPORT void ExtendNNSIdentifier(clang::NestedNameSpecifierLocBuilder *builder
 
 DLLEXPORT void *makeFunctionType(clang::Type *rt, clang::Type **argts, size_t nargs)
 {
+  clang::QualType T;
+  if (rt == NULL) {
+    T = clang_astcontext->getAutoType(clang::QualType(),
+                                 /*decltype(auto)*/true,
+                                 /*IsDependent*/   false);
+  } else {
+    T = clang::QualType(rt,0);
+  }
   clang::QualType *qargs = (clang::QualType *)__builtin_alloca(nargs*sizeof(clang::QualType));
   for (size_t i = 0; i < nargs; ++i)
     qargs[i] = clang::QualType(argts[i], 0);
   clang::FunctionProtoType::ExtProtoInfo EPI;
-  return (void*)clang_astcontext->getFunctionType(clang::QualType(rt, 0), llvm::ArrayRef<clang::QualType>(qargs, nargs), EPI).getTypePtr();
+  return (void*)clang_astcontext->getFunctionType(T, llvm::ArrayRef<clang::QualType>(qargs, nargs), EPI).getTypePtr();
 }
 
 DLLEXPORT void *makeMemberFunctionType(clang::Type *cls, clang::Type *FT)
@@ -1414,6 +1464,17 @@ DLLEXPORT void *getConstantInt(llvm::Type *llvmt, uint64_t x)
 DLLEXPORT void *getConstantStruct(llvm::Type *llvmt, llvm::Constant **vals, size_t nvals)
 {
   return ConstantStruct::get(cast<StructType>(llvmt),ArrayRef<llvm::Constant*>(vals,nvals));
+}
+
+DLLEXPORT const clang::Type *canonicalType(clang::Type *t)
+{
+  return t->getCanonicalTypeInternal().getTypePtr();
+}
+
+DLLEXPORT int builtinKind(clang::Type *t)
+{
+    assert(isa<clang::BuiltinType>(t));
+    return cast<clang::BuiltinType>(t)->getKind();
 }
 
 }

@@ -181,7 +181,7 @@ CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL
     ) = pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),p.ptr,nnsbuilder,islvalue))
 CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true) = CreateDeclRefExpr(tovdecl(p);islvalue=islvalue,nnsbuilder=nnsbuilder)
 
-CreateParmVarDecl(p::pcpp"clang::Type") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
+CreateParmVarDecl(p::pcpp"clang::Type",name="dummy") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8}),p.ptr,name))
 CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
 CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type",isextern=true) = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void},Cint),DC,name,T,isextern))
 
@@ -329,6 +329,8 @@ AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
 ReplaceFunctionForDecl(sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function") =
     ccall((:ReplaceFunctionForDecl,libcxxffi),Void,(Ptr{Void},Ptr{Void}),sv,f)
 
+builtinKind(t::pcpp"clang::Type") = ccall((:builtinKind,libcxxffi),Cint,(Ptr{Void},),t)
+
 const CK_Dependent      = 0
 const CK_BitCast        = 1
 const CK_LValueBitCast  = 2
@@ -359,6 +361,7 @@ const CK_IntegralCast = 25
 createCast(arg,t,kind) = pcpp"clang::Expr"(ccall((:createCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),arg,t,kind))
 # Built-in clang types
 chartype() = pcpp"clang::Type"(unsafe_load(cglobal((:cT_cchar,libcxxffi),Ptr{Void})))
+winttype() = pcpp"clang::Type"(unsafe_load(cglobal((:cT_wint,libcxxffi),Ptr{Void})))
 cpptype(::Type{Nothing}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void})))
 cpptype(::Type{Uint8}) = chartype()#pcpp"clang::Type"(unsafe_load(cglobal(:cT_uint8,Ptr{Void})))
 cpptype(::Type{Int8}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int8,libcxxffi),Ptr{Void})))
@@ -577,7 +580,35 @@ function getTemplateParameters(cxxd)
     targt
 end
 
+# TODO: Autogenerate this from the appropriate header
+const cVoid      = 0
+const cBool      = 1
+const cChar_U    = 2
+const cUChar     = 3
+const cWChar_U   = 4
+const cChar16    = 5
+const cChar32    = 6
+const cUShort    = 7
+const cUInt      = 8
+const cULong     = 9
+const cULongLong = 10
+const CUInt128   = 11
+const cChar_S    = 12
+const cSChar     = 13
+const cWChar_S   = 14
+const cShort     = 15
+const cInt       = 16
+const cLong      = 17
+const cLongLong  = 18
+const cInt128    = 19
+const cHalf      = 20
+const cFloat     = 21
+const cDouble    = 22
+
+
+canonicalType(t) = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 function juliatype(t::pcpp"clang::Type")
+    t = canonicalType(t)
     if isVoidType(t)
         return Void
     elseif isBooleanType(t)
@@ -622,19 +653,23 @@ function juliatype(t::pcpp"clang::Type")
     elseif isEnumeralType(t)
         return CppEnum{symbol(get_name(t))}
     elseif isIntegerType(t)
-        if t == cpptype(Int64)
+        kind = builtinKind(t)
+        if kind == cLong || kind == cLongLong
             return Int64
-        elseif t == cpptype(Uint64)
+        elseif kind == cULong || kind == cULongLong
             return Uint64
-        elseif t == cpptype(Uint32)
+        elseif kind == cUInt
             return Uint32
-        elseif t == cpptype(Int32)
+        elseif kind == cInt
             return Int32
-        elseif t == cpptype(Uint8) || t == chartype()
+        elseif kind == cChar_U || kind == cChar_S
             return Uint8
-        elseif t == cpptype(Int8)
+        elseif kind == cSChar
             return Int8
         end
+        @show kind
+        dump(t)
+        error("Unrecognized Integer type")
         # This is wrong. Might be any int. Need to access the BuiltinType::Kind Enum
         return Int
     else
@@ -1363,6 +1398,9 @@ const icxx_ns = createNamespace("__icxx")
 
 EmitTopLevelDecl(D::pcpp"clang::Decl") = ccall((:EmitTopLevelDecl,libcxxffi),Void,(Ptr{Void},),D)
 
+SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =
+    ccall((:SetFDParams,libcxxffi),Void,(Ptr{Void},Ptr{Ptr{Void}},Csize_t),FD,[p.ptr for p in params],length(params))
+
 stagedfunction cxxstr_impl(sourcebuf, args...)
     id = sourceid(sourcebuf)
     buf = sourcebuffers[id]
@@ -1383,7 +1421,12 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
         fname = string("icxx",icxxcounter)
         icxxcounter += 1
         ctx = toctx(ND)
-        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(cpptype(Nothing),argtypes),false)
+        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(pcpp"clang::Type"(C_NULL),argtypes),false)
+        params = pcpp"clang::ParmVarDecl"[]
+        for (i,arg) in enumerate(args)
+            push!(params,CreateParmVarDecl(argtypes[i],string("__juliavar",i)))
+        end
+        SetFDParams(FD,params)
         FD = ActOnStartOfFunction(pcpp"clang::Decl"(FD.ptr))
         ParseFunctionStatementBody(FD)
         ActOnFinishNamespaceDef(ND)
@@ -1412,7 +1455,7 @@ function process_cxx_string(str,global_scope = true)
     isexprs = Bool[]
     global varnum
     startvarnum = varnum
-    localvarnum = 0
+    localvarnum = 1
     while true
         idx = search(str,'$',pos)
         if idx == 0
@@ -1434,7 +1477,7 @@ function process_cxx_string(str,global_scope = true)
             write(sourcebuf, string("__julia::call",varnum,"()"))
             varnum += 1
         else
-            write(sourcebuf, string("__juliavar",localvarnum,"()"))
+            write(sourcebuf, string("__juliavar",localvarnum))
             localvarnum += 1
         end
     end
