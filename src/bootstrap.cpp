@@ -322,13 +322,13 @@ static int _cxxparse(const clang::DirectoryLookup *CurDir)
 
     clang::Parser::DeclGroupPtrTy ADecl;
 
-    do {
+    while (!clang_parser->ParseTopLevelDecl(ADecl)) {
       // If we got a null return and something *was* parsed, ignore it.  This
       // is due to a top-level semicolon, an action override, or a parse error
       // skipping something.
       if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
         return 0;
-    } while (!clang_parser->ParseTopLevelDecl(ADecl));
+    }
 
     clang_compiler->getSema().PerformPendingInstantiations(false);
     clang_cgm->Release();
@@ -342,10 +342,9 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
     clang::FileManager &fm = clang_compiler->getFileManager();
     clang::Preprocessor &P = clang_parser->getPreprocessor();
 
-
     const clang::FileEntry *File = P.LookupFile(
       getTrivialSourceLocation(), fname,
-      isAngled, nullptr, CurDir, nullptr,nullptr, nullptr);
+      isAngled, P.GetCurDirLookup(), CurDir, nullptr,nullptr, nullptr);
 
     if(!File)
       return 0;
@@ -433,7 +432,7 @@ DLLEXPORT void EnterSourceFile(char *data, size_t length)
     const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = clang_compiler->getFileManager();
     clang::SourceManager &sm = clang_compiler->getSourceManager();
-    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
+    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)).release(),clang::SrcMgr::C_User,
       0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
     clang::Preprocessor &P = clang_parser->getPreprocessor();
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
@@ -552,7 +551,7 @@ DLLEXPORT void init_julia_clang_env() {
     pp.enableIncrementalProcessing();
 
     clang::SourceManager &sm = clang_compiler->getSourceManager();
-    sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0), clang::SrcMgr::C_User));
+    sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0).release(), clang::SrcMgr::C_User));
 
     sema.getPreprocessor().EnterMainSourceFile();
     clang_parser->Initialize();
@@ -634,6 +633,10 @@ DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
     //copy_into(F,cur_func);
 
     //F->eraseFromParent();
+    // Hack: MaybeBindToTemporary can cause this to be
+    // set if the allocated type has a constructor.
+    // For now, ignore.
+    clang_compiler->getSema().ExprNeedsCleanups = false;
 
     cur_module = state->module;
     cur_func = state->func;

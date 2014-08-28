@@ -52,3 +52,12 @@ void printfoo() {
         $:(println("foo")::Nothing);
 }
 """
+
+
+cxx"""
+void f() {
+   void *p = 0;
+   return *p;
+}
+"""
+@cxx f()
