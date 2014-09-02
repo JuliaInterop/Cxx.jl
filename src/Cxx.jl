@@ -11,10 +11,10 @@
 # The main interface provided by this file is the @cpp macro.
 # The following usages are currently supportd.
 #
-#   - Stactic function call
+#   - Static function call
 #       @cpp mynamespace::func(args...)
 #   - Membercall (where m is a CppPtr, CppRef or CppValue)
-#       @cp m->foo(args...)
+#       @cpp m->foo(args...)
 #
 # Note that unary * inside a call, e.g. @cpp foo(*a) is treated as
 # a (C++ side) derefence of a.
@@ -177,9 +177,21 @@ referenceTo(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:getReferenceTo,lib
 tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(p.ptr)
 
-CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL
-    ) = pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),p.ptr,nnsbuilder,islvalue))
-CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true) = CreateDeclRefExpr(tovdecl(p);islvalue=islvalue,nnsbuilder=nnsbuilder)
+function CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL
+    )
+    @assert p != C_NULL
+    pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),p.ptr,nnsbuilder,islvalue))
+end
+
+function CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true)
+    @assert p != C_NULL
+    vd = tovdecl(p)
+    if vd == C_NULL
+        dump(p)
+        error("CreateDeclRefExpr called with something other than a ValueDecl")
+    end
+    CreateDeclRefExpr(vd;islvalue=islvalue,nnsbuilder=nnsbuilder)
+end
 
 CreateParmVarDecl(p::pcpp"clang::Type",name="dummy") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8}),p.ptr,name))
 CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
@@ -287,8 +299,11 @@ deleteNNSBuilder(b::pcpp"clang::NestedNameSpecifierLocBuilder") = ccall((:delete
 ExtendNNS(b::pcpp"clang::NestedNameSpecifierLocBuilder", ns::pcpp"clang::NamespaceDecl") =
     ccall((:ExtendNNS,libcxxffi),Void,(Ptr{Void},Ptr{Void}),b,ns)
 
+ExtendNNSType(b::pcpp"clang::NestedNameSpecifierLocBuilder", t::pcpp"clang::Type") =
+    ccall((:ExtendNNSType,libcxxffi),Void,(Ptr{Void},Ptr{Void}),b,t)
+
 ExtendNNSIdentifier(b::pcpp"clang::NestedNameSpecifierLocBuilder", name) =
-    ccall((:ExtendNNS,libcxxffi),Void,(Ptr{Void},Ptr{Uint8}),b,name)
+    ccall((:ExtendNNSIdentifier,libcxxffi),Void,(Ptr{Void},Ptr{Uint8}),b,name)
 
 makeFunctionType(rt::pcpp"clang::Type", args::Vector{pcpp"clang::Type"}) =
     pcpp"clang::Type"(ccall((:makeFunctionType,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Csize_t),rt,args,length(args)))
@@ -401,7 +416,14 @@ end
 
 # Main interface
 
+immutable CppTemplate{X,targs}; end
+immutable CppCall{F}; end
+immutable CppNNS{chain}; end
+
 immutable CppExpr{T,targs}; end
+immutable cppJExpr{T}
+    V::T
+end
 
 # Checks the arguments to make sure we have concrete C++ compatible
 # types in the signature. This is used both in cases where type inference
@@ -432,33 +454,41 @@ primary_ctx(p::pcpp"clang::DeclContext") =
 toctx(p::pcpp"clang::Decl") =
     pcpp"clang::DeclContext"(p == C_NULL ? C_NULL : ccall((:decl_context,libcxxffi),Ptr{Void},(Ptr{Void},),p))
 
+toctx(p::pcpp"clang::CXXRecordDecl") = toctx(pcpp"clang::Decl"(p.ptr))
+toctx(p::pcpp"clang::ClassTemplateSpecializationDecl") = toctx(pcpp"clang::Decl"(p.ptr))
+
 to_decl(p::pcpp"clang::DeclContext") =
     pcpp"clang::Decl"(p == C_NULL ? C_NULL : ccall((:to_decl,libcxxffi),Ptr{Void},(Ptr{Void},),p))
 
-function lookup_name(fname::String, ctx::pcpp"clang::DeclContext")
+function _lookup_name(fname, ctx::pcpp"clang::DeclContext")
     @assert ctx != C_NULL
     pcpp"clang::Decl"(
         ccall((:lookup_name,libcxxffi),Ptr{Void},(Ptr{Uint8},Ptr{Void}),bytestring(fname),ctx))
 end
+_lookup_name(fname::Symbol, ctx::pcpp"clang::DeclContext") = _lookup_name(string(fname),ctx)
 
-function lookup_name(parts, nnsbuilder=C_NULL)
-    cur = translation_unit()
+isaNamespaceDecl(d::pcpp"clang::CXXRecordDecl") = false
+
+function lookup_name(parts, nnsbuilder=C_NULL, cur=translation_unit())
     for fpart in parts
         if nnsbuilder != C_NULL
+            @show cur
+            @show isaNamespaceDecl(cur)
             if isaNamespaceDecl(cur)
                 ExtendNNS(nnsbuilder, dcastNamespaceDecl(cur))
             else
                 ExtendNNSIdentifier(nnsbuilder, fpart)
             end
         end
-        cur = lookup_name(fpart,primary_ctx(toctx(cur)))
-        cur == C_NULL && error("Could not find $fpart as part of $(join(parts,"::")) lookup")
+        lastcur = cur
+        cur = _lookup_name(fpart,primary_ctx(toctx(cur)))
+        cur == C_NULL && error("Could not find $fpart in context $(_decl_name(lastcur))")
     end
     cur
 end
 
-lookup_ctx(fname::String; nnsbuilder=C_NULL) = lookup_name(split(fname,"::"),nnsbuilder)
-lookup_ctx(fname::Symbol; nnsbuilder=C_NULL) = lookup_ctx(string(fname); nnsbuilder=nnsbuilder)
+lookup_ctx(fname::String; nnsbuilder=C_NULL, cur=translation_unit()) = lookup_name(split(fname,"::"),nnsbuilder,cur)
+lookup_ctx(fname::Symbol; nnsbuilder=C_NULL, cur=translation_unit()) = lookup_ctx(string(fname); nnsbuilder=nnsbuilder, cur=cur)
 
 function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
     @assert cxxt != C_NULL
@@ -483,6 +513,32 @@ function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
             cxxt.ptr,[p.ptr for p in ts],integralValues,bitwidths,integralValuesPresent,length(ts)))
     d
 end
+
+function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
+    @assert cxxt != C_NULL
+    integralValues = zeros(Uint64,length(targs))
+    integralValuesPresent = zeros(Uint8,length(targs))
+    bitwidths = zeros(Uint32,length(targs))
+    ts = Array(pcpp"clang::Type",length(targs))
+    for (i,t) in enumerate(targs)
+        if isa(t,pcpp"clang::Type")
+            ts[i] = t
+        elseif isa(t,Integer) || isa(t,CppEnum)
+            ts[i] = cpptype(typeof(t))
+            integralValues[i] = convert(Uint64,isa(t,CppEnum) ? t.val : t)
+            integralValuesPresent[i] = 1
+            bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
+        else
+            error("Unhandled template parameter type")
+        end
+    end
+    d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
+            (Ptr{Void},Ptr{Void},Ptr{Uint64},Ptr{Uint32},Ptr{Uint8},Uint32),
+            cxxt.ptr,[p.ptr for p in ts],integralValues,bitwidths,integralValuesPresent,length(ts)))
+    d
+end
+
+
 
 function cppdecl(fname,targs)
     # Let's get a clang level representation of this type
@@ -605,7 +661,7 @@ const cHalf      = 20
 const cFloat     = 21
 const cDouble    = 22
 
-
+getPointeeType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:referenced_type,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
 canonicalType(t) = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 function juliatype(t::pcpp"clang::Type")
     t = canonicalType(t)
@@ -618,7 +674,7 @@ function juliatype(t::pcpp"clang::Type")
         if cxxd != C_NULL
             return CppPtr{symbol(get_pointee_name(t)),getTemplateParameters(cxxd)}
         else
-            pt = pcpp"clang::Type"(ccall((:referenced_type,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
+            pt = getPointeeType(t)
             tt = juliatype(pt)
             if tt <: CppPtr
                 return CppPtr{tt,()}
@@ -896,17 +952,67 @@ stagedfunction cxxmemref(expr, args...)
     emitRefExpr(me, pvds[1], this)
 end
 
+function typeForNNS{nns}(T::Type{CppNNS{nns}})
+    if length(nns) == 1 && (nns[1] <: CppPtr || nns[1] <: CppRef)
+        return cpptype(nns[1])
+    end
+    typeForDecl(declfornns(T))
+end
+
+function declfornns{nns}(::Type{CppNNS{nns}},nnsbuilder=C_NULL)
+    @assert isa(nns,Tuple)
+    d = tu = translation_unit()
+    @show nns
+    for (i,n) in enumerate(nns)
+        @show n
+        if !isa(n, Symbol)
+            if n <: CppTemplate
+                d = lookup_name((n.parameters[1],),C_NULL,d)
+                @show d
+                cxxt = cxxtmplt(d)
+                @assert cxxt != C_NULL
+                arr = Any[]
+                for arg in n.parameters[2]
+                    @show arg
+                    if arg <: CppNNS
+                        push!(arr,typeForNNS(arg))
+                    else
+                        push!(arr,arg)
+                    end
+                end
+                d = specialize_template_clang(cxxt,arr,cpptype)
+                @assert d != C_NULL
+                (nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,typeForDecl(d))
+            else
+                @assert d == tu
+                t = cpptype(n)
+                dump(t)
+                dump(getPointeeType(t))
+                (nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,getPointeeType(t))
+                d = getAsCXXRecordDecl(getPointeeType(t))
+            end
+        else
+            d = lookup_name((n,),i == length(nns) ? C_NULL : nnsbuilder,d)
+        end
+        @assert d != C_NULL
+    end
+    d
+end
+
 function _cppcall(expr, thiscall, isnew, argt)
     check_args(argt, expr)
 
     pvds = pcpp"clang::ParmVarDecl"[]
 
     rslot = C_NULL
-    fname = string(expr.parameters[1])
 
     rt = Void
 
     if thiscall
+        @assert expr <: CppNNS
+        fname = expr.parameters[1][1]
+        @assert isa(fname,Symbol)
+
         me = build_me(argt[1],fname,pvds)
 
         # And now the expressions for all the arguments
@@ -961,7 +1067,13 @@ function _cppcall(expr, thiscall, isnew, argt)
 
         #return createReturn(builder,f,argt,llvmrt,rt,ret,state)
     else
-        d = lookup_ctx(fname)
+        targs = ()
+        if expr <: CppTemplate
+            targs = expr.args[2]
+            expr = expr.args[1]
+        end
+
+        d = declfornns(expr)
         @assert d.ptr != C_NULL
         # If this is a typedef or something we'll try to get the primary one
         primary_decl = to_decl(primary_ctx(toctx(d)))
@@ -971,13 +1083,18 @@ function _cppcall(expr, thiscall, isnew, argt)
         # Let's see if we're constructing something. And, if so, let's
         # setup an array to accept the result
         cxxd = dcastCXXRecordDecl(d)
+        fname = symbol(_decl_name(d))
         cxxt = cxxtmplt(d)
         if cxxd != C_NULL || cxxt != C_NULL
-            targs = expr.parameters[2]
-            T = CppValue{symbol(fname),tuple(targs...)}
             if cxxd == C_NULL
                 cxxd = specialize_template(cxxt,targs,cpptype)
             end
+
+            # targs may have changed because the name is canonical
+            # but the default targs may be substituted by typedefs
+            targs = getTemplateParameters(cxxd)
+
+            T = CppValue{fname,tuple(targs...)}
             juliart = T
 
             # The arguments to llvmcall will have an extra
@@ -1035,7 +1152,7 @@ function _cppcall(expr, thiscall, isnew, argt)
             end
         else
             myctx = getContext(d)
-            dne = BuildDeclarationNameExpr(split(fname,"::")[end],myctx)
+            dne = BuildDeclarationNameExpr(split(string(fname),"::")[end],myctx)
 
             return CallDNE(dne,argt)
         end
@@ -1162,9 +1279,9 @@ stagedfunction cxxref(expr)
         expr = expr.parameters[1]
         isaddrof = true
     end
-    fname = string(expr.parameters[1])
     nnsbuilder = newNNSBuilder()
-    d = lookup_ctx(fname; nnsbuilder=nnsbuilder)
+
+    d = declfornns(expr,nnsbuilder)
     @assert d.ptr != C_NULL
     # If this is a typedef or something we'll try to get the primary one
     primary_decl = to_decl(primary_ctx(toctx(d)))
@@ -1183,10 +1300,10 @@ stagedfunction cxxref(expr)
     emitRefExpr(expr)
 end
 
-function cpp_ref(expr,prefix,isaddrof)
+function cpp_ref(expr,nns,isaddrof)
     @assert isa(expr, Symbol)
-    fname = string(prefix, expr)
-    x = :(CppExpr{$(quot(symbol(fname))),()}())
+    nns = Expr(:tuple,nns.args...,quot(expr))
+    x = :(CppNNS{$nns}())
     ret = Expr(:call, :cxxref, isaddrof ? :(CppAddr($x)) : x)
 end
 
@@ -1208,19 +1325,19 @@ end
 #       - this == :( m )
 #       - prefix = ""
 #
-function build_cpp_call(cexpr, this, prefix = "", isnew = false)
+function build_cpp_call(cexpr, this, nns, isnew = false)
     if !isexpr(cexpr,:call)
         error("Expected a :call not $cexpr")
     end
-    targs = []
+    targs = ()
 
     # Turn prefix and call expression, back into a fully qualified name
     # (and optionally type arguments)
     if isexpr(cexpr.args[1],:curly)
-        fname = string(prefix, cexpr.args[1].args[1])
+        nns = Expr(:tuple,nns.args...,quot(cexpr.args[1].args[1]))
         targs = map(macroexpand, copy(cexpr.args[1].args[2:end]))
     else
-        fname = string(prefix, cexpr.args[1])
+        nns = Expr(:tuple,nns.args...,quot(cexpr.args[1]))
         targs = ()
     end
 
@@ -1241,10 +1358,17 @@ function build_cpp_call(cexpr, this, prefix = "", isnew = false)
     # Add `this` as the first argument
     this !== nothing && unshift!(arguments, this)
 
-    # The actual call to the staged function
-    ret = Expr(:call, isnew ? :cxxnewcall : this === nothing ? :cppcall : :cppcall_member,
-        :(CppExpr{$(quot(symbol(fname))),$(quot(targs))}()), arguments...)
+    e = curly = :( CppNNS{$nns} )
 
+    # Add templating
+    if targs != ()
+        e = :( CppTemplate{$curly,$targs} )
+    end
+
+    # The actual call to the staged function
+    ret = Expr(:call, isnew ? :cxxnewcall : this === nothing ? :cppcall : :cppcall_member)
+    push!(ret.args,:($e()))
+    append!(ret.args,arguments)
     ret
 end
 
@@ -1256,22 +1380,37 @@ end
 
 function to_prefix(expr, isaddrof=false)
     if isa(expr,Symbol)
-        return (string(expr), isaddrof)
+        return (Expr(:tuple,quot(expr)), isaddrof)
     elseif isexpr(expr,:(::))
-        prefix, isaddrof = to_prefix(expr.args[1],isaddrof)
-        return (string(prefix,"::",to_prefix(expr.args[2],isaddrof)[1]), isaddrof)
+        nns1, isaddrof = to_prefix(expr.args[1],isaddrof)
+        nns2, _ = to_prefix(expr.args[2],isaddrof)
+        return (Expr(:tuple,nns1.args...,nns2.args...), isaddrof)
     elseif isexpr(expr,:&)
         return to_prefix(expr.args[1],true)
+    elseif isexpr(expr,:$)
+        @show expr.args[1]
+        return (Expr(:tuple,expr.args[1],),isaddrof)
+    elseif isexpr(expr,:curly)
+        nns, isaddrof = to_prefix(expr.args[1],isaddrof)
+        tup = Expr(:tuple)
+        @show expr
+        for i = 2:length(expr.args)
+            nns2, isaddrof2 = to_prefix(expr.args[i],false)
+            @assert !isaddrof2
+            push!(tup.args,:(CppNNS{$nns2}))
+        end
+        @assert length(nns.args) == 1
+        @assert isexpr(nns.args[1],:quote)
+
+        return (Expr(:tuple,:(CppTemplate{$(nns.args[1]),$tup}),),isaddrof)
     end
-    error("Invalid NSS $expr")
+    error("Invalid NNS $expr")
 end
 
-function cpps_impl(expr,prefix="",isaddrof=false, isnew=false)
-    # Expands a->b to
-    # llvmcall((cpp_member,typeof(a),"b"))
+function cpps_impl(expr,nns=Expr(:tuple),isaddrof=false, isnew=false)
     if isa(expr,Symbol)
         @assert !isnew
-        return cpp_ref(expr,prefix,isaddrof)
+        return cpp_ref(expr,nns,isaddrof)
     elseif expr.head == :(->)
         @assert !isnew
         a = expr.args[1]
@@ -1285,7 +1424,7 @@ function cpps_impl(expr,prefix="",isaddrof=false, isnew=false)
             i += 1
         end
         if isexpr(b,:call)
-            return build_cpp_call(b,a)
+            return build_cpp_call(b,a,nns)
         else
             if isexpr(a,:&)
                 a = a.args[1]
@@ -1297,12 +1436,12 @@ function cpps_impl(expr,prefix="",isaddrof=false, isnew=false)
         @assert !isnew
         error("Unimplemented")
     elseif isexpr(expr,:(::))
-        prefix, isaddrof = to_prefix(expr.args[1])
-        return cpps_impl(expr.args[2],string(prefix,"::"),isaddrof,isnew)
+        nns2, isaddrof = to_prefix(expr.args[1])
+        return cpps_impl(expr.args[2],Expr(:tuple,nns.args...,nns2.args...),isaddrof,isnew)
     elseif isexpr(expr,:&)
-        return cpps_impl(expr.args[1],prefix,true,isnew)
+        return cpps_impl(expr.args[1],nns,true,isnew)
     elseif isexpr(expr,:call)
-        return build_cpp_call(expr,nothing,prefix,isnew)
+        return build_cpp_call(expr,nothing,nns,isnew)
     end
     error("Unrecognized CPP Expression ",expr," (",expr.head,")")
 end
@@ -1312,7 +1451,7 @@ macro cxx(expr)
 end
 
 macro cxxnew(expr)
-    cpps_impl(expr, "", false, true)
+    cpps_impl(expr, Expr(:tuple), false, true)
 end
 
 # cxx"" string implementation (global scope)

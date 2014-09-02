@@ -1386,6 +1386,11 @@ DLLEXPORT void ExtendNNSIdentifier(clang::NestedNameSpecifierLocBuilder *builder
   builder->Extend(*clang_astcontext,Id,getTrivialSourceLocation(),getTrivialSourceLocation());
 }
 
+DLLEXPORT void ExtendNNSType(clang::NestedNameSpecifierLocBuilder *builder, const clang::Type *t)
+{
+  builder->Extend(*clang_astcontext,clang::SourceLocation(),clang::TypeLoc(t,0),getTrivialSourceLocation());
+}
+
 DLLEXPORT void *makeFunctionType(clang::Type *rt, clang::Type **argts, size_t nargs)
 {
   clang::QualType T;
