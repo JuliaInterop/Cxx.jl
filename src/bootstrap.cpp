@@ -432,7 +432,7 @@ DLLEXPORT void EnterSourceFile(char *data, size_t length)
     const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = clang_compiler->getFileManager();
     clang::SourceManager &sm = clang_compiler->getSourceManager();
-    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)).release(),clang::SrcMgr::C_User,
+    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
       0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
     clang::Preprocessor &P = clang_parser->getPreprocessor();
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
@@ -551,7 +551,7 @@ DLLEXPORT void init_julia_clang_env() {
     pp.enableIncrementalProcessing();
 
     clang::SourceManager &sm = clang_compiler->getSourceManager();
-    sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0).release(), clang::SrcMgr::C_User));
+    sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0), clang::SrcMgr::C_User));
 
     sema.getPreprocessor().EnterMainSourceFile();
     clang_parser->Initialize();
@@ -1278,6 +1278,7 @@ ISAD(clang,ClassTemplateSpecializationDecl,clang::Decl)
 ISAD(clang,CXXRecordDecl,clang::Decl)
 ISAD(clang,NamespaceDecl,clang::Decl)
 ISAD(clang,VarDecl,clang::Decl)
+ISAD(clang,ValueDecl,clang::Decl)
 
 DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
