@@ -392,7 +392,8 @@ cpptype(::Type{Void}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxff
 for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl"),
                   (pcpp"clang::CXXRecordDecl",pcpp"clang::Decl"),
                   (pcpp"clang::NamespaceDecl",pcpp"clang::Decl"),
-                  (pcpp"clang::VarDecl",pcpp"clang::Decl"))
+                  (pcpp"clang::VarDecl",pcpp"clang::Decl"),
+                  (pcpp"clang::ValueDecl",pcpp"clang::Decl"))
     s = split(string(rt.parameters[1]),"::")[end]
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
@@ -482,7 +483,13 @@ function lookup_name(parts, nnsbuilder=C_NULL, cur=translation_unit())
         end
         lastcur = cur
         cur = _lookup_name(fpart,primary_ctx(toctx(cur)))
-        cur == C_NULL && error("Could not find $fpart in context $(_decl_name(lastcur))")
+        if cur == C_NULL
+            if lastcur == translation_unit()
+                error("Could not find $fpart in translation unit")
+            else
+                error("Could not find $fpart in context $(_decl_name(lastcur))")
+            end
+        end
     end
     cur
 end
@@ -1289,15 +1296,19 @@ stagedfunction cxxref(expr)
         d = primary_decl
     end
 
-    expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d), nnsbuilder=nnsbuilder)
-    deleteNNSBuilder(nnsbuilder)
+    if isaValueDecl(d)
+        expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d), nnsbuilder=nnsbuilder)
+        deleteNNSBuilder(nnsbuilder)
 
 
-    if isaddrof
-        expr = CreateAddrOfExpr(dre)
+        if isaddrof
+            expr = CreateAddrOfExpr(dre)
+        end
+
+        return emitRefExpr(expr)
+    else
+        return :( $(juliatype(typeForDecl(d))) )
     end
-
-    emitRefExpr(expr)
 end
 
 function cpp_ref(expr,nns,isaddrof)
