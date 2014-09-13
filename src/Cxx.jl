@@ -164,6 +164,7 @@ macro vcpp_str(s)
     CppValue{symbol(s),()}
 end
 
+pcpp{s,t}(x::Type{CppValue{s,t}}) = CppPtr{s,t}
 
 import Base: cconvert
 
@@ -176,9 +177,9 @@ referenceTo(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:getReferenceTo,lib
 
 tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(p.ptr)
+tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(p.ptr)
 
-function CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL
-    )
+function CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL)
     @assert p != C_NULL
     pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),p.ptr,nnsbuilder,islvalue))
 end
@@ -196,6 +197,8 @@ end
 CreateParmVarDecl(p::pcpp"clang::Type",name="dummy") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8}),p.ptr,name))
 CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
 CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type",isextern=true) = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void},Cint),DC,name,T,isextern))
+
+CreateTypeDefDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::TypeDefDecl"(ccall((:CreateTypeDefDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),DC,name,T))
 
 CreateMemberExpr(base::pcpp"clang::Expr",isarrow::Bool,member::pcpp"clang::ValueDecl") = pcpp"clang::Expr"(ccall((:CreateMemberExpr,libcxxffi),Ptr{Void},(Ptr{Void},Cint,Ptr{Void}),base.ptr,isarrow,member.ptr))
 BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}) = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
@@ -1168,7 +1171,7 @@ function _cppcall(expr, thiscall, isnew, argt)
     createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
 end
 
-function CallDNE(dne,argt)
+function CallDNE(dne,argt; argidxs = [1:length(argt)])
     pvds = pcpp"clang::ParmVarDecl"[]
     rslot = C_NULL
 
@@ -1220,10 +1223,10 @@ function CallDNE(dne,argt)
         ret = C_NULL
     end
 
-    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
+    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = argidxs)
 end
 
-function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
+function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt)])
 
     jlrt = rett
     if ret == C_NULL
@@ -1253,7 +1256,7 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
     cleanup_cpp_env(state)
 
     if (rett != None) && rett <: CppValue
-        arguments = [:(pointer(r.data)), [:(args[$i]) for i = 1:length(argt)]]
+        arguments = [:(pointer(r.data)), [:(args[$i]) for i = argidxs]]
         size = cxxsizeof(rt)
         return Expr(:block,
             :( r = ($(rett))(Array(Uint8,$size)) ),
@@ -1261,7 +1264,7 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
             :r)
     else
         return Expr(:call,:llvmcall,f.ptr,rett,argt,
-            [:(args[$i]) for i = 1:length(argt)]...)
+            [:(args[$i]) for i = argidxs]...)
     end
 end
 
@@ -1316,6 +1319,18 @@ function cpp_ref(expr,nns,isaddrof)
     ret = Expr(:call, :cxxref, isaddrof ? :(CppAddr($x)) : x)
 end
 
+function refderefarg(arg)
+    if isexpr(arg,:call)
+        # is unary *
+        if length(arg.args) == 2 && arg.args[1] == :*
+            return :( CppDeref($(refderefarg(arg.args[2]))) )
+        end
+    elseif isexpr(arg,:&)
+        return :( CppAddr($(refderefarg(arg.args[1]))) )
+    end
+    arg
+end
+
 # Builds a call to the cppcall staged functions that represents a
 # call to a C++ function.
 # Arguments:
@@ -1354,14 +1369,7 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
 
     # Unary * is treated as a deref
     for (i, arg) in enumerate(arguments)
-        if isexpr(arg,:call)
-            # is unary *
-            if length(arg.args) == 2 && arg.args[1] == :*
-                arguments[i] = :( CppDeref($(arg.args[2])) )
-            end
-        elseif isexpr(arg,:&)
-            arguments[i] = :( CppAddr($(arg.args[1])) )
-        end
+        arguments[i] = refderefarg(arg)
     end
 
     # Add `this` as the first argument
@@ -1416,7 +1424,7 @@ function to_prefix(expr, isaddrof=false)
     error("Invalid NNS $expr")
 end
 
-function cpps_impl(expr,nns=Expr(:tuple),isaddrof=false, isnew=false)
+function cpps_impl(expr,nns=Expr(:tuple),isaddrof=false,isderef=false,isnew=false)
     if isa(expr,Symbol)
         @assert !isnew
         return cpp_ref(expr,nns,isaddrof)
@@ -1446,10 +1454,13 @@ function cpps_impl(expr,nns=Expr(:tuple),isaddrof=false, isnew=false)
         error("Unimplemented")
     elseif isexpr(expr,:(::))
         nns2, isaddrof = to_prefix(expr.args[1])
-        return cpps_impl(expr.args[2],Expr(:tuple,nns.args...,nns2.args...),isaddrof,isnew)
+        return cpps_impl(expr.args[2],Expr(:tuple,nns.args...,nns2.args...),isaddrof,isderef,isnew)
     elseif isexpr(expr,:&)
-        return cpps_impl(expr.args[1],nns,true,isnew)
+        return cpps_impl(expr.args[1],nns,true,isderef,isnew)
     elseif isexpr(expr,:call)
+        if expr.args[1] == :*
+            return cpps_impl(expr.args[2],nns,isaddrof,true,isnew)
+        end
         return build_cpp_call(expr,nothing,nns,isnew)
     end
     error("Unrecognized CPP Expression ",expr," (",expr.head,")")
@@ -1545,6 +1556,7 @@ ActOnFinishNamespaceDef(D) = ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Pt
 const icxx_ns = createNamespace("__icxx")
 
 EmitTopLevelDecl(D::pcpp"clang::Decl") = ccall((:EmitTopLevelDecl,libcxxffi),Void,(Ptr{Void},),D)
+EmitTopLevelDecl(D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(pcpp"clang::Decl"(D.ptr))
 
 SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =
     ccall((:SetFDParams,libcxxffi),Void,(Ptr{Void},Ptr{Ptr{Void}},Csize_t),FD,[p.ptr for p in params],length(params))
@@ -1553,12 +1565,28 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
     id = sourceid(sourcebuf)
     buf = sourcebuffers[id]
 
-    # Set up a function decl which we will later
-    # inline
-
-    argtypes = pcpp"clang::Type"[cpptype(arg) for arg in args]
-
     global icxxcounter
+
+    argtypes = (Int,pcpp"clang::Type")[]
+    typeargs = (Int,pcpp"clang::Type")[]
+    llvmargs = Any[]
+    argidxs = Int[]
+    # Make a first part about the arguments
+    # and replace __juliavar$i by __julia::type$i
+    # for all types. Also remember all types and remove them
+    # from `args`.
+    for (i,arg) in enumerate(args)
+        @show arg
+        # We passed in an actual julia type
+        if arg <: Type
+            buf = replace(buf,"__juliavar$i","__juliatype$i")
+            push!(typeargs,(i,cpptype(arg.parameters[1])))
+        else
+            push!(argtypes,(i,cpptype(arg)))
+            push!(llvmargs,arg)
+            push!(argidxs,i)
+        end
+    end
 
     EnterBuffer(buf)
 
@@ -1569,10 +1597,15 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
         fname = string("icxx",icxxcounter)
         icxxcounter += 1
         ctx = toctx(ND)
-        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(pcpp"clang::Type"(C_NULL),argtypes),false)
+        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(pcpp"clang::Type"(C_NULL),
+            pcpp"clang::Type"[ T for (_,T) in argtypes ]),false)
         params = pcpp"clang::ParmVarDecl"[]
-        for (i,arg) in enumerate(args)
-            push!(params,CreateParmVarDecl(argtypes[i],string("__juliavar",i)))
+        for (i,argt) in argtypes
+            push!(params,CreateParmVarDecl(argt,string("__juliavar",i)))
+        end
+        for (i,T) in typeargs
+            D = CreateTypeDefDecl(ctx,"__juliatype$i",T)
+            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(D.ptr))
         end
         SetFDParams(FD,params)
         FD = ActOnStartOfFunction(pcpp"clang::Decl"(FD.ptr))
@@ -1586,7 +1619,7 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
 
     EmitTopLevelDecl(FD)
 
-    return CallDNE(CreateDeclRefExpr(FD),args)
+    return CallDNE(CreateDeclRefExpr(FD),tuple(llvmargs...); argidxs = argidxs)
 end
 
 function process_cxx_string(str,global_scope = true)

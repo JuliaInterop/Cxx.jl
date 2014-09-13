@@ -786,6 +786,14 @@ DLLEXPORT void *CreateParmVarDecl(clang::Type *type, char *name)
     return (void*)d;
 }
 
+DLLEXPORT void *CreateTypeDefDecl(clang::DeclContext *DC, char *name, clang::Type *type)
+{
+    clang::QualType T(type,0);
+    return (void*)clang::TypedefDecl::Create(*clang_astcontext,DC,getTrivialSourceLocation(),getTrivialSourceLocation(),
+        &clang_compiler->getPreprocessor().getIdentifierTable().getOwn(name),
+        clang_astcontext->getTrivialTypeSourceInfo(T));
+}
+
 DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, size_t npvds)
 {
     FD->setParams(ArrayRef<clang::ParmVarDecl*>(PVDs,npvds));
