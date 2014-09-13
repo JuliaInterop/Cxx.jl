@@ -472,9 +472,7 @@ isaNamespaceDecl(d::pcpp"clang::CXXRecordDecl") = false
 
 function lookup_name(parts, nnsbuilder=C_NULL, cur=translation_unit())
     for fpart in parts
-        if nnsbuilder != C_NULL
-            @show cur
-            @show isaNamespaceDecl(cur)
+        if nnsbuilder != C_NULL && cur != translation_unit()
             if isaNamespaceDecl(cur)
                 ExtendNNS(nnsbuilder, dcastNamespaceDecl(cur))
             else

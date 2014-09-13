@@ -61,3 +61,16 @@ void f() {
 }
 """
 @cxx f()
+
+# Issue #13
+cxx"""
+namespace foo{
+ class bar{
+  public:
+  enum baz{
+   A,B,C
+  };
+ };
+}
+"""
+println(@cxx foo::bar::A)
