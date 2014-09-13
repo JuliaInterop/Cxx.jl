@@ -389,6 +389,8 @@ cpptype(::Type{Uint64}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_uint64,libc
 cpptype(::Type{Int64}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int64,libcxxffi),Ptr{Void})))
 cpptype(::Type{Bool}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int1,libcxxffi),Ptr{Void})))
 cpptype(::Type{Void}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void})))
+cpptype(::Type{Float32}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_float32,libcxxffi),Ptr{Void})))
+cpptype(::Type{Float64}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_float64,libcxxffi),Ptr{Void})))
 
 # CXX Level Casting
 
@@ -441,7 +443,7 @@ function check_args(argt,f)
             (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) &&
                 !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
                 !(t <: CppDeref) && !(t <: CppAddr) && !(t <: Ptr) &&
-                !in(t,[Bool, Uint8, Int32, Uint32, Int64, Uint64]))
+                !in(t,[Bool, Uint8, Int32, Uint32, Int64, Uint64, Float32, Float64]))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
     end
@@ -759,7 +761,7 @@ julia_to_llvm(x::ANY) = pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(An
 # @cxx llvm::dyn_cast{vcpp"clang::ClassTemplateDecl"}
 cxxtmplt(p::pcpp"clang::Decl") = pcpp"clang::ClassTemplateDecl"(ccall((:cxxtmplt,libcxxffi),Ptr{Void},(Ptr{Void},),p))
 
-const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32},Type{Uint64})
+const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32},Type{Uint64},Type{Float32},Type{Float64})
 
 stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
 stripmodifier{s,targs}(p::Union(Type{CppPtr{s,targs}},

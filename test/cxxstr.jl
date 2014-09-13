@@ -88,3 +88,11 @@ cxx"""
 b = @cxxnew bar14()
 
 @assert (@cxx b->xxx()) == 5.0
+
+cxx"""
+double f_double(double x) {
+    return x+2.0;
+}
+"""
+
+@test (@cxx f_double(3.0)) == 5.0
