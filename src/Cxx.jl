@@ -409,7 +409,7 @@ end
 
 for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isCharType, :isIntegerType, :isFunctionPointerType, :isMemberFunctionPointerType,
-    :isFunctionType, :isFunctionProtoType, :isEnumeralType)
+    :isFunctionType, :isFunctionProtoType, :isEnumeralType, :isFloatingType)
                   @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
 end
 
@@ -734,8 +734,16 @@ function juliatype(t::pcpp"clang::Type")
         @show kind
         dump(t)
         error("Unrecognized Integer type")
-        # This is wrong. Might be any int. Need to access the BuiltinType::Kind Enum
-        return Int
+    elseif isFloatingType(t)
+        kind = builtinKind(t)
+        if kind == cHalf
+            return Float16
+        elseif kind == cFloat
+            return Float32
+        elseif kind == cDouble
+            return Float64
+        end
+        error("Unrecognized floating point type")
     else
         rd = getAsCXXRecordDecl(t)
         if rd.ptr != C_NULL
@@ -970,9 +978,7 @@ end
 function declfornns{nns}(::Type{CppNNS{nns}},nnsbuilder=C_NULL)
     @assert isa(nns,Tuple)
     d = tu = translation_unit()
-    @show nns
     for (i,n) in enumerate(nns)
-        @show n
         if !isa(n, Symbol)
             if n <: CppTemplate
                 d = lookup_name((n.parameters[1],),C_NULL,d)

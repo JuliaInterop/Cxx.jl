@@ -1255,6 +1255,7 @@ TMember(isReferenceType)
 TMember(isCharType)
 TMember(isIntegerType)
 TMember(isEnumeralType)
+TMember(isFloatingType)
 
 DLLEXPORT void *isIncompleteType(clang::Type *t)
 {

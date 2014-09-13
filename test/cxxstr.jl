@@ -64,7 +64,7 @@ void f() {
 
 # Issue #13
 cxx"""
-namespace foo{
+namespace foo13{
  class bar{
   public:
   enum baz{
@@ -73,4 +73,18 @@ namespace foo{
  };
 }
 """
-println(@cxx foo::bar::A)
+@assert (@cxx foo13::bar::A).val == 0
+
+# Issue # 14
+cxx"""
+ class bar14 {
+   public:
+   double xxx() {
+      return 5.0;
+   }
+ };
+"""
+
+b = @cxxnew bar14()
+
+@assert (@cxx b->xxx()) == 5.0
