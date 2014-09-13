@@ -36,7 +36,9 @@ start{GraphType}(I::NodeIterator{GraphType}) =
 
 function next{GraphType}(I::NodeIterator{GraphType},s)
     @assert isa(s, iterator_type(typeof(I)))
-    (icxx"&*$s;",icxx"++$s;")
+    v = icxx"&*$s;"
+    icxx"(void)++$s;"
+    (v,s)
 end
 
 done{GraphType}(I::NodeIterator{GraphType},s) =
@@ -56,7 +58,9 @@ start{GT,NT}(I::EdgeIterator{GT,NT}) =
 
 function next{GT,NT}(I::EdgeIterator{GT,NT},s)
     @assert isa(s, iterator_type(typeof(I)))
-    (icxx"*$s;",icxx"++$s;")
+    v = icxx"*$s;"
+    icxx"(void)++$s;"
+    (v,s)
 end
 
 done{GT,NT}(I::EdgeIterator{GT,NT},s) =
