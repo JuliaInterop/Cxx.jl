@@ -1590,7 +1590,9 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
             buf = replace(buf,"__juliavar$i","__juliatype$i")
             push!(typeargs,(i,cpptype(arg.parameters[1])))
         else
-            push!(argtypes,(i,cpptype(arg)))
+            T = cpptype(arg)
+            (arg <: CppValue) && (T = referenceTo(T))
+            push!(argtypes,(i,T))
             push!(llvmargs,arg)
             push!(argidxs,i)
         end
@@ -1609,7 +1611,8 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
             pcpp"clang::Type"[ T for (_,T) in argtypes ]),false)
         params = pcpp"clang::ParmVarDecl"[]
         for (i,argt) in argtypes
-            push!(params,CreateParmVarDecl(argt,string("__juliavar",i)))
+            param = CreateParmVarDecl(argt,string("__juliavar",i))
+            push!(params,param)
         end
         for (i,T) in typeargs
             D = CreateTypeDefDecl(ctx,"__juliatype$i",T)
@@ -1627,7 +1630,8 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
 
     EmitTopLevelDecl(FD)
 
-    return CallDNE(CreateDeclRefExpr(FD),tuple(llvmargs...); argidxs = argidxs)
+    dne = CreateDeclRefExpr(FD)
+    return CallDNE(dne,tuple(llvmargs...); argidxs = argidxs)
 end
 
 function process_cxx_string(str,global_scope = true)

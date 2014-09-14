@@ -96,3 +96,16 @@ double f_double(double x) {
 """
 
 @test (@cxx f_double(3.0)) == 5.0
+
+cxx"""
+typedef struct _foobar {
+   int a;
+} foobar;
+void modify_a(foobar &fb) {
+   fb.a = fb.a+1;
+}
+"""
+
+fb = icxx"_foobar{1};"
+icxx"(void)++$fb.a;"
+@assert reinterpret(Int32, fb.data)[1] == 2
