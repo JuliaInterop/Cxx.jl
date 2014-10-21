@@ -68,7 +68,14 @@ basepath = joinpath(JULIA_HOME, "../../")
 @osx_only begin
     xcode_path =
         "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
-    addHeaderDir(joinpath(xcode_path,"usr/lib/c++/v1/"), kind = C_ExternCSystem)
+    didfind = false
+    for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
+        if isdir(joinpath(xcode_path,path))
+            addHeaderDir(joinpath(xcode_path,path), kind = C_ExternCSystem)
+            didfind = true
+        end
+    end
+    didfind || error("Could not find C++ standard library. Is XCode installed?")
 end
 
 @linux_only begin

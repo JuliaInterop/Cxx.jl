@@ -344,7 +344,7 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
 
     const clang::FileEntry *File = P.LookupFile(
       getTrivialSourceLocation(), fname,
-      isAngled, P.GetCurDirLookup(), CurDir, nullptr,nullptr, nullptr);
+      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr);
 
     if(!File)
       return 0;
