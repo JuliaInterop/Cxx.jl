@@ -12,13 +12,13 @@ JULIA_LDFLAGS = -L$(build_shlibdir) -L$(build_libdir)
 CLANG_LIBS = -lclangFrontendTool -lclangBasic -lclangLex -lclangDriver -lclangFrontend -lclangParse \
     -lclangAST -lclangASTMatchers -lclangSema -lclangAnalysis -lclangEdit \
     -lclangRewriteFrontend -lclangRewrite -lclangSerialization -lclangStaticAnalyzerCheckers \
-    -lclangStaticAnalyzerCore -lclangStaticAnalyzerFrontend -lclangTooling \
+    -lclangStaticAnalyzerCore -lclangStaticAnalyzerFrontend -lclangTooling -lclangToolingCore \
     -lclangCodeGen -lclangARCMigrate
 
 LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
     -llldbDataFormatters -llldbExpression -llldbHostCommon  \
     -llldbInitAndLog -llldbInterpreter  \
-    -llldbPluginABISysV_x86_64 -llldbPluginDisassemblerLLVM \
+    -llldbPluginABISysV_x86_64 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
     -llldbPluginEmulateInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginLanguageRuntimeCPlusPlusItaniumABI \
     -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
