@@ -63,6 +63,9 @@ GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module)->getNamedValue(
 
 
 addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/lldb/include"))
+
+# Because LLDB includes private headers from public ones! For shame.
+addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/lldb/include/lldb/Target"))
 defineMacro("LLDB_DISABLE_PYTHON") # NO!
 cxxinclude("lldb/Interpreter/CommandInterpreter.h")
 cxxinclude("lldb/Interpreter/CommandReturnObject.h")

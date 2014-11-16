@@ -2,12 +2,12 @@ using Cxx
 using Base.Test
 
 cxx"""
-uint64_t foo() {
+uint64_t foo2() {
     return $(1);
 }
 """
 
-x = @cxx foo()
+x = @cxx foo2()
 @test x == uint64(1)
 
 julia_global = 1
@@ -55,12 +55,12 @@ void printfoo() {
 
 
 cxx"""
-void f() {
+void g() {
    void *p = 0;
    return *p;
 }
 """
-@cxx f()
+@cxx g()
 
 # Issue #13
 cxx"""
