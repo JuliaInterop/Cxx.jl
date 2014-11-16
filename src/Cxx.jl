@@ -133,6 +133,22 @@ immutable CppValue{T,targs}
     data::Vector{Uint8}
 end
 
+# Force cast the data portion of a jl_value_t to the given C++
+# type
+immutable JLCppCast{T,targs,JLT}
+    data::JLT
+    function call{T,targs,JLT}(::Type{JLCppCast{T,targs}},data::JLT)
+        JLT.mutable ||
+            error("Can only pass pointers to mutable values. " *
+                  "To pass immutables, use an array instead.")
+        new{T,targs,JLT}(data)
+    end
+end
+
+macro jpcpp_str(s)
+    JLCppCast{symbol(s),()}
+end
+
 # Represents a forced cast form the value T
 # (which may be any C++ compatible value)
 # to the the C++ type To
@@ -219,8 +235,6 @@ BuildMemberReference(base, t, IsArrow, name) =
 DeduceReturnType(expr) = pcpp"clang::Type"(ccall((:DeduceReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
 
 function CreateFunction(rt,argt)
-    @show julia_to_llvm(Void)
-    @show argt
     any(t->t == julia_to_llvm(Void),argt) && error("Test")
     pcpp"llvm::Function"(ccall((:CreateFunction,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),rt,cptrarr(argt),length(argt)))
 end
@@ -265,14 +279,18 @@ CreateRetVoid(builder) =
 CreateBitCast(builder,val,ty) =
     pcpp"llvm::Value"(ccall((:CreateBitCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
 
-BuildCXXTypeConstructExpr(t::pcpp"clang::Type", exprs::Vector{pcpp"clang::Expr"}) =
-    pcpp"clang::Expr"(ccall((:typeconstruct,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
-        t,cptrarr(exprs),length(exprs)))
+function BuildCXXTypeConstructExpr(t::pcpp"clang::Type", exprs::Vector{pcpp"clang::Expr"})
+    p = Ptr{Void}[0]
+    r = bool(ccall((:typeconstruct,libcxxffi),Cint,(Ptr{Void},Ptr{Ptr{Void}},Csize_t,Ptr{Ptr{Void}}),
+        t,cptrarr(exprs),length(exprs),p))
+    r || error("Type construction failed")
+    pcpp"clang::Expr"(p[1])
+end
 
 #BuildCXXNewExpr(E::pcpp"clang::Expr") = pcpp"clang::Expr"(ccall((:BuildCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
 BuildCXXNewExpr(T::pcpp"clang::Type",exprs::Vector{pcpp"clang::Expr"}) =
     pcpp"clang::Expr"(ccall((:BuildCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
-        T,cptarr(exprs),length(exprs)))
+        T,cptrarr(exprs),length(exprs)))
 
 EmitCXXNewExpr(E::pcpp"clang::Expr") = pcpp"llvm::Value"(ccall((:EmitCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
 EmitAnyExpr(E::pcpp"clang::Expr") = pcpp"llvm::Value"(ccall((:EmitAnyExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
@@ -457,6 +475,7 @@ function check_args(argt,f)
             (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) &&
                 !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
                 !(t <: CppDeref) && !(t <: CppAddr) && !(t <: Ptr) &&
+                !(t <: JLCppCast) &&
                 !in(t,[Bool, Uint8, Int32, Uint32, Int64, Uint64, Float32, Float64]))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
@@ -600,6 +619,7 @@ cpptype{base,fptr}(p::Type{CppMFptr{base,fptr}}) =
     makeMemberFunctionType(cpptype(base), cpptype(fptr))
 cpptype{rt, args}(p::Type{CppFunc{rt,args}}) = makeFunctionType(cpptype(rt),pcpp"clang::Type"[cpptype(arg) for arg in args])
 cpptype{f}(p::Type{CppFptr{f}}) = pointerTo(cpptype(f))
+cpptype{s,t,jlt}(p::Type{JLCppCast{s,t,jlt}}) = pointerTo(typeForDecl(cppdecl(s,t)))
 
 function _decl_name(d)
     @assert d != C_NULL
@@ -787,6 +807,7 @@ stripmodifier{T}(p::Type{CppAddr{T}}) = T
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = Ptr{T}
 stripmodifier(p::CxxBuiltinTypes) = p
+stripmodifier{T,targs,JLT}(p::Type{JLCppCast{T,targs,JLT}}) = p
 
 resolvemodifier{s,targs}(p::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}},
     Type{CppValue{s,targs}}), e::pcpp"clang::Expr") = e
@@ -802,6 +823,7 @@ resolvemodifier{T}(p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
     CreateAddrOfExpr(e)
 resolvemodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
 resolvemodifier{f}(cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
+resolvemodifier{T,targs,JLT}(p::Type{JLCppCast{T,targs,JLT}}, e::pcpp"clang::Expr") = e
 
 resolvemodifier_llvm{s,targs}(builder, t::Type{CppCast{s,targs}}, v::pcpp"llvm::Value") =
     resolvemodifier_llvm(builder, t.parameters[1], ExtractValue(v,0))
@@ -842,6 +864,11 @@ resolvemodifier_llvm{f}(builder, t::Type{CppFptr{f}}, v::pcpp"llvm::Value") = Ex
 resolvemodifier_llvm{f}(builder, t::Type{CppDeref{f}}, v::pcpp"llvm::Value") = resolvemodifier_llvm(builder,f,ExtractValue(v,0))
 resolvemodifier_llvm{T}(builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") =
     resolvemodifier_llvm(builder,T,ExtractValue(v,0))
+
+function resolvemodifier_llvm{s,targs,jlt}(builder, t::Type{JLCppCast{s,targs,jlt}}, v::pcpp"llvm::Value")
+    # Skip the type pointer to get to the actual data
+    return CreateConstGEP1_32(builder,v,1)
+end
 
 # LLVM-level manipulation
 function llvmargs(builder, f, argt)
@@ -1194,6 +1221,10 @@ function _cppcall(expr, thiscall, isnew, argt)
 end
 
 function CallDNE(dne,argt; argidxs = [1:length(argt)])
+    if dne == C_NULL
+        error("Could not resolve DNE")
+    end
+
     pvds = pcpp"clang::ParmVarDecl"[]
     rslot = C_NULL
 
@@ -1249,6 +1280,7 @@ function CallDNE(dne,argt; argidxs = [1:length(argt)])
 end
 
 function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt)])
+    argt = Type[argt...]
 
     jlrt = rett
     if ret == C_NULL
@@ -1277,16 +1309,25 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs 
 
     cleanup_cpp_env(state)
 
+    args2 = Expr[]
+    for (j,i) = enumerate(argidxs)
+        if argt[j] <: JLCppCast
+            push!(args2,:(args[$i].data))
+            argt[j] = JLCppCast.parameters[1]
+        else
+            push!(args2,:(args[$i]))
+        end
+    end
+
     if (rett != None) && rett <: CppValue
-        arguments = [:(pointer(r.data)), [:(args[$i]) for i = argidxs]]
+        arguments = [:(pointer(r.data)), args2]
         size = cxxsizeof(rt)
         return Expr(:block,
             :( r = ($(rett))(Array(Uint8,$size)) ),
             Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
             :r)
     else
-        return Expr(:call,:llvmcall,f.ptr,rett,argt,
-            [:(args[$i]) for i = argidxs]...)
+        return Expr(:call,:llvmcall,f.ptr,rett,tuple(argt...),args2...)
     end
 end
 
@@ -1493,7 +1534,7 @@ macro cxx(expr)
 end
 
 macro cxxnew(expr)
-    cpps_impl(expr, Expr(:tuple), false, true)
+    cpps_impl(expr, Expr(:tuple), false, false, true)
 end
 
 # cxx"" string implementation (global scope)
@@ -1598,7 +1639,6 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
     # for all types. Also remember all types and remove them
     # from `args`.
     for (i,arg) in enumerate(args)
-        @show arg
         # We passed in an actual julia type
         if arg <: Type
             buf = replace(buf,"__juliavar$i","__juliatype$i")

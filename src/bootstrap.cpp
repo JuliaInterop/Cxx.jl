@@ -61,7 +61,6 @@ using namespace llvm;
 extern ExecutionEngine *jl_ExecutionEngine;
 extern llvm::LLVMContext &jl_LLVMContext;
 
-static clang::ASTContext *clang_astcontext;
 static clang::CompilerInstance *clang_compiler;
 static clang::CodeGen::CodeGenModule *clang_cgm;
 static clang::CodeGen::CodeGenTypes *clang_cgt;
@@ -71,8 +70,10 @@ static clang::Preprocessor *clang_preprocessor;
 static DataLayout *TD;
 
 DLLEXPORT llvm::Module *clang_shadow_module;
+static clang::ASTContext *clang_astcontext;
 
 extern "C" {
+
   // clang types
   DLLEXPORT const clang::Type *cT_int1;
   DLLEXPORT const clang::Type *cT_int8;
@@ -478,6 +479,7 @@ DLLEXPORT void init_julia_clang_env() {
     clang_compiler->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
     clang_compiler->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
     clang_compiler->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
+    clang_compiler->getCodeGenOpts().DwarfVersion = 2;
     clang_compiler->getTargetOpts().Triple = llvm::Triple::normalize(llvm::sys::getProcessTriple());
     clang_compiler->setTarget(clang::TargetInfo::CreateTargetInfo(
       clang_compiler->getDiagnostics(),
@@ -654,7 +656,7 @@ DLLEXPORT int RequireCompleteType(clang::Type *t)
 }
 
 
-DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nexprs)
+DLLEXPORT int typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nexprs, void **ret)
 {
     clang::QualType Ty(t,0);
     clang::MultiExprArg Exprs(rawexprs,nexprs);
@@ -663,10 +665,11 @@ DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nex
     clang::TypeSourceInfo *TInfo = clang_astcontext->getTrivialTypeSourceInfo(Ty);
 
     if (Ty->isDependentType() || clang::CallExpr::hasAnyTypeDependentArguments(Exprs)) {
-        return clang::CXXUnresolvedConstructExpr::Create(*clang_astcontext, TInfo,
+        *ret = clang::CXXUnresolvedConstructExpr::Create(*clang_astcontext, TInfo,
                                                       getTrivialSourceLocation(),
                                                       Exprs,
                                                       getTrivialSourceLocation());
+        return true;
     }
 
     clang::ExprResult Result;
@@ -675,21 +678,24 @@ DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nex
         clang::Expr *Arg = Exprs[0];
         Result = sema.BuildCXXFunctionalCastExpr(TInfo, getTrivialSourceLocation(),
           Arg, getTrivialSourceLocation());
-        assert(!Result.isInvalid());
-        return Result.get();
+        if (Result.isInvalid())
+          return false;
+
+        *ret = Result.get();
+        return true;
     }
 
     if (!Ty->isVoidType() &&
         sema.RequireCompleteType(getTrivialSourceLocation(), Ty,
                             clang::diag::err_invalid_incomplete_type_use)) {
         assert(false);
-        return NULL;
+        return false;
     }
 
     if (sema.RequireNonAbstractType(getTrivialSourceLocation(), Ty,
                                clang::diag::err_allocation_of_abstract_type)) {
         assert(false);
-        return NULL;
+        return false;
     }
 
     clang::InitializedEntity Entity = clang::InitializedEntity::InitializeTemporary(TInfo);
@@ -699,8 +705,11 @@ DLLEXPORT void *typeconstruct(clang::Type *t, clang::Expr **rawexprs, size_t nex
     clang::InitializationSequence InitSeq(sema, Entity, Kind, Exprs);
     Result = InitSeq.Perform(sema, Entity, Kind, Exprs);
 
-    assert(!Result.isInvalid());
-    return Result.get();
+    if (Result.isInvalid())
+      return false;
+
+    *ret = Result.get();
+    return true;
 }
 
 DLLEXPORT void *BuildCXXNewExpr(clang::Type *T, clang::Expr **exprs, size_t nexprs)
@@ -1358,6 +1367,11 @@ DLLEXPORT void *getLLVMPointerTo(llvm::Type *t)
 DLLEXPORT void *getContext(clang::Decl *d)
 {
   return (void*)d->getDeclContext();
+}
+
+DLLEXPORT void *getASTContext()
+{
+  return clang_astcontext;
 }
 
 DLLEXPORT void *getDirectCallee(clang::CallExpr *e)
