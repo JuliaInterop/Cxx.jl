@@ -64,8 +64,6 @@ julia_function (generic function with 1 method)
    
 # Run the function
 julia> julia_function()
-julia_to_llvm(Void) = CppPtr{symbol("llvm::Type"),()}(Ptr{Void}@0x00007fa87b0002c8)
-argt = Any[]
 The number is 52
 ```
 
@@ -82,9 +80,6 @@ julia> cxx"""
        """
        
 julia> @cxx printme(jnum)
-julia_to_llvm(Void) = CppPtr{symbol("llvm::Type"),()}(Ptr{Void} 
-@0x00007fa87b0002c8)
-argt = [CppPtr{symbol("llvm::Type"),()}(Ptr{Void} @0x00007fa87b000418)] 
 10 
 ```
 
@@ -100,9 +95,6 @@ julia> cxx"""
       """
 
 julia> @cxx printme(pointer("John"))
-    julia_to_llvm(Void) = CppPtr{symbol("llvm::Type"),()}(Ptr{Void}
-    @0x00007fa87b0002c8)
-    argt = [CppPtr{symbol("llvm::Type"),()}(Ptr{Void}@0x00007fa87b0a6e00)]
     John 
 ```
 
@@ -116,9 +108,6 @@ julia> cxx"""
        """
 
 julia> @cxx testJuliaPrint()
-       julia_to_llvm(Void) = CppPtr{symbol("llvm::Type"),()}(Ptr{Void}@0x00007fa87b0002c8)
-       argt = Any[]
-
        To end this test, press any key
 ```
 
