@@ -9,7 +9,7 @@
 #
 #
 # The main interface provided by this file is the @cpp macro.
-# The following usages are currently supportd.
+# The following usages are currently supported.
 #
 #   - Static function call
 #       @cpp mynamespace::func(args...)
