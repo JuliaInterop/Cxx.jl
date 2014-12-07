@@ -5,17 +5,24 @@ The Julia C++ Foreign Function Interface (FFI).
 
 ### Installation
 
+You will need to install Julia v0.4-dev with some special options.
+
+Cxx.jl requires "staged functions" amongst other things available only in v0.4; and also the development version of LLVM.
+
+Get the latest git checkout from https://github.com/JuliaLang/julia.git then add a ```Make.user``` file at the top level including:
 ```sh
-# You will need to install Julia v0.4-dev
-# Cxx.jl requires "staged functions" available only in v0.4 
-# After installing julia-v0.4-dev, build it:
+USE_SYSTEM_LIBM=1
+LLDB_VER=master
+LLVM_VER=svn
+LLVM_ASSERTIONS=1
+BUILD_LLVM_CLANG=1
+BUILD_LLDB=1
+USE_LLVM_SHLIB=1
+LLDB_DISABLE_PYTHON=1
+```
 
-$ make -C deps distclean-openblas distclean-arpack distclean-suitesparse && make cleanall 
-$ make –j4
-``` 
-
-In the Julia terminal, type
-```python
+Then build simply with ```make```. When the build is complete, in the Julia terminal, type
+```julia
 Pkg.clone("https://github.com/Keno/Cxx.jl.git")
 Pkg.build("Cxx")   
 ```
@@ -31,7 +38,7 @@ The main interface provided by Cxx.jl is the @cxx macro. It supports two main us
       
 To embedd C++ functions in Julia, there are two main approaches:
 
-```python  
+```julia 
 # Using @cxx (e.g.):   
 cxx""" void cppfunction(args){ . . .} """ => @cxx cppfunction(args)
 
@@ -43,7 +50,7 @@ julia_function (args) icxx""" *code here*  """ end
 
 #### Example 1: Embedding a simple C++ function in Julia
 
-```python
+```julia
 # include headers
 julia> using Cxx
 julia> cxx""" #include<iostream> """  
@@ -69,7 +76,7 @@ The number is 52
 
 #### Example 2: Pass numeric arguments from Julia to C++
 
-```python
+```julia
 julia> jnum = 10
 10
     
@@ -84,7 +91,7 @@ julia> @cxx printme(jnum)
 ```
 
 #### Example 3: Pass strings from Julia to C++
- ```python
+ ```julia
 julia> cxx"""
           void printme(const char *name) {
              // const char* => std::string
@@ -100,7 +107,7 @@ julia> @cxx printme(pointer("John"))
 
 #### Example 4: Pass a Julia expression to C++
 
-```python
+```julia
 julia> cxx"""
           void testJuliaPrint() {
               $:(println("\nTo end this test, press any key")::Nothing);
@@ -113,7 +120,7 @@ julia> @cxx testJuliaPrint()
 
 #### Example 5: Embedding C++ code inside a Julia function
 
-```python
+```julia
 function playing()
     for i = 1:5
         icxx"""
