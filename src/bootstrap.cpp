@@ -165,8 +165,10 @@ extern "C" {
       NF->setName(Name);
       while (true)
       {
-        if (NF->getNumUses() == 0)
+        if (NF->getNumUses() == 0) {
+          NF->deleteBody();
           return;
+        }
         Value::user_iterator I = NF->user_begin();
         if (llvm::isa<llvm::CallInst>(*I)) {
           llvm::InlineFunctionInfo IFI;
