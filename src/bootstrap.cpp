@@ -69,10 +69,11 @@ static clang::Parser *clang_parser;
 static clang::Preprocessor *clang_preprocessor;
 static DataLayout *TD;
 
-DLLEXPORT llvm::Module *clang_shadow_module;
 static clang::ASTContext *clang_astcontext;
 
 extern "C" {
+
+  DLLEXPORT llvm::Module *clang_shadow_module;
 
   // clang types
   DLLEXPORT const clang::Type *cT_int1;

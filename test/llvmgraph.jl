@@ -4,7 +4,8 @@ using GraphViz
 
 import Base: start, next, done
 import Graphs: is_directed, num_vertices, vertices,
-    implements_vertex_list, implements_adjacency_list, out_neighbors,
+    implements_vertex_list, implements_vertex_map,
+    implements_adjacency_list, out_neighbors,
     vertex_index
 
 include(Pkg.dir("Cxx","test","llvmincludes.jl"))

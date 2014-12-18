@@ -1185,6 +1185,9 @@ function _cppcall(expr, thiscall, isnew, argt)
 
             if isnew
                 nE = BuildCXXNewExpr(typeForDecl(cxxd),callargs)
+                if nE == C_NULL
+                    error("Could not construct `new` expression")
+                end
                 MarkDeclarationsReferencedInExpr(nE)
                 ret = EmitCXXNewExpr(nE)
             else
