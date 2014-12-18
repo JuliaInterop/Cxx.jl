@@ -61,6 +61,19 @@ function defineMacro(Name)
     ccall((:defineMacro, libcxxffi), Void, (Ptr{Uint8},), Name)
 end
 
+function cxx_std_lib_version()
+    const valid_versions = ["4.8", "4.9"]
+    @linux_only begin
+        base = "/usr/include/c++/"
+    end
+    vers = readdir(base)
+    filter!(x->in(x, valid_versions), vers)
+    length(vers) > 0 || error("Could not find C++ standard library.")
+    sort!(vers)
+    # choose newest version
+    return vers[end]
+end
+
 # Setup Search Paths
 
 basepath = joinpath(JULIA_HOME, "../../")
@@ -79,8 +92,9 @@ basepath = joinpath(JULIA_HOME, "../../")
 end
 
 @linux_only begin
-    addHeaderDir("/usr/include/c++/4.8", kind = C_System);
-    addHeaderDir("/usr/include/x86_64-linux-gnu/c++/4.8/", kind = C_System);
+    ver = cxx_std_lib_version()
+    addHeaderDir("/usr/include/c++/$ver", kind = C_System);
+    addHeaderDir("/usr/include/x86_64-linux-gnu/c++/$ver/", kind = C_System);
     addHeaderDir("/usr/include", kind = C_System);
     addHeaderDir("/usr/include/x86_64-linux-gnu", kind = C_System);
 end
