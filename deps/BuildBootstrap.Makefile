@@ -45,7 +45,7 @@ ifeq ($(OS), WINNT)
 LLDB_LIBS += -llldbHostWindows -llldbPluginProcessWindows -lWs2_32
 endif
 ifeq ($(OS), Linux)
-LLDB_LIBS += -llldbHostLinux -llldbPluginProcessLinux -llldbPluginProcessPOSIX -llldbHostPosix
+LLDB_LIBS += -llldbHostLinux -llldbPluginProcessLinux -llldbPluginProcessPOSIX -llldbHostPosix -lz -lbsd -ledit
 endif
 
 
