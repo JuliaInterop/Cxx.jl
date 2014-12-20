@@ -1370,6 +1370,16 @@ DLLEXPORT void *getContext(clang::Decl *d)
   return (void*)d->getDeclContext();
 }
 
+DLLEXPORT void *getParentContext(clang::DeclContext *DC)
+{
+  return (void*)DC->getParent();
+}
+
+DLLEXPORT uint64_t getDCDeclKind(clang::DeclContext *DC)
+{
+  return (uint64_t)DC->getDeclKind();
+}
+
 DLLEXPORT void *getASTContext()
 {
   return clang_astcontext;

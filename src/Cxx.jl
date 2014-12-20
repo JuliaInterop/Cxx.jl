@@ -336,6 +336,10 @@ BuildDeclarationNameExpr(name, ctx::pcpp"clang::DeclContext") =
 
 getContext(decl::pcpp"clang::Decl") = pcpp"clang::DeclContext"(ccall((:getContext,libcxxffi),Ptr{Void},(Ptr{Void},),decl))
 
+getParentContext(DC::pcpp"clang::DeclContext") = pcpp"clang::DeclContext"(ccall((:getParentContext,libcxxffi),Ptr{Void},(Ptr{Void},),DC))
+
+declKind(DC::pcpp"clang::DeclContext") = ccall((:getDCDeclKind,libcxxffi),UInt64,(Ptr{Void},),DC)
+
 CreateCallExpr(Fn::pcpp"clang::Expr",args::Vector{pcpp"clang::Expr"}) = pcpp"clang::Expr"(
     ccall((:CreateCallExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
         Fn,cptrarr(args),length(args)))
@@ -718,6 +722,10 @@ const cInt128    = 19
 const cHalf      = 20
 const cFloat     = 21
 const cDouble    = 22
+
+# Decl::Kind
+const LinkageSpec = 9
+
 
 getPointeeType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:referenced_type,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
 canonicalType(t) = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
@@ -1226,6 +1234,10 @@ function _cppcall(expr, thiscall, isnew, argt)
             end
         else
             myctx = getContext(d)
+            while declKind(myctx) == LinkageSpec
+                myctx = getParentContext(myctx)
+            end
+            @assert myctx != C_NULL
             dne = BuildDeclarationNameExpr(split(string(fname),"::")[end],myctx)
 
             return CallDNE(dne,argt)
