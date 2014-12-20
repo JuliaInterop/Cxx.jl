@@ -20,26 +20,31 @@ In addition to the [system requirements](https://github.com/JuliaLang/julia#requ
 
 Get the latest git checkout from https://github.com/JuliaLang/julia.git then add (or add to) a ```Make.user``` file at the top level with the following lines:
 ```sh
-LLDB_VER=master
-LLVM_VER=svn
-LLVM_ASSERTIONS=1
-BUILD_LLVM_CLANG=1
-BUILD_LLDB=1
-USE_LLVM_SHLIB=1
-LLDB_DISABLE_PYTHON=1
+override LLDB_VER=master
+override LLVM_VER=svn
+override LLVM_ASSERTIONS=1
+override BUILD_LLVM_CLANG=1
+override BUILD_LLDB=1
+override USE_LLVM_SHLIB=1
+override LLDB_DISABLE_PYTHON=1
 ```
 
 Then build simply with `make`. 
 
+Test your build of julia with `make testall`.
+
+Optionally, also build the debug build of julia with `make debug`. If available, this will be used in the next step.
+
+##### Known workarounds
 On Linux, if the build terminates at `Linking Release+Asserts Shared Library liblldb.so` with errors starting with `undefined reference to 'sem_init'`, edit `deps/llvm-svn/build_Release+Asserts/tools/lldb/lib/Makefile` and add the line:
 ```
 LLVMLibsOptions += -lpthread
 ```
-Then manually enter the directory `deps/llvm-svn/build_Release+Asserts` and type `make`. Once this completes successfully, go back to the main julia directory and type `make` again. The julia build should complete successfully.
 
-Test your build of julia with `make testall`.
+A similar error may occur while `Linking Release+Asserts executable lldb-mi (without symbols)` starting with `undefined reference to symbol 'pthread_create@@GLIBC_2.2.5'`. The previously mentioned line may also need to be added to `deps/llvm-svn/build_Release+Asserts/tools/lldb/tools/lldb-mi/Makefile`.
 
-Optionally, also build the debug build of julia with `make debug`. If available, this will be used in the next step.
+Manually enter the directory `deps/llvm-svn/build_Release+Asserts` and type `make`. Once this completes successfully, go back to the main julia directory and type `make` again. The julia build should complete successfully.
+
 
 #### Building Cxx
 
