@@ -192,7 +192,8 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
       // Make sure to emit all elements of a Decl.
       for (clang::DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I) {
-        clang_cgm->EmitTopLevelDecl(*I);
+        if (!(*I)->isInvalidDecl())
+          clang_cgm->EmitTopLevelDecl(*I);
       }
       return true;
     }
