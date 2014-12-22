@@ -160,4 +160,22 @@ function playing()
 end
 playing();
 ```
+#### Example 6: Using C++ enums
+
+```julia
+julia> cxx"""
+       class Klassy {
+           public:
+               enum Foo { Bar, Baz };
+               static Foo exec(Foo x) { return x; }
+       };
+       """
+# Access enum
+julia> @cxx Klassy::Bar
+CppEnum{symbol("Klassy::Foo")}(0)
+
+# Pass enum as an argument
+julia> @cxx Klassy::exec(@cxx(Klassy::Baz))
+CppEnum{symbol("Klassy::Foo")}(1)
+```
 
