@@ -33,14 +33,60 @@ end
 
 cxxinclude("QApplication", isAngled=true)
 cxxinclude("QMessageBox", isAngled=true)
+cxxinclude("QPushButton", isAngled=true)
 
 const a = "julia"
 x = Ptr{Uint8}[pointer(a),C_NULL]
-# This is pretty stupid, but it seems QApplication is capturing the pointer to the reference, so we can't just
-# stack allocate it because that won't be valid for exec
+# This is pretty stupid, but it seems QApplication is capturing the pointer
+# to the reference, so we can't just # stack allocate it because that won't
+# be valid for exec
 ac = [int32(1)]
+
 app = @cxx QApplication(*(pointer(ac)),pointer(x))
 
-@cxx QMessageBox::about(cast(C_NULL,pcpp"QWidget"), pointer("Hello World"), pointer("This is a QMessageBox!"))
+# BUG: this version doesn't work - unresponsive gui
+#update_loop(_timer) = @cxx app.processEvents() # default QEventFlags::AllEvents
 
-@cxx app->exec()
+function update_loop(_timer)
+    icxx"""
+        $app.processEvents();
+    """
+end
+
+# create messagebox
+mb = @cxxnew QMessageBox(@cxx(QMessageBox::Information),
+                      pointer("Hello World"),
+                      pointer("This is a QMessageBox"))
+
+# add buttons
+@cxx mb->addButton(@cxx(QMessageBox::Ok))
+
+hibtn = @cxxnew QPushButton(pointer("Say Hi!"))
+@cxx mb->addButton(hibtn, @cxx(QMessageBox::ActionRole))
+handle_hi() = println("Hi!")::Void
+
+# TODO: figure out how to make callback work in general,
+# and in particular - to Julia function
+# right now get conversion errors passing $mb
+#=
+chandle_hi = cfunction(handle_hi, Void, ())
+cxx"""
+#include <iostream>
+void handle_hi() { std::cout << "said hi" << std::endl; }
+
+connect($(mb), &QPushButton::clicked, 0,
+        []() { handle_hi(); }
+        );
+"""
+=#
+
+# display the window
+@cxx mb->setWindowModality(@cxx(Qt::NonModal))
+@cxx mb->show()
+
+# start event loop integration
+timer = Base.Timer( update_loop )
+Base.start_timer(timer, .1, .005)
+
+# exit if not interactive shell
+!isinteractive() && stop_timer(timer)
