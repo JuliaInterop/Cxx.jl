@@ -1,4 +1,4 @@
-using CXX
+using Cxx
 
 @osx_only begin
     const qtlibdir = "/Users/kfischer/Projects/qt-everywhere-opensource-src-5.3.1/qtbase/~/usr/lib/"
@@ -20,6 +20,8 @@ end
 @linux_only begin
     const qtincdir = "/usr/include/qt5"
     const qtlibdir = "/usr/lib/x86_64-linux-gnu/"
+
+    const QtWidgets = joinpath(qtincdir, "QtWidgets/")
 
     addHeaderDir(qtincdir, kind = C_System)
     addHeaderDir(QtWidgets, kind = C_System)
