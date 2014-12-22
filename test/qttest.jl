@@ -47,12 +47,6 @@ app = @cxx QApplication(*(pointer(ac)),pointer(x))
 # BUG: this version doesn't work - unresponsive gui
 #update_loop(_timer) = @cxx app.processEvents() # default QEventFlags::AllEvents
 
-function update_loop(_timer)
-    icxx"""
-        $app.processEvents();
-    """
-end
-
 # create messagebox
 mb = @cxxnew QMessageBox(@cxx(QMessageBox::Information),
                       pointer("Hello World"),
@@ -62,29 +56,40 @@ mb = @cxxnew QMessageBox(@cxx(QMessageBox::Information),
 @cxx mb->addButton(@cxx(QMessageBox::Ok))
 
 hibtn = @cxxnew QPushButton(pointer("Say Hi!"))
-@cxx mb->addButton(hibtn, @cxx(QMessageBox::ActionRole))
-handle_hi() = println("Hi!")::Void
+@cxx mb->addButton(hibtn, @cxx(QMessageBox::ApplyRole))
 
-# TODO: figure out how to make callback work in general,
-# and in particular - to Julia function
-# right now get conversion errors passing $mb
-#=
-chandle_hi = cfunction(handle_hi, Void, ())
+say_hi() = println("Hi!")::Void
 cxx"""
 #include <iostream>
-void handle_hi() { std::cout << "said hi" << std::endl; }
-
-connect($(mb), &QPushButton::clicked, 0,
-        []() { handle_hi(); }
-        );
+void handle_hi()
+{
+    $:(say_hi());
+}
 """
-=#
+
+# BUGS?
+# - type translation doesn't work right for $:(btn) if I call connect from a cxx""" block
+# - I get isexprs assertion failure if I try to use a lambda. think it might be a
+#   block parsing issue though.
+function setup(btn)
+    icxx"""
+        QObject::connect($btn, &QPushButton::clicked,
+            handle_hi );
+    """
+end
+setup(hibtn)
 
 # display the window
 @cxx mb->setWindowModality(@cxx(Qt::NonModal))
 @cxx mb->show()
 
 # start event loop integration
+function update_loop(_timer)
+    icxx"""
+        $app.processEvents();
+    """
+end
+
 timer = Base.Timer( update_loop )
 Base.start_timer(timer, .1, .005)
 
