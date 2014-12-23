@@ -59,8 +59,20 @@ extern "C" {
 }
 """
 
-function isTopLevelExpression(data)
+function isPPDirective(data)
     icxx"""
+        const char *BufferStart = $(pointer(data));
+        const char *BufferEnd = BufferStart+$(endof(data));
+        clang::Lexer L(clang::SourceLocation(),$(compiler())->getLangOpts(),
+            BufferStart, BufferStart, BufferEnd);
+        clang::Token Tok;
+        L.LexFromRawLexer(Tok);
+        return Tok.is(clang::tok::hash);
+    """
+end
+
+function isTopLevelExpression(data)
+    return isPPDirective(data) || icxx"""
         clang::Parser *P = $(currentParser());
         clang::Preprocessor *PP = &P->getPreprocessor();
         clang::Parser::TentativeParsingAction TA(*P);
@@ -127,7 +139,7 @@ panel = LineEdit.Prompt("C++ > ";
 repl = Base.active_repl
 
 panel.on_done = REPL.respond(repl,panel) do line
-    process_cxx_string(string(line,";"), isTopLevelExpression(line))
+    process_cxx_string(string(line,"\n;"), isTopLevelExpression(line))
 end
 
 main_mode = repl.interface.modes[1]
