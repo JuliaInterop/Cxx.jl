@@ -397,6 +397,8 @@ AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
 ReplaceFunctionForDecl(sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function") =
     ccall((:ReplaceFunctionForDecl,libcxxffi),Void,(Ptr{Void},Ptr{Void}),sv,f)
 
+isDeclInvalid(D::pcpp"clang::Decl") = bool(ccall((:isDeclInvalid,libcxxffi),Cint,(Ptr{Void},),D.ptr))
+
 builtinKind(t::pcpp"clang::Type") = ccall((:builtinKind,libcxxffi),Cint,(Ptr{Void},),t)
 
 const CK_Dependent      = 0
@@ -1647,7 +1649,12 @@ ActOnFinishNamespaceDef(D) = ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Pt
 
 const icxx_ns = createNamespace("__icxx")
 
-EmitTopLevelDecl(D::pcpp"clang::Decl") = ccall((:EmitTopLevelDecl,libcxxffi),Void,(Ptr{Void},),D)
+function EmitTopLevelDecl(D::pcpp"clang::Decl")
+    if isDeclInvalid(D)
+        error("Tried to emit invalid decl")
+    end
+    ccall((:EmitTopLevelDecl,libcxxffi),Void,(Ptr{Void},),D)
+end
 EmitTopLevelDecl(D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(pcpp"clang::Decl"(D.ptr))
 
 SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =

@@ -61,12 +61,9 @@ using namespace llvm;
 extern ExecutionEngine *jl_ExecutionEngine;
 extern llvm::LLVMContext &jl_LLVMContext;
 
-static clang::CompilerInstance *clang_compiler;
 static clang::CodeGen::CodeGenModule *clang_cgm;
 static clang::CodeGen::CodeGenTypes *clang_cgt;
 static clang::CodeGen::CodeGenFunction *clang_cgf;
-static clang::Parser *clang_parser;
-static clang::Preprocessor *clang_preprocessor;
 static DataLayout *TD;
 
 static clang::ASTContext *clang_astcontext;
@@ -74,6 +71,10 @@ static clang::ASTContext *clang_astcontext;
 extern "C" {
 
   DLLEXPORT llvm::Module *clang_shadow_module;
+
+  DLLEXPORT clang::Parser *clang_parser;
+  DLLEXPORT clang::Preprocessor *clang_preprocessor;
+  DLLEXPORT clang::CompilerInstance *clang_compiler;
 
   // clang types
   DLLEXPORT const clang::Type *cT_int1;
@@ -1519,6 +1520,11 @@ DLLEXPORT int builtinKind(clang::Type *t)
 {
     assert(isa<clang::BuiltinType>(t));
     return cast<clang::BuiltinType>(t)->getKind();
+}
+
+DLLEXPORT int isDeclInvalid(clang::Decl *D)
+{
+  return D->isInvalidDecl();
 }
 
 }
