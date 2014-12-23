@@ -114,8 +114,30 @@ cxxinclude("stdint.h",isAngled = true)
 
 # TODO: Maybe use Ptr{CppValue} and Ptr{CppFunc} instead?
 
-# The equiavlent of a C++ T<targs...> *
-immutable CppPtr{T,targs}
+# Representes a base C++ type
+# i.e. a type that is not a pointer, a reference or a template
+immutable CppBaseType{s}
+end
+
+# A templated type
+immutable CppTemplate{T,targs}
+end
+
+# The equiavlent of a C++ on-stack value.
+# T is a CppBaseType or a CppTemplate
+immutable CppValue{T,CVR}
+    data::Vector{Uint8}
+end
+
+# The equiavlent of a C++ reference
+immutable CppRef{T,CVR}
+    ptr::Ptr{Void}
+end
+
+# The equiavlent of a C++ pointer.
+# T can be a CppValue, CppPtr, etc. depending on the pointed to type,
+# but is never a CppBaseType or CppTemplate directly
+immutable CppPtr{T,CVR}
     ptr::Ptr{Void}
 end
 
@@ -137,30 +159,20 @@ end
 ==(p1::CppPtr,p2::Ptr) = p1.ptr == p2
 ==(p1::Ptr,p2::CppPtr) = p1 == p2.ptr
 
-# The equiavlent of a C++ T<targs...> &
-immutable CppRef{T,targs}
-    ptr::Ptr{Void}
-end
-
-# The equiavlent of a C++ T<targs...>
-immutable CppValue{T,targs}
-    data::Vector{Uint8}
-end
-
 # Force cast the data portion of a jl_value_t to the given C++
 # type
-immutable JLCppCast{T,targs,JLT}
+immutable JLCppCast{T,JLT}
     data::JLT
-    function call{T,targs,JLT}(::Type{JLCppCast{T,targs}},data::JLT)
+    function call{T,JLT}(::Type{JLCppCast{T}},data::JLT)
         JLT.mutable ||
             error("Can only pass pointers to mutable values. " *
                   "To pass immutables, use an array instead.")
-        new{T,targs,JLT}(data)
+        new{T,JLT}(data)
     end
 end
 
 macro jpcpp_str(s)
-    JLCppCast{symbol(s),()}
+    JLCppCast{CppBaseType{symbol(s)}}
 end
 
 # Represents a forced cast form the value T
@@ -189,28 +201,52 @@ immutable CppEnum{T}
     val::Int32
 end
 
+const NullCVR = (false,false,false)
+simpleCppType(s) = CppBaseType{symbol(s)}
+simpleCppValue(s) = CppValue{simpleCppType(s),NullCVR}
+
 macro pcpp_str(s)
-    CppPtr{symbol(s),()}
+    CppPtr{simpleCppValue(s),NullCVR}
+end
+
+macro cpcpp_str(s)
+    CppPtr{CppValue{simpleCppType(s),(true,false,false)},NullCVR}
 end
 
 macro rcpp_str(s)
-    CppRef{symbol(s),()}
+    CppRef{simpleCppType(s),NullCVR}
 end
 
 macro vcpp_str(s)
-    CppValue{symbol(s),()}
+    simpleCppValue(s)
 end
 
-pcpp{s,t}(x::Type{CppValue{s,t}}) = CppPtr{s,t}
+pcpp{T,CVR}(x::Type{CppValue{T,CVR}}) = CppPtr{x}
 
 import Base: cconvert
+
+# Clang's QualType
+immutable QualType
+    ptr::Ptr{Void}
+end
+QualType(p::pcpp"clang::Type") = QualType(p.ptr)
+QualType(x::QualType) = x
+
+extractTypePtr(T::QualType) = pcpp"clang::Type"(ccall((:extractTypePtr,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+function extractCVR(T::QualType)
+    quals = ccall((:extractCVR,libcxxffi),Cuint,(Ptr{Void},),T)
+    ((quals&0x1)!=0,(quals&0x2)!=0,(quals&0x4)!=0)
+end
+
+# Pass a qual type via the opaque pointer
+cconvert(::Type{Ptr{Void}},p::QualType) = p.ptr
 
 cconvert(::Type{Ptr{Void}},p::CppPtr) = p.ptr
 cconvert(::Type{Ptr{Void}},p::CppRef) = p.ptr
 
 # Bootstrap definitions
-pointerTo(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:getPointerTo,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
-referenceTo(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:getReferenceTo,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
+pointerTo(t::QualType) = QualType(ccall((:getPointerTo,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
+referenceTo(t::QualType) = QualType(ccall((:getReferenceTo,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
 
 tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(p.ptr)
@@ -233,11 +269,11 @@ end
 
 cptrarr(a) = [x.ptr for x in a]
 
-CreateParmVarDecl(p::pcpp"clang::Type",name="dummy") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8}),p.ptr,name))
-CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
-CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type",isextern=true) = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void},Cint),DC,name,T,isextern))
+CreateParmVarDecl(p::QualType,name="dummy") = pcpp"clang::ParmVarDecl"(ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8}),p.ptr,name))
+CreateVarDecl(DC::pcpp"clang::DeclContext",name,T::QualType) = pcpp"clang::VarDecl"(ccall((:CreateVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
+CreateFunctionDecl(DC::pcpp"clang::DeclContext",name,T::QualType,isextern=true) = pcpp"clang::FunctionDecl"(ccall((:CreateFunctionDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void},Cint),DC,name,T,isextern))
 
-CreateTypeDefDecl(DC::pcpp"clang::DeclContext",name,T::pcpp"clang::Type") = pcpp"clang::TypeDefDecl"(ccall((:CreateTypeDefDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
+CreateTypeDefDecl(DC::pcpp"clang::DeclContext",name,T::QualType) = pcpp"clang::TypeDefDecl"(ccall((:CreateTypeDefDecl,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Uint8},Ptr{Void}),DC,name,T))
 
 CreateMemberExpr(base::pcpp"clang::Expr",isarrow::Bool,member::pcpp"clang::ValueDecl") = pcpp"clang::Expr"(ccall((:CreateMemberExpr,libcxxffi),Ptr{Void},(Ptr{Void},Cint,Ptr{Void}),base.ptr,isarrow,member.ptr))
 BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}) = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
@@ -246,7 +282,7 @@ BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}
 BuildMemberReference(base, t, IsArrow, name) =
     pcpp"clang::Expr"(ccall((:BuildMemberReference,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint,Ptr{Uint8}),base, t, IsArrow, name))
 
-DeduceReturnType(expr) = pcpp"clang::Type"(ccall((:DeduceReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
+DeduceReturnType(expr) = QualType(ccall((:DeduceReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
 
 function CreateFunction(rt,argt)
     any(t->t == julia_to_llvm(Void),argt) && error("Test")
@@ -258,7 +294,7 @@ InsertValue(builder, into::pcpp"llvm::Value", v::pcpp"llvm::Value", idx) =
     pcpp"llvm::Value"(ccall((:create_insert_value,libcxxffi),Ptr{Void},
         (Ptr{Void},Ptr{Void},Ptr{Void},Csize_t),builder,into,v,idx))
 
-tollvmty(t::pcpp"clang::Type") = pcpp"llvm::Type"(ccall((:tollvmty,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
+tollvmty(t::QualType) = pcpp"llvm::Type"(ccall((:tollvmty,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
 
 getTemplateArgs(tmplt::pcpp"clang::ClassTemplateSpecializationDecl") =
     rcpp"clang::TemplateArgumentList"(ccall((:getTemplateArgs,libcxxffi),Ptr{Void},(Ptr{Void},),tmplt))
@@ -267,7 +303,7 @@ getTargsSize(targs) =
  ccall((:getTargsSize,libcxxffi),Csize_t,(Ptr{Void},),targs)
 
 getTargTypeAtIdx(targs, i) =
-    pcpp"clang::Type"(ccall((:getTargTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
+    QualType(ccall((:getTargTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
 
 getTargKindAtIdx(targs, i) =
     ccall((:getTargKindAtIdx,libcxxffi),Cint,(Ptr{Void},Csize_t),targs,i)
@@ -276,7 +312,7 @@ getTargAsIntegralAtIdx(targs, i) =
     ccall((:getTargAsIntegralAtIdx,libcxxffi),Int64,(Ptr{Void},Csize_t),targs,i)
 
 getTargIntegralTypeAtIdx(targs, i) =
-    pcpp"clang::Type"(ccall((:getTargIntegralTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
+    QualType(ccall((:getTargIntegralTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
 
 getUndefValue(t::pcpp"llvm::Type") =
     pcpp"llvm::Value"(ccall((:getUndefValue,libcxxffi),Ptr{Void},(Ptr{Void},),t))
@@ -293,7 +329,7 @@ CreateRetVoid(builder) =
 CreateBitCast(builder,val,ty) =
     pcpp"llvm::Value"(ccall((:CreateBitCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
 
-function BuildCXXTypeConstructExpr(t::pcpp"clang::Type", exprs::Vector{pcpp"clang::Expr"})
+function BuildCXXTypeConstructExpr(t::QualType, exprs::Vector{pcpp"clang::Expr"})
     p = Ptr{Void}[0]
     r = bool(ccall((:typeconstruct,libcxxffi),Cint,(Ptr{Void},Ptr{Ptr{Void}},Csize_t,Ptr{Ptr{Void}}),
         t,cptrarr(exprs),length(exprs),p))
@@ -302,7 +338,7 @@ function BuildCXXTypeConstructExpr(t::pcpp"clang::Type", exprs::Vector{pcpp"clan
 end
 
 #BuildCXXNewExpr(E::pcpp"clang::Expr") = pcpp"clang::Expr"(ccall((:BuildCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
-BuildCXXNewExpr(T::pcpp"clang::Type",exprs::Vector{pcpp"clang::Expr"}) =
+BuildCXXNewExpr(T::QualType,exprs::Vector{pcpp"clang::Expr"}) =
     pcpp"clang::Expr"(ccall((:BuildCXXNewExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
         T,cptrarr(exprs),length(exprs)))
 
@@ -312,7 +348,7 @@ EmitAnyExpr(E::pcpp"clang::Expr") = pcpp"llvm::Value"(ccall((:EmitAnyExpr,libcxx
 EmitAnyExprToMem(expr,mem,isInit) = ccall((:emitexprtomem,libcxxffi),Void,(Ptr{Void},Ptr{Void},Cint),expr,mem,isInit)
 
 cxxsizeof(t::pcpp"clang::CXXRecordDecl") = ccall((:cxxsizeof,libcxxffi),Csize_t,(Ptr{Void},),t)
-cxxsizeof(t::pcpp"clang::Type") = ccall((:cxxsizeofType,libcxxffi),Csize_t,(Ptr{Void},),t)
+cxxsizeof(t::QualType) = ccall((:cxxsizeofType,libcxxffi),Csize_t,(Ptr{Void},),t)
 
 createDerefExpr(e::pcpp"clang::Expr") = pcpp"clang::Expr"(ccall((:createDerefExpr,libcxxffi),Ptr{Void},(Ptr{Void},),e.ptr))
 CreateAddrOfExpr(e::pcpp"clang::Expr") = pcpp"clang::Expr"(ccall((:createAddrOfExpr,libcxxffi),Ptr{Void},(Ptr{Void},),e.ptr))
@@ -344,7 +380,7 @@ CreateCallExpr(Fn::pcpp"clang::Expr",args::Vector{pcpp"clang::Expr"}) = pcpp"cla
     ccall((:CreateCallExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
         Fn,cptrarr(args),length(args)))
 
-toLLVM(t::pcpp"clang::Type") = pcpp"llvm::Type"(ccall((:ConvertTypeForMem,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+toLLVM(t::QualType) = pcpp"llvm::Type"(ccall((:ConvertTypeForMem,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
 newNNSBuilder() = pcpp"clang::NestedNameSpecifierLocBuilder"(ccall((:newNNSBuilder,libcxxffi),Ptr{Void},()))
 deleteNNSBuilder(b::pcpp"clang::NestedNameSpecifierLocBuilder") = ccall((:deleteNNSBuilder,libcxxffi),Void,(Ptr{Void},),b)
@@ -352,30 +388,30 @@ deleteNNSBuilder(b::pcpp"clang::NestedNameSpecifierLocBuilder") = ccall((:delete
 ExtendNNS(b::pcpp"clang::NestedNameSpecifierLocBuilder", ns::pcpp"clang::NamespaceDecl") =
     ccall((:ExtendNNS,libcxxffi),Void,(Ptr{Void},Ptr{Void}),b,ns)
 
-ExtendNNSType(b::pcpp"clang::NestedNameSpecifierLocBuilder", t::pcpp"clang::Type") =
+ExtendNNSType(b::pcpp"clang::NestedNameSpecifierLocBuilder", t::QualType) =
     ccall((:ExtendNNSType,libcxxffi),Void,(Ptr{Void},Ptr{Void}),b,t)
 
 ExtendNNSIdentifier(b::pcpp"clang::NestedNameSpecifierLocBuilder", name) =
     ccall((:ExtendNNSIdentifier,libcxxffi),Void,(Ptr{Void},Ptr{Uint8}),b,name)
 
-makeFunctionType(rt::pcpp"clang::Type", args::Vector{pcpp"clang::Type"}) =
-    pcpp"clang::Type"(ccall((:makeFunctionType,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),rt,cptrarr(args),length(args)))
+makeFunctionType(rt::QualType, args::Vector{QualType}) =
+    QualType(ccall((:makeFunctionType,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),rt,cptrarr(args),length(args)))
 
-makeMemberFunctionType(FT::pcpp"clang::Type", class::pcpp"clang::Type") =
-    pcpp"clang::Type"(ccall((:makeMemberFunctionType, libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),FT,class))
+makeMemberFunctionType(FT::QualType, class::pcpp"clang::Type") =
+    QualType(ccall((:makeMemberFunctionType, libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),FT,class))
 
 getMemberPointerClass(mptr::pcpp"clang::Type") =
     pcpp"clang::Type"(ccall((:getMemberPointerClass, libcxxffi),Ptr{Void},(Ptr{Void},),mptr))
 
 getMemberPointerPointee(mptr::pcpp"clang::Type") =
-    pcpp"clang::Type"(ccall((:getMemberPointerPointee, libcxxffi),Ptr{Void},(Ptr{Void},),mptr))
+    QualType(ccall((:getMemberPointerPointee, libcxxffi),Ptr{Void},(Ptr{Void},),mptr))
 
 getReturnType(ft::pcpp"clang::FunctionProtoType") =
-    pcpp"clang::Type"(ccall((:getFPTReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),ft))
+    QualType(ccall((:getFPTReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),ft))
 getNumParams(ft::pcpp"clang::FunctionProtoType") =
     ccall((:getFPTNumParams,libcxxffi),Csize_t,(Ptr{Void},),ft)
 getParam(ft::pcpp"clang::FunctionProtoType", idx) =
-    pcpp"clang::Type"(ccall((:getFPTParam,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),ft,idx))
+    QualType(ccall((:getFPTParam,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),ft,idx))
 
 getLLVMStructType(argts::Vector{pcpp"llvm::Type"}) =
     pcpp"llvm::Type"(ccall((:getLLVMStructType,libcxxffi), Ptr{Void}, (Ptr{Ptr{Void}},Csize_t), cptrarr(argts), length(argts)))
@@ -385,7 +421,7 @@ getConstantInt(llvmt::pcpp"llvm::Type",x::Uint64) = pcpp"llvm::Constant"(ccall((
 getConstantStruct(llvmt::pcpp"llvm::Type",x::Vector{pcpp"llvm::Constant"}) = pcpp"llvm::Constant"(ccall((:getConstantStruct,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Ptr{Void}},Csize_t),llvmt,x,length(x)))
 
 getDirectCallee(t::pcpp"clang::CallExpr") = pcpp"clang::FunctionDecl"(ccall((:getDirectCallee,libcxxffi),Ptr{Void},(Ptr{Void},),t))
-getCalleeReturnType(t::pcpp"clang::CallExpr") = pcpp"clang::Type"(ccall((:getCalleeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+getCalleeReturnType(t::pcpp"clang::CallExpr") = QualType(ccall((:getCalleeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
 isIncompleteType(t::pcpp"clang::Type") = pcpp"clang::NamedDecl"(ccall((:isIncompleteType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
@@ -430,19 +466,19 @@ const CK_IntegralCast = 25
 
 createCast(arg,t,kind) = pcpp"clang::Expr"(ccall((:createCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),arg,t,kind))
 # Built-in clang types
-chartype() = pcpp"clang::Type"(unsafe_load(cglobal((:cT_cchar,libcxxffi),Ptr{Void})))
-winttype() = pcpp"clang::Type"(unsafe_load(cglobal((:cT_wint,libcxxffi),Ptr{Void})))
-cpptype(::Type{Nothing}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void})))
+chartype() = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_cchar,libcxxffi),Ptr{Void}))))
+winttype() = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_wint,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Nothing}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void}))))
 cpptype(::Type{Uint8}) = chartype()#pcpp"clang::Type"(unsafe_load(cglobal(:cT_uint8,Ptr{Void})))
-cpptype(::Type{Int8}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int8,libcxxffi),Ptr{Void})))
-cpptype(::Type{Uint32}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_uint32,libcxxffi),Ptr{Void})))
-cpptype(::Type{Int32}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int32,libcxxffi),Ptr{Void})))
-cpptype(::Type{Uint64}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_uint64,libcxxffi),Ptr{Void})))
-cpptype(::Type{Int64}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int64,libcxxffi),Ptr{Void})))
-cpptype(::Type{Bool}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_int1,libcxxffi),Ptr{Void})))
-cpptype(::Type{Void}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void})))
-cpptype(::Type{Float32}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_float32,libcxxffi),Ptr{Void})))
-cpptype(::Type{Float64}) = pcpp"clang::Type"(unsafe_load(cglobal((:cT_float64,libcxxffi),Ptr{Void})))
+cpptype(::Type{Int8}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_int8,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Uint32}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_uint32,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Int32}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_int32,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Uint64}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_uint64,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Int64}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_int64,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Bool}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_int1,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Void}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_void,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Float32}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_float32,libcxxffi),Ptr{Void}))))
+cpptype(::Type{Float64}) = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_float64,libcxxffi),Ptr{Void}))))
 
 # CXX Level Casting
 
@@ -451,7 +487,7 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
                   (pcpp"clang::NamespaceDecl",pcpp"clang::Decl"),
                   (pcpp"clang::VarDecl",pcpp"clang::Decl"),
                   (pcpp"clang::ValueDecl",pcpp"clang::Decl"))
-    s = split(string(rt.parameters[1]),"::")[end]
+    s = split(string(rt.parameters[1].parameters[1].parameters[1]),"::")[end]
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
     # @cxx llvm::isa{$rt}(t)
@@ -474,7 +510,6 @@ end
 
 # Main interface
 
-immutable CppTemplate{X,targs}; end
 immutable CppCall{F}; end
 immutable CppNNS{chain}; end
 
@@ -558,7 +593,7 @@ function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
     integralValues = zeros(Uint64,length(targs))
     integralValuesPresent = zeros(Uint8,length(targs))
     bitwidths = zeros(Uint32,length(targs))
-    ts = Array(pcpp"clang::Type",length(targs))
+    ts = Array(QualType,length(targs))
     for (i,t) in enumerate(targs)
         if isa(t,Type)
             ts[i] = cpptype(t)
@@ -582,10 +617,10 @@ function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cp
     integralValues = zeros(Uint64,length(targs))
     integralValuesPresent = zeros(Uint8,length(targs))
     bitwidths = zeros(Uint32,length(targs))
-    ts = Array(pcpp"clang::Type",length(targs))
+    ts = Array(QualType,length(targs))
     for (i,t) in enumerate(targs)
-        if isa(t,pcpp"clang::Type")
-            ts[i] = t
+        if isa(t,pcpp"clang::Type") || isa(t,QualType)
+            ts[i] = QualType(t)
         elseif isa(t,Integer) || isa(t,CppEnum)
             ts[i] = cpptype(typeof(t))
             integralValues[i] = convert(Uint64,isa(t,CppEnum) ? t.val : t)
@@ -601,25 +636,26 @@ function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cp
     d
 end
 
-
-
-function cppdecl(fname,targs)
+function cppdecl{fname}(T::Type{CppBaseType{fname}})
     # Let's get a clang level representation of this type
-    ctx = lookup_ctx(fname)
+    lookup_ctx(fname)
+end
+
+function cppdecl{T,targs}(TT::Type{CppTemplate{T,targs}})
+    ctx = cppdecl(T)
 
     # If this is a templated class, we need to do template
     # resolution
     cxxt = cxxtmplt(ctx)
-    if cxxt != C_NULL
-        deduced_class = specialize_template(cxxt,targs,cpptype)
-        ctx = deduced_class
-    end
+    @assert cxxt != C_NULL
+    deduced_class = specialize_template(cxxt,targs,cpptype)
+    ctx = deduced_class
 
     ctx
 end
-cppdecl{fname,targs}(::Union(Type{CppPtr{fname,targs}}, Type{CppValue{fname,targs}},
-    Type{CppRef{fname,targs}})) = cppdecl(fname,targs)
-cppdecl{s}(::Type{CppEnum{s}}) = cppdecl(s,())
+cppdecl{T,CVR}(::Union(Type{CppPtr{T,CVR}}, Type{CppValue{T,CVR}},
+    Type{CppRef{T,CVR}})) = cppdecl(T)
+cppdecl{s}(::Type{CppEnum{s}}) = cppdecl(simpleCppType(s))
 
 # @cpp (@cpp dyn_cast{vcpp"clang::TypeDecl"}(d))->getTypeForDecl()
 function typeForDecl(d::pcpp"clang::Decl")
@@ -629,17 +665,34 @@ end
 typeForDecl(d::pcpp"clang::CXXRecordDecl") = typeForDecl(pcpp"clang::Decl"(d.ptr))
 typeForDecl(d::pcpp"clang::ClassTemplateSpecializationDecl") = typeForDecl(pcpp"clang::Decl"(d.ptr))
 
-cpptype{s}(p::Type{CppEnum{s}}) = typeForDecl(cppdecl(p))
-cpptype{s,t}(p::Type{CppPtr{s,t}}) = pointerTo(typeForDecl(cppdecl(p)))
-cpptype{T<:CppPtr}(p::Type{CppPtr{T,()}}) = pointerTo(cpptype(T))
-cpptype{s,t}(p::Type{CppValue{s,t}}) = typeForDecl(cppdecl(p))
-cpptype{s,t}(p::Type{CppRef{s,t}}) = referenceTo(typeForDecl(cppdecl(p)))
+withConst(T::QualType) = QualType(ccall((:withConst,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+withVolatile(T::QualType) = QualType(ccall((:withVolatile,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+withRestrict(T::QualType) = QualType(ccall((:withRestrict,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+function addQualifiers(clangT::QualType,CVR)
+    C,V,R = CVR
+    if C
+        clangT = withConst(clangT)
+    end
+    if V
+        clangT = withVolatile(clangT)
+    end
+    if R
+        clangT = withRestrict(clangT)
+    end
+    clangT
+end
+addQualifiers(clangT::pcpp"clang::Type",T) = addQualifiers(QualType(clangT.ptr),T)
+
+cpptype{s}(p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(p)))
+cpptype{T,CVR}(p::Type{CppPtr{T,CVR}}) = addQualifiers(pointerTo(cpptype(T)),CVR)
+cpptype{T,CVR}(p::Type{CppValue{T,CVR}}) = addQualifiers(typeForDecl(cppdecl(T)),CVR)
+cpptype{T,CVR}(p::Type{CppRef{T,CVR}}) = referenceTo(addQualifiers(typeForDecl(cppdecl(T)),CVR))
 cpptype{T}(p::Type{Ptr{T}}) = pointerTo(cpptype(T))
 cpptype{base,fptr}(p::Type{CppMFptr{base,fptr}}) =
     makeMemberFunctionType(cpptype(base), cpptype(fptr))
-cpptype{rt, args}(p::Type{CppFunc{rt,args}}) = makeFunctionType(cpptype(rt),pcpp"clang::Type"[cpptype(arg) for arg in args])
+cpptype{rt, args}(p::Type{CppFunc{rt,args}}) = makeFunctionType(cpptype(rt),QualType[cpptype(arg) for arg in args])
 cpptype{f}(p::Type{CppFptr{f}}) = pointerTo(cpptype(f))
-cpptype{s,t,jlt}(p::Type{JLCppCast{s,t,jlt}}) = pointerTo(typeForDecl(cppdecl(s,t)))
+cpptype{T,jlt}(p::Type{JLCppCast{T,jlt}}) = pointerTo(cpptype(T))
 
 function _decl_name(d)
     @assert d != C_NULL
@@ -729,26 +782,36 @@ const cDouble    = 22
 const LinkageSpec = 9
 
 
-getPointeeType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:referenced_type,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
+getPointeeType(t::pcpp"clang::Type") = QualType(ccall((:getPointeeType,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
 canonicalType(t) = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
-function juliatype(t::pcpp"clang::Type")
+
+function toBaseType(t::pcpp"clang::Type")
+    T = CppBaseType{symbol(get_name(t))}
+    rd = getAsCXXRecordDecl(t)
+    if rd.ptr != C_NULL
+        targs = getTemplateParameters(rd)
+        if !isempty(targs)
+            T = CppTemplate{T,targs}
+        end
+    end
+    T
+end
+
+function juliatype(t::QualType)
+    CVR = extractCVR(t)
+    t = extractTypePtr(t)
     t = canonicalType(t)
     if isVoidType(t)
         return Void
     elseif isBooleanType(t)
         return Bool
     elseif isPointerType(t)
-        cxxd = getPointeeCXXRecordDecl(t)
-        if cxxd != C_NULL
-            return CppPtr{symbol(get_pointee_name(t)),getTemplateParameters(cxxd)}
+        pt = getPointeeType(t)
+        tt = juliatype(pt)
+        if CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
+            return CppPtr{tt,CVR}
         else
-            pt = getPointeeType(t)
-            tt = juliatype(pt)
-            if tt <: CppPtr
-                return CppPtr{tt,()}
-            else
-                return Ptr{tt}
-            end
+            return Ptr{tt}
         end
     elseif isFunctionPointerType(t)
         error("Is Function Pointer")
@@ -770,8 +833,8 @@ function juliatype(t::pcpp"clang::Type")
         pointee = getMemberPointerPointee(t)
         return CppMFptr{juliatype(cxxd),juliatype(pointee)}
     elseif isReferenceType(t)
-        t = pcpp"clang::Type"(ccall((:referenced_type,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
-        return CppRef{symbol(get_name(t)),()}
+        t = extractTypePtr(getPointeeType(t))
+        return CppRef{toBaseType(t),CVR}
     elseif isCharType(t)
         return Uint8
     elseif isEnumeralType(t)
@@ -805,10 +868,7 @@ function juliatype(t::pcpp"clang::Type")
         end
         error("Unrecognized floating point type")
     else
-        rd = getAsCXXRecordDecl(t)
-        if rd.ptr != C_NULL
-            return CppValue{symbol(get_name(t)),getTemplateParameters(rd)}
-        end
+        return CppValue{toBaseType(t),CVR}
     end
     return Ptr{Void}
 end
@@ -822,8 +882,8 @@ cxxtmplt(p::pcpp"clang::Decl") = pcpp"clang::ClassTemplateDecl"(ccall((:cxxtmplt
 const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32},Type{Uint64},Type{Float32},Type{Float64})
 
 stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
-stripmodifier{s,targs}(p::Union(Type{CppPtr{s,targs}},
-    Type{CppRef{s,targs}}, Type{CppValue{s,targs}})) = p
+stripmodifier{T,CVR}(p::Union(Type{CppPtr{T,CVR}},
+    Type{CppRef{T,CVR}}, Type{CppValue{T,CVR}})) = p
 stripmodifier{s}(p::Type{CppEnum{s}}) = p
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
 stripmodifier{T}(p::Type{CppDeref{T}}) = T
@@ -831,10 +891,10 @@ stripmodifier{T}(p::Type{CppAddr{T}}) = T
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = Ptr{T}
 stripmodifier(p::CxxBuiltinTypes) = p
-stripmodifier{T,targs,JLT}(p::Type{JLCppCast{T,targs,JLT}}) = p
+stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
 
-resolvemodifier{s,targs}(p::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}},
-    Type{CppValue{s,targs}}), e::pcpp"clang::Expr") = e
+resolvemodifier{T,CVR}(p::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}},
+    Type{CppValue{T,CVR}}), e::pcpp"clang::Expr") = e
 resolvemodifier(p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
 resolvemodifier{T}(p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
 resolvemodifier{s}(p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
@@ -847,12 +907,12 @@ resolvemodifier{T}(p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
     CreateAddrOfExpr(e)
 resolvemodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
 resolvemodifier{f}(cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
-resolvemodifier{T,targs,JLT}(p::Type{JLCppCast{T,targs,JLT}}, e::pcpp"clang::Expr") = e
+resolvemodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
 
-resolvemodifier_llvm{s,targs}(builder, t::Type{CppCast{s,targs}}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm{T,To}(builder, t::Type{CppCast{T,To}}, v::pcpp"llvm::Value") =
     resolvemodifier_llvm(builder, t.parameters[1], ExtractValue(v,0))
 
-resolvemodifier_llvm{s,targs}(builder, t::Union(Type{CppPtr{s,targs}}, Type{CppRef{s,targs}}),
+resolvemodifier_llvm{T,CVR}(builder, t::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}),
         v::pcpp"llvm::Value") = ExtractValue(v,0)
 
 resolvemodifier_llvm{s}(builder, t::Type{CppEnum{s}}, v::pcpp"llvm::Value") = ExtractValue(v,0)
@@ -889,7 +949,7 @@ resolvemodifier_llvm{f}(builder, t::Type{CppDeref{f}}, v::pcpp"llvm::Value") = r
 resolvemodifier_llvm{T}(builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") =
     resolvemodifier_llvm(builder,T,ExtractValue(v,0))
 
-function resolvemodifier_llvm{s,targs,jlt}(builder, t::Type{JLCppCast{s,targs,jlt}}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm{T,jlt}(builder, t::Type{JLCppCast{T,jlt}}, v::pcpp"llvm::Value")
     # Skip the type pointer to get to the actual data
     return CreateConstGEP1_32(builder,v,1)
 end
@@ -941,7 +1001,7 @@ function associateargs(builder,argt,args,pvds)
 end
 
 
-AssociateValue(d::pcpp"clang::ParmVarDecl", ty::pcpp"clang::Type", V::pcpp"llvm::Value") = ccall((:AssociateValue,libcxxffi),Void,(Ptr{Void},Ptr{Void},Ptr{Void}),d,ty,V)
+AssociateValue(d::pcpp"clang::ParmVarDecl", ty::QualType, V::pcpp"llvm::Value") = ccall((:AssociateValue,libcxxffi),Void,(Ptr{Void},Ptr{Void},Ptr{Void}),d,ty,V)
 
 irbuilder() = pcpp"clang::CodeGen::CGBuilderTy"(ccall((:clang_get_builder,libcxxffi),Ptr{Void},()))
 
@@ -1063,7 +1123,7 @@ function declfornns{nns}(::Type{CppNNS{nns}},nnsbuilder=C_NULL)
                 end
                 d = specialize_template_clang(cxxt,arr,cpptype)
                 @assert d != C_NULL
-                (nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,typeForDecl(d))
+                (nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,QualType(typeForDecl(d)))
             else
                 @assert d == tu
                 t = cpptype(n)
@@ -1175,7 +1235,11 @@ function _cppcall(expr, thiscall, isnew, argt)
             # but the default targs may be substituted by typedefs
             targs = getTemplateParameters(cxxd)
 
-            T = CppValue{fname,tuple(targs...)}
+            T = CppBaseType{fname}
+            if !isempty(targs)
+                T = CppTemplate{T,tuple(targs...)}
+            end
+            T = CppValue{T,NullCVR}
             juliart = T
 
             # The arguments to llvmcall will have an extra
@@ -1191,7 +1255,7 @@ function _cppcall(expr, thiscall, isnew, argt)
 
             rett = Void
             if isnew
-                rett = CppPtr{symbol(fname),()}
+                rett = CppPtr{CppValue{CppBaseType{fname},NullCVR},NullCVR}
             end
             llvmrt = julia_to_llvm(rett)
 
@@ -1208,14 +1272,14 @@ function _cppcall(expr, thiscall, isnew, argt)
             associateargs(builder,argt,isnew ? args : args[2:end],pvds)
 
             if isnew
-                nE = BuildCXXNewExpr(typeForDecl(cxxd),callargs)
+                nE = BuildCXXNewExpr(QualType(typeForDecl(cxxd)),callargs)
                 if nE == C_NULL
                     error("Could not construct `new` expression")
                 end
                 MarkDeclarationsReferencedInExpr(nE)
                 ret = EmitCXXNewExpr(nE)
             else
-                ctce = BuildCXXTypeConstructExpr(typeForDecl(cxxd),callargs)
+                ctce = BuildCXXTypeConstructExpr(QualType(typeForDecl(cxxd)),callargs)
 
                 MarkDeclarationsReferencedInExpr(ctce)
                 EmitAnyExprToMem(ctce,args[1],true)
@@ -1402,7 +1466,7 @@ stagedfunction cxxref(expr)
 
         return emitRefExpr(expr)
     else
-        return :( $(juliatype(typeForDecl(d))) )
+        return :( $(juliatype(QualType(typeForDecl(d)))) )
     end
 end
 
@@ -1614,7 +1678,7 @@ function ssv(e::ANY,ctx,varnum)
         if isa(T,UnionType) || T.abstract
             error("Inferred Union or abstract type $T for expression $e")
         end
-        sv = CreateFunctionDecl(ctx,string("call",varnum),makeFunctionType(cpptype(T),pcpp"clang::Type"[]))
+        sv = CreateFunctionDecl(ctx,string("call",varnum),makeFunctionType(cpptype(T),QualType[]))
         e = thunk
     else
         name = string("var",varnum)
@@ -1666,8 +1730,8 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
 
     global icxxcounter
 
-    argtypes = (Int,pcpp"clang::Type")[]
-    typeargs = (Int,pcpp"clang::Type")[]
+    argtypes = (Int,QualType)[]
+    typeargs = (Int,QualType)[]
     llvmargs = Any[]
     argidxs = Int[]
     # Make a first part about the arguments
@@ -1697,8 +1761,8 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
         fname = string("icxx",icxxcounter)
         icxxcounter += 1
         ctx = toctx(ND)
-        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(pcpp"clang::Type"(C_NULL),
-            pcpp"clang::Type"[ T for (_,T) in argtypes ]),false)
+        FD = CreateFunctionDecl(ctx,fname,makeFunctionType(QualType(C_NULL),
+            QualType[ T for (_,T) in argtypes ]),false)
         params = pcpp"clang::ParmVarDecl"[]
         for (i,argt) in argtypes
             param = CreateParmVarDecl(argt,string("__juliavar",i))
