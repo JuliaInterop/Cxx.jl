@@ -162,10 +162,6 @@ const cxx_keymap = {
     end
 }
 
-search_prompt, skeymap = LineEdit.setup_search_keymap(hp)
-mk = REPL.mode_keymap(main_mode)
+panel.keymap_dict = copy(main_mode.keymap_dict)
 
-b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap, LineEdit.escape_defaults]
-panel.keymap_dict = LineEdit.keymap(b)
-
-main_mode.keymap_dict = LineEdit.keymap_merge(main_mode.keymap_dict, cxx_keymap)
+LineEdit.keymap_merge!(main_mode.keymap_dict, cxx_keymap)
