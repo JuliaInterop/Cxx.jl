@@ -1056,13 +1056,15 @@ DLLEXPORT void *to_cxxdecl(clang::Decl *decl)
     return dyn_cast<clang::CXXRecordDecl>(decl);
 }
 
-DLLEXPORT void *get_result_type(void *cppfunc)
+DLLEXPORT void *GetFunctionReturnType(clang::FunctionDecl *FD)
 {
-    clang::Decl* MD = ((clang::Decl *)cppfunc);
-    clang::FunctionDecl* fdecl = dyn_cast<clang::FunctionDecl>(MD);
-    if (fdecl == NULL)
-        return NULL;
-    return (void*)fdecl->getReturnType().getTypePtr();
+    return FD->getReturnType().getAsOpaquePtr();
+}
+
+DLLEXPORT void *BuildDecltypeType(clang::Expr *E)
+{
+    clang::QualType T = clang_compiler->getSema().BuildDecltypeType(E,E->getLocStart());
+    return clang_astcontext->getCanonicalType(T).getAsOpaquePtr();
 }
 
 DLLEXPORT void *emit_field_ref(clang::Type *BaseType, Value *BaseVal, clang::FieldDecl *FieldDecl)

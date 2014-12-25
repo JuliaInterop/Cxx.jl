@@ -283,6 +283,8 @@ BuildMemberReference(base, t, IsArrow, name) =
     pcpp"clang::Expr"(ccall((:BuildMemberReference,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint,Ptr{Uint8}),base, t, IsArrow, name))
 
 DeduceReturnType(expr) = QualType(ccall((:DeduceReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
+GetFunctionReturnType(FD::pcpp"clang::FunctionDecl") = QualType(ccall((:GetFunctionReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),FD))
+BuildDecltypeType(expr) = QualType(ccall((:BuildDecltypeType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
 
 function CreateFunction(rt,argt)
     any(t->t == julia_to_llvm(Void),argt) && error("Test")
@@ -833,8 +835,13 @@ function juliatype(t::QualType)
         pointee = getMemberPointerPointee(t)
         return CppMFptr{juliatype(cxxd),juliatype(pointee)}
     elseif isReferenceType(t)
-        t = extractTypePtr(getPointeeType(t))
-        return CppRef{toBaseType(t),CVR}
+        t = getPointeeType(t)
+        jt = juliatype(t)
+        if jt <: CppValue
+            return CppRef{toBaseType(extractTypePtr(t)),CVR}
+        else
+            return CppRef{jt,CVR}
+        end
     elseif isCharType(t)
         return Uint8
     elseif isEnumeralType(t)
@@ -1334,7 +1341,7 @@ function CallDNE(dne,argt; argidxs = [1:length(argt)])
     end
 
     # First we need to get the return type of the C++ expression
-    rt = DeduceReturnType(ce)
+    rt = BuildDecltypeType(ce)
     rett = juliatype(rt)
 
     llvmargt = [argt...]
@@ -1724,10 +1731,11 @@ EmitTopLevelDecl(D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(pcpp"clang::De
 SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =
     ccall((:SetFDParams,libcxxffi),Void,(Ptr{Void},Ptr{Ptr{Void}},Csize_t),FD,[p.ptr for p in params],length(params))
 
-stagedfunction cxxstr_impl(sourcebuf, args...)
-    id = sourceid(sourcebuf)
-    buf = sourcebuffers[id]
-
+#
+# Create a clang FunctionDecl with the given body and
+# and the given types for embedded __juliavars
+#
+function CreateFunctionWithBody(body,args...)
     global icxxcounter
 
     argtypes = (Int,QualType)[]
@@ -1741,7 +1749,7 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
     for (i,arg) in enumerate(args)
         # We passed in an actual julia type
         if arg <: Type
-            buf = replace(buf,"__juliavar$i","__juliatype$i")
+            body = replace(body,"__juliavar$i","__juliatype$i")
             push!(typeargs,(i,cpptype(arg.parameters[1])))
         else
             T = cpptype(arg)
@@ -1752,7 +1760,7 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
         end
     end
 
-    EnterBuffer(buf)
+    EnterBuffer(body)
 
     local FD
     local dne
@@ -1783,6 +1791,15 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
     #dump(FD)
 
     EmitTopLevelDecl(FD)
+
+    FD, llvmargs, argidxs
+end
+
+stagedfunction cxxstr_impl(sourcebuf, args...)
+    id = sourceid(sourcebuf)
+    buf = sourcebuffers[id]
+
+    FD, llvmargs, argidxs = CreateFunctionWithBody(buf, args...)
 
     dne = CreateDeclRefExpr(FD)
     return CallDNE(dne,tuple(llvmargs...); argidxs = argidxs)
