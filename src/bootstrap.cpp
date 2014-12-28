@@ -13,6 +13,8 @@
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include "llvm/IR/ValueMap.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/IR/IRBuilder.h"
+
 
 // Clang includes
 #include "clang/Sema/ScopeInfo.h"
@@ -46,7 +48,15 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclTemplate.h>
 #include <clang/Basic/Specifiers.h>
-#include "CodeGen/CodeGenModule.h"
+
+// Hopefully I'll be able to get this in upstream
+// but for now ship with a copy of this header file
+// that's patched
+#include "CodeGen/CGVTables.h"
+#include "CodeGen/CodeGenTypes.h"
+#include "CodeGen/SanitizerMetadata.h"
+#include "monkeypatch/CodeGenModule.h"
+
 #include <CodeGen/CodeGenTypes.h>
 #include <CodeGen/CodeGenFunction.h>
 
@@ -359,6 +369,39 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
 
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
     return _cxxparse(CurDir);
+}
+
+/*
+ * Collect all global initializers into one llvm::Function, which
+ * we can then call.
+ */
+DLLEXPORT llvm::Function *CollectGlobalConstructors()
+{
+    clang::CodeGen::CodeGenModule::CtorList &ctors = clang_cgm->getGlobalCtors();
+    if (ctors.empty()) {
+        return NULL;
+    }
+
+    // First create the function into which to collect
+    llvm::Function *InitF = Function::Create(
+      llvm::FunctionType::get(
+          llvm::Type::getVoidTy(jl_LLVMContext),
+          false),
+      llvm::GlobalValue::ExternalLinkage,
+      "",
+      clang_shadow_module
+      );
+    llvm::IRBuilder<true> builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
+
+    for (auto ctor : ctors) {
+        builder.CreateCall(ctor.Initializer);
+    }
+
+    builder.CreateRetVoid();
+
+    ctors.clear();
+
+    return InitF;
 }
 
 DLLEXPORT void *ActOnStartOfFunction(clang::Decl *D)

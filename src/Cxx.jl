@@ -41,12 +41,14 @@ function cxxinclude(fname; dir = Base.source_path() === nothing ? pwd() : dirnam
         fname, dir, isAngled) == 0
         error("Could not include file $fname")
     end
+    RunGlobalConstructors()
 end
 
 function cxxparse(string)
     if ccall((:cxxparse, libcxxffi), Cint, (Ptr{Uint8}, Csize_t), string, sizeof(string)) == 0
         error("Could not parse string")
     end
+    RunGlobalConstructors()
 end
 
 const C_User            = 0
@@ -73,42 +75,6 @@ function cxx_std_lib_version()
     # choose newest version
     return vers[end]
 end
-
-# Setup Search Paths
-
-basepath = joinpath(JULIA_HOME, "../../")
-
-@osx_only begin
-    xcode_path =
-        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
-    didfind = false
-    for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
-        if isdir(joinpath(xcode_path,path))
-            addHeaderDir(joinpath(xcode_path,path), kind = C_ExternCSystem)
-            didfind = true
-        end
-    end
-    didfind || error("Could not find C++ standard library. Is XCode installed?")
-end
-
-@linux_only begin
-    ver = cxx_std_lib_version()
-    addHeaderDir("/usr/include/c++/$ver", kind = C_System);
-    addHeaderDir("/usr/include/x86_64-linux-gnu/c++/$ver/", kind = C_System);
-    addHeaderDir("/usr/include", kind = C_System);
-    addHeaderDir("/usr/include/x86_64-linux-gnu", kind = C_System);
-end
-
-@windows_only begin
-  base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
-  addHeaderDir(joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
-  #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
-  addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
-  addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
-end
-
-addHeaderDir(joinpath(basepath,"usr/lib/clang/3.6.0/include/"), kind = C_ExternCSystem)
-cxxinclude("stdint.h",isAngled = true)
 
 # # # Types we will use to represent C++ values
 
@@ -251,6 +217,59 @@ referenceTo(t::QualType) = QualType(ccall((:getReferenceTo,libcxxffi),Ptr{Void},
 tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(p.ptr)
 tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(p.ptr)
+
+CollectGlobalConstructors() =
+    pcpp"llvm::Function"(ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},()))
+
+function RunGlobalConstructors()
+    p = CollectGlobalConstructors().ptr
+    # If p is NULL it means we have no constructors to run
+    if p != C_NULL
+        eval(:(llvmcall($p,Void,())))
+    end
+end
+
+# Setup Search Paths
+
+basepath = joinpath(JULIA_HOME, "../../")
+
+@osx_only begin
+    xcode_path =
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
+    didfind = false
+    for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
+        if isdir(joinpath(xcode_path,path))
+            addHeaderDir(joinpath(xcode_path,path), kind = C_ExternCSystem)
+            didfind = true
+        end
+    end
+    didfind || error("Could not find C++ standard library. Is XCode installed?")
+end
+
+@linux_only begin
+    ver = cxx_std_lib_version()
+    addHeaderDir("/usr/include/c++/$ver", kind = C_System);
+    addHeaderDir("/usr/include/x86_64-linux-gnu/c++/$ver/", kind = C_System);
+    addHeaderDir("/usr/include", kind = C_System);
+    addHeaderDir("/usr/include/x86_64-linux-gnu", kind = C_System);
+end
+
+@windows_only begin
+  base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
+  addHeaderDir(joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
+  #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
+  addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
+  addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
+end
+
+addHeaderDir(joinpath(basepath,"usr/lib/clang/3.6.0/include/"), kind = C_ExternCSystem)
+
+cxxparse("""
+#include <stdint.h>
+extern "C" {
+    void __dso_handle() {}
+}
+""")
 
 function CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL)
     @assert p != C_NULL
@@ -1019,7 +1038,10 @@ irbuilder() = pcpp"clang::CodeGen::CGBuilderTy"(ccall((:clang_get_builder,libcxx
 # the thiscall flag depending on which ones is called.
 
 setup_cpp_env(f::pcpp"llvm::Function") = ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ptr{Void},),f)
-cleanup_cpp_env(state) = ccall((:cleanup_cpp_env,libcxxffi),Void,(Ptr{Void},),state)
+function cleanup_cpp_env(state)
+    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ptr{Void},),state)
+    RunGlobalConstructors()
+end
 
 dump(d::pcpp"clang::Decl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
 dump(d::pcpp"clang::FunctionDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
