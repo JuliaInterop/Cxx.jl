@@ -49,6 +49,13 @@ function cxxparse(string)
     end
 end
 
+CollectGlobalConstructors() =
+    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},())
+
+function RunGlobalConstructors()
+    eval(:(llvmcall(CollectGlobalConstructors(),Void,())))
+end
+
 const C_User            = 0
 const C_System          = 1
 const C_ExternCSystem   = 2

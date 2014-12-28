@@ -1,8 +1,11 @@
+include("llvmincludes.jl")
+
 cxx"""
 #include <iostream>
 #include "llvm/Support/raw_os_ostream.h"
 using namespace llvm;
 """
+
 function dumpLayout(d)
     ctx = pcpp"clang::ASTContext"(
         ccall((:getASTContext,libcxxffi),Ptr{Void},()))
@@ -16,3 +19,13 @@ function dumpLayout(d)
         (void) (std::cout << std::endl);
     """
 end
+
+clangmod = pcpp"llvm::Module"(unsafe_load(cglobal(
+        (:clang_shadow_module,libcxxffi),Ptr{Void})))
+
+EE = pcpp"llvm::ExecutionEngine"(unsafe_load(cglobal(
+        :jl_ExecutionEngine,Ptr{Void})))
+
+pass_llvm_command_line(str) =
+    @cxx llvm::cl::ParseCommandLineOptions(1+length(str),pointer([pointer("julia"),[pointer(s) for s in str],convert(Ptr{Uint8},C_NULL)]))
+pass_llvm_command_line(str::String) = pass_llvm_command_line([str])

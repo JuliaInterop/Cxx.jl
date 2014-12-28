@@ -13,6 +13,8 @@
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include "llvm/IR/ValueMap.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/IR/IRBuilder.h"
+
 
 // Clang includes
 #include "clang/Sema/ScopeInfo.h"
@@ -359,6 +361,34 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
 
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
     return _cxxparse(CurDir);
+}
+
+/*
+ * Collect all global initializers into one llvm::Function, which
+ * we can then call.
+ */
+DLLEXPORT llvm::Function *CollectGlobalConstructors()
+{
+    // First create the function into which to collect
+    llvm::Function *InitF = Function::Create(
+      llvm::FunctionType::get(
+          llvm::Type::getVoidTy(jl_LLVMContext),
+          false),
+      llvm::GlobalValue::ExternalLinkage,
+      "",
+      clang_shadow_module
+      );
+    llvm::IRBuilder<true> builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
+
+
+    clang::CodeGen::CodeGenModule::CtorList &ctors = clang_cgm->getGlobalCtors();
+    for (auto ctor : ctors) {
+        builder.CreateCall(ctor.Initializer);
+    }
+
+    builder.CreateRetVoid();
+
+    return InitF;
 }
 
 DLLEXPORT void *ActOnStartOfFunction(clang::Decl *D)
