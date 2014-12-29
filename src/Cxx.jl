@@ -584,16 +584,21 @@ _lookup_name(fname::Symbol, ctx::pcpp"clang::DeclContext") = _lookup_name(string
 
 isaNamespaceDecl(d::pcpp"clang::CXXRecordDecl") = false
 
-function lookup_name(parts, nnsbuilder=C_NULL, cur=translation_unit())
-    for fpart in parts
-        if nnsbuilder != C_NULL && cur != translation_unit()
-            if isaNamespaceDecl(cur)
-                ExtendNNS(nnsbuilder, dcastNamespaceDecl(cur))
-            else
-                ExtendNNSIdentifier(nnsbuilder, fpart)
-            end
+function nnsextend(nnsbuilder,part,cur)
+    if nnsbuilder != C_NULL
+        if isaNamespaceDecl(cur)
+            ExtendNNS(nnsbuilder, dcastNamespaceDecl(cur))
+        else
+            ExtendNNSIdentifier(nnsbuilder, part)
         end
+    end
+end
+
+function lookup_name(parts, nnsbuilder=C_NULL, start=translation_unit(), addlast=false)
+    cur = start
+    for fpart in parts
         lastcur = cur
+        (cur != start) && nnsextend(nnsbuilder,fpart,cur)
         cur = _lookup_name(fpart,primary_ctx(toctx(cur)))
         if cur == C_NULL
             if lastcur == translation_unit()
@@ -603,11 +608,12 @@ function lookup_name(parts, nnsbuilder=C_NULL, cur=translation_unit())
             end
         end
     end
+    addlast && nnsextend(nnsbuilder,parts[end],cur)
     cur
 end
 
-lookup_ctx(fname::String; nnsbuilder=C_NULL, cur=translation_unit()) = lookup_name(split(fname,"::"),nnsbuilder,cur)
-lookup_ctx(fname::Symbol; nnsbuilder=C_NULL, cur=translation_unit()) = lookup_ctx(string(fname); nnsbuilder=nnsbuilder, cur=cur)
+lookup_ctx(fname::String; nnsbuilder=C_NULL, cur=translation_unit(), addlast = false) = lookup_name(split(fname,"::"),nnsbuilder,cur, addlast)
+lookup_ctx(fname::Symbol; kwargs...) = lookup_ctx(string(fname); kwargs...)
 
 function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
     @assert cxxt != C_NULL
@@ -850,7 +856,7 @@ function juliatype(t::QualType)
             error("Function has no proto type")
         end
     elseif isMemberFunctionPointerType(t)
-        cxxd = getMemberPointerClass(t)
+        cxxd = QualType(getMemberPointerClass(t))
         pointee = getMemberPointerPointee(t)
         return CppMFptr{juliatype(cxxd),juliatype(pointee)}
     elseif isReferenceType(t)
@@ -1162,7 +1168,7 @@ function declfornns{nns}(::Type{CppNNS{nns}},nnsbuilder=C_NULL)
                 d = getAsCXXRecordDecl(getPointeeType(t))
             end
         else
-            d = lookup_name((n,),i == length(nns) ? C_NULL : nnsbuilder,d)
+            d = lookup_name((n,), nnsbuilder, d, i != length(nns))
         end
         @assert d != C_NULL
     end
@@ -1487,7 +1493,6 @@ stagedfunction cxxref(expr)
     if isaValueDecl(d)
         expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d), nnsbuilder=nnsbuilder)
         deleteNNSBuilder(nnsbuilder)
-
 
         if isaddrof
             expr = CreateAddrOfExpr(dre)
