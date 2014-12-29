@@ -34,3 +34,11 @@ int &bar50(int *foo) {
 }
 """
 @cxx bar50(@cxx &x50)
+
+# Global Initializers (#53)
+cxx"""
+#include <vector>
+
+std::vector<int> v(10);
+"""
+@test icxx"v.size();" == 10
