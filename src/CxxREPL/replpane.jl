@@ -133,7 +133,6 @@ panel = LineEdit.Prompt("C++ > ";
     # Copy colors from the prompt object
     prompt_prefix="\e[38;5;166m",
     prompt_suffix=Base.text_colors[:white],
-    # History provider
     on_enter = s->isExpressionComplete(bytestring(LineEdit.buffer(s))))
 
 repl = Base.active_repl
@@ -144,10 +143,11 @@ end
 
 main_mode = repl.interface.modes[1]
 
-push!(repl.interface.modes,panel)
+unshift!(repl.interface.modes,panel)
 
 hp = main_mode.hist
 hp.mode_mapping[:cxx] = panel
+panel.hist = hp
 
 const cxx_keymap = {
     '<' => function (s,args...)
@@ -168,4 +168,4 @@ mk = REPL.mode_keymap(main_mode)
 b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap, LineEdit.escape_defaults]
 panel.keymap_dict = LineEdit.keymap(b)
 
-main_mode.keymap_dict = LineEdit.keymap_merge(main_mode.keymap_dict, cxx_keymap)
+main_mode.keymap_dict = LineEdit.keymap_merge(main_mode.keymap_dict, cxx_keymap);
