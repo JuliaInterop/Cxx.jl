@@ -344,6 +344,7 @@ static int _cxxparse(const clang::DirectoryLookup *CurDir)
         return 0;
     }
 
+    clang_compiler->getSema().DefineUsedVTables();
     clang_compiler->getSema().PerformPendingInstantiations(false);
     clang_cgm->Release();
 
@@ -662,6 +663,7 @@ DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
     //assert(in_cpp == true);
     //in_cpp = false;
 
+    clang_compiler->getSema().DefineUsedVTables();
     clang_compiler->getSema().PerformPendingInstantiations(false);
     clang_cgm->Release();
 

@@ -4,6 +4,7 @@ cxx"""
 #include <iostream>
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "clang/Sema/Sema.h"
 using namespace llvm;
 """
 
@@ -29,6 +30,9 @@ EE = pcpp"llvm::ExecutionEngine"(unsafe_load(cglobal(
 
 mcjmm = pcpp"llvm::RTDyldMemoryManager"(unsafe_load(cglobal(
         :jl_mcjmm,Ptr{Void})))
+
+cc = pcpp"clang::CompilerInstance"(unsafe_load(cglobal(
+    (:clang_compiler,libcxxffi),Ptr{Void})))
 
 pass_llvm_command_line(str) =
     @cxx llvm::cl::ParseCommandLineOptions(1+length(str),pointer([pointer("julia"),[pointer(s) for s in str],convert(Ptr{Uint8},C_NULL)]))

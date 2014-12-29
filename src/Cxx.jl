@@ -766,7 +766,7 @@ function getTemplateParameters(cxxd)
                 t = getTargIntegralTypeAtIdx(targs,i)
                 push!(args,convert(juliatype(t),val))
             else
-                error("Unhandled template argument kind")
+                error("Unhandled template argument kind ($kind)")
             end
         end
         targt = tuple(args...)
