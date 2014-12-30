@@ -42,3 +42,12 @@ cxx"""
 std::vector<int> v(10);
 """
 @test icxx"v.size();" == 10
+
+# References to functions (#51)
+cxx"""
+void foo51() {}
+"""
+
+@test_throws ErrorException (@cxx foo51)
+@test isa((@cxx &foo51),CppFptr)
+
