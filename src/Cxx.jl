@@ -271,19 +271,19 @@ extern "C" {
 }
 """)
 
-function CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, nnsbuilder=C_NULL)
+function CreateDeclRefExpr(p::pcpp"clang::ValueDecl"; islvalue=true, cxxscope=C_NULL)
     @assert p != C_NULL
-    pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),p.ptr,nnsbuilder,islvalue))
+    pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint),p.ptr,cxxscope,islvalue))
 end
 
-function CreateDeclRefExpr(p; nnsbuilder=C_NULL, islvalue=true)
+function CreateDeclRefExpr(p; cxxscope=C_NULL, islvalue=true)
     @assert p != C_NULL
     vd = tovdecl(p)
     if vd == C_NULL
         dump(p)
         error("CreateDeclRefExpr called with something other than a ValueDecl")
     end
-    CreateDeclRefExpr(vd;islvalue=islvalue,nnsbuilder=nnsbuilder)
+    CreateDeclRefExpr(vd;islvalue=islvalue,cxxscope=cxxscope)
 end
 
 cptrarr(a) = [x.ptr for x in a]
@@ -404,7 +404,10 @@ CreateCallExpr(Fn::pcpp"clang::Expr",args::Vector{pcpp"clang::Expr"}) = pcpp"cla
 toLLVM(t::QualType) = pcpp"llvm::Type"(ccall((:ConvertTypeForMem,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
 newNNSBuilder() = pcpp"clang::NestedNameSpecifierLocBuilder"(ccall((:newNNSBuilder,libcxxffi),Ptr{Void},()))
+newCXXScopeSpec() = pcpp"clang::CXXScopeSpec"(ccall((:newCXXScopeSpec,libcxxffi),Ptr{Void},()))
 deleteNNSBuilder(b::pcpp"clang::NestedNameSpecifierLocBuilder") = ccall((:deleteNNSBuilder,libcxxffi),Void,(Ptr{Void},),b)
+deleteCXXScopeSpec(b::pcpp"clang::CXXScopeSpec") = ccall((:deleteCXXScopeSpec,libcxxffi),Void,(Ptr{Void},),b)
+
 
 ExtendNNS(b::pcpp"clang::NestedNameSpecifierLocBuilder", ns::pcpp"clang::NamespaceDecl") =
     ccall((:ExtendNNS,libcxxffi),Void,(Ptr{Void},Ptr{Void}),b,ns)
@@ -507,7 +510,9 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
                   (pcpp"clang::CXXRecordDecl",pcpp"clang::Decl"),
                   (pcpp"clang::NamespaceDecl",pcpp"clang::Decl"),
                   (pcpp"clang::VarDecl",pcpp"clang::Decl"),
-                  (pcpp"clang::ValueDecl",pcpp"clang::Decl"))
+                  (pcpp"clang::ValueDecl",pcpp"clang::Decl"),
+                  (pcpp"clang::FunctionDecl",pcpp"clang::Decl"),
+                  (pcpp"clang::TypeDecl",pcpp"clang::Decl"))
     s = split(string(rt.parameters[1].parameters[1].parameters[1]),"::")[end]
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
@@ -586,21 +591,19 @@ _lookup_name(fname::Symbol, ctx::pcpp"clang::DeclContext") = _lookup_name(string
 
 isaNamespaceDecl(d::pcpp"clang::CXXRecordDecl") = false
 
-function nnsextend(nnsbuilder,part,cur)
-    if nnsbuilder != C_NULL
-        if isaNamespaceDecl(cur)
-            ExtendNNS(nnsbuilder, dcastNamespaceDecl(cur))
-        else
-            ExtendNNSIdentifier(nnsbuilder, part)
+function nnsextend(cxxscope,part)
+    if cxxscope != C_NULL
+        errorOccured = ccall((:BuildNNS,libcxxffi),Bool,(Ptr{Void},Ptr{Uint8}),cxxscope,part)
+        if errorOccured
+            error("Failed to extend NNS with part $part")
         end
     end
 end
 
-function lookup_name(parts, nnsbuilder=C_NULL, start=translation_unit(), addlast=false)
+function lookup_name(parts, cxxscope = C_NULL, start=translation_unit(), addlast=false)
     cur = start
-    for fpart in parts
-        lastcur = cur
-        (cur != start) && nnsextend(nnsbuilder,fpart,cur)
+    for (i,fpart) in enumerate(parts)
+        (addlast || (i != length(parts))) && nnsextend(cxxscope,fpart)
         cur = _lookup_name(fpart,primary_ctx(toctx(cur)))
         if cur == C_NULL
             if lastcur == translation_unit()
@@ -610,11 +613,10 @@ function lookup_name(parts, nnsbuilder=C_NULL, start=translation_unit(), addlast
             end
         end
     end
-    addlast && nnsextend(nnsbuilder,parts[end],cur)
     cur
 end
 
-lookup_ctx(fname::String; nnsbuilder=C_NULL, cur=translation_unit(), addlast = false) = lookup_name(split(fname,"::"),nnsbuilder,cur, addlast)
+lookup_ctx(fname::String; cxxscope=C_NULL, cur=translation_unit(), addlast = false) = lookup_name(split(fname,"::"),cxxscope,cur, addlast)
 lookup_ctx(fname::Symbol; kwargs...) = lookup_ctx(string(fname); kwargs...)
 
 function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
@@ -837,7 +839,9 @@ function juliatype(t::QualType)
     elseif isPointerType(t)
         pt = getPointeeType(t)
         tt = juliatype(pt)
-        if CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
+        if tt <: CppFunc
+            return CppFptr{tt}
+        elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
             return CppPtr{tt,CVR}
         else
             return Ptr{tt}
@@ -1143,7 +1147,7 @@ function typeForNNS{nns}(T::Type{CppNNS{nns}})
     typeForDecl(declfornns(T))
 end
 
-function declfornns{nns}(::Type{CppNNS{nns}},nnsbuilder=C_NULL)
+function declfornns{nns}(::Type{CppNNS{nns}},cxxscope=C_NULL)
     @assert isa(nns,Tuple)
     d = tu = translation_unit()
     for (i,n) in enumerate(nns)
@@ -1164,17 +1168,17 @@ function declfornns{nns}(::Type{CppNNS{nns}},nnsbuilder=C_NULL)
                 end
                 d = specialize_template_clang(cxxt,arr,cpptype)
                 @assert d != C_NULL
-                (nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,QualType(typeForDecl(d)))
+                #(nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,QualType(typeForDecl(d)))
             else
                 @assert d == tu
                 t = cpptype(n)
                 dump(t)
                 dump(getPointeeType(t))
-                (nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,getPointeeType(t))
+                #(nnsbuilder != C_NULL) && ExtendNNSType(nnsbuilder,getPointeeType(t))
                 d = getAsCXXRecordDecl(getPointeeType(t))
             end
         else
-            d = lookup_name((n,), nnsbuilder, d, i != length(nns))
+            d = lookup_name((n,), cxxscope, d, i != length(nns))
         end
         @assert d != C_NULL
     end
@@ -1427,7 +1431,7 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs 
         if rett == Void
             CreateRetVoid(builder)
         else
-            if rett <: CppPtr || rett <: CppRef || rett <: CppEnum
+            if rett <: CppPtr || rett <: CppRef || rett <: CppEnum || rett <: CppFptr
                 undef = getUndefValue(llvmrt)
                 elty = getStructElementType(llvmrt,0)
                 ret = CreateBitCast(builder,ret,elty)
@@ -1486,9 +1490,10 @@ stagedfunction cxxref(expr)
         expr = expr.parameters[1]
         isaddrof = true
     end
-    nnsbuilder = newNNSBuilder()
+    #nnsbuilder = newNNSBuilder()
+    cxxscope = newCXXScopeSpec()
 
-    d = declfornns(expr,nnsbuilder)
+    d = declfornns(expr,cxxscope)
     @assert d.ptr != C_NULL
     # If this is a typedef or something we'll try to get the primary one
     primary_decl = to_decl(primary_ctx(toctx(d)))
@@ -1497,8 +1502,9 @@ stagedfunction cxxref(expr)
     end
 
     if isaValueDecl(d)
-        expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d), nnsbuilder=nnsbuilder)
-        deleteNNSBuilder(nnsbuilder)
+        expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d)||isaFunctionDecl(d), cxxscope=cxxscope)
+        #deleteNNSBuilder(nnsbuilder)
+        deleteCXXScopeSpec(cxxscope)
 
         if isaddrof
             expr = CreateAddrOfExpr(dre)

@@ -42,6 +42,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/PrettyDeclStackTrace.h"
+#include "Sema/TypeLocBuilder.h"
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CodeGenOptions.h>
 #include <clang/AST/Type.h>
@@ -865,11 +866,11 @@ DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
     DC->addDecl(D);
 }
 
-DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::NestedNameSpecifierLocBuilder *builder, int islvalue)
+DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)
 {
     clang::QualType T = D->getType();
-    return (void*)clang::DeclRefExpr::Create(*clang_astcontext, builder ?
-            builder->getWithLocInContext(*clang_astcontext) : clang::NestedNameSpecifierLoc(NULL,NULL),
+    return (void*)clang::DeclRefExpr::Create(*clang_astcontext, scope ?
+            scope->getWithLocInContext(*clang_astcontext) : clang::NestedNameSpecifierLoc(NULL,NULL),
             getTrivialSourceLocation(), D, false, getTrivialSourceLocation(),
             T.getNonReferenceType(), islvalue ? clang::VK_LValue : clang::VK_RValue);
 }
@@ -1365,6 +1366,8 @@ ISAD(clang,CXXRecordDecl,clang::Decl)
 ISAD(clang,NamespaceDecl,clang::Decl)
 ISAD(clang,VarDecl,clang::Decl)
 ISAD(clang,ValueDecl,clang::Decl)
+ISAD(clang,FunctionDecl,clang::Decl)
+ISAD(clang,TypeDecl,clang::Decl)
 
 DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
@@ -1470,9 +1473,39 @@ DLLEXPORT void *newNNSBuilder()
   return (void*)new clang::NestedNameSpecifierLocBuilder();
 }
 
+DLLEXPORT void *newCXXScopeSpec()
+{
+  clang::CXXScopeSpec *cxx = new clang::CXXScopeSpec();
+  cxx->MakeGlobal(*clang_astcontext,getTrivialSourceLocation());
+  return (void*)cxx;
+}
+
 DLLEXPORT void deleteNNSBuilder(clang::NestedNameSpecifierLocBuilder *builder)
 {
   delete builder;
+}
+
+DLLEXPORT void deleteCXXScopeSpec(clang::CXXScopeSpec *spec)
+{
+  delete spec;
+}
+
+DLLEXPORT bool BuildNNS(clang::CXXScopeSpec *spec, const char *Name)
+{
+  clang::Preprocessor &PP = clang_parser->getPreprocessor();
+  // Get the identifier.
+  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
+  return clang_compiler->getSema().BuildCXXNestedNameSpecifier(
+    nullptr, *Id,
+    getTrivialSourceLocation(),
+    getTrivialSourceLocation(),
+    clang::QualType(),
+    false,
+    *spec,
+    nullptr,
+    false,
+    nullptr
+  );
 }
 
 DLLEXPORT void ExtendNNS(clang::NestedNameSpecifierLocBuilder *builder, clang::NamespaceDecl *d)
@@ -1490,7 +1523,14 @@ DLLEXPORT void ExtendNNSIdentifier(clang::NestedNameSpecifierLocBuilder *builder
 
 DLLEXPORT void ExtendNNSType(clang::NestedNameSpecifierLocBuilder *builder, void *t)
 {
-  builder->Extend(*clang_astcontext,clang::SourceLocation(),clang::TypeLoc(clang::QualType::getFromOpaquePtr(t),0),getTrivialSourceLocation());
+  clang::TypeLocBuilder TLBuilder;
+  clang::QualType T = clang::QualType::getFromOpaquePtr(t);
+  TLBuilder.push<clang::QualifiedTypeLoc>(T);
+  builder->Extend(*clang_astcontext,clang::SourceLocation(),
+    TLBuilder.getTypeLocInContext(
+      *clang_astcontext,
+      T),
+    getTrivialSourceLocation());
 }
 
 DLLEXPORT void *makeFunctionType(void *rt, void **argts, size_t nargs)
