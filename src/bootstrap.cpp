@@ -49,14 +49,7 @@
 #include <clang/AST/DeclTemplate.h>
 #include <clang/Basic/Specifiers.h>
 
-// Hopefully I'll be able to get this in upstream
-// but for now ship with a copy of this header file
-// that's patched
-#include "CodeGen/CGVTables.h"
-#include "CodeGen/CodeGenTypes.h"
-#include "CodeGen/SanitizerMetadata.h"
-#include "monkeypatch/CodeGenModule.h"
-
+#include "CodeGen/CodeGenModule.h"
 #include <CodeGen/CodeGenTypes.h>
 #include <CodeGen/CodeGenFunction.h>
 
