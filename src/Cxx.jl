@@ -521,7 +521,9 @@ end
 for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isCharType, :isIntegerType, :isFunctionPointerType, :isMemberFunctionPointerType,
     :isFunctionType, :isFunctionProtoType, :isEnumeralType, :isFloatingType)
-                  @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
+
+    @eval ($s)(t::QualType) = ($s)(extractTypePtr(t))
+    @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
 end
 
 for (r,s) in ((pcpp"clang::CXXRecordDecl",:getPointeeCXXRecordDecl),
@@ -1082,6 +1084,10 @@ end
 
 function emitRefExpr(expr, pvd = nothing, ct = nothing)
     rt = DeduceReturnType(expr)
+
+    if isFunctionType(rt)
+        error("Cannot reference function by value")
+    end
 
     rett = juliatype(rt)
 
