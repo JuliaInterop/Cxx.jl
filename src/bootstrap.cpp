@@ -1368,6 +1368,7 @@ ISAD(clang,VarDecl,clang::Decl)
 ISAD(clang,ValueDecl,clang::Decl)
 ISAD(clang,FunctionDecl,clang::Decl)
 ISAD(clang,TypeDecl,clang::Decl)
+ISAD(clang,CXXMethodDecl,clang::Decl)
 
 DLLEXPORT void *getUndefValue(llvm::Type *t)
 {

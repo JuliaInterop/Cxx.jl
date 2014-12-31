@@ -512,7 +512,8 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
                   (pcpp"clang::VarDecl",pcpp"clang::Decl"),
                   (pcpp"clang::ValueDecl",pcpp"clang::Decl"),
                   (pcpp"clang::FunctionDecl",pcpp"clang::Decl"),
-                  (pcpp"clang::TypeDecl",pcpp"clang::Decl"))
+                  (pcpp"clang::TypeDecl",pcpp"clang::Decl"),
+                  (pcpp"clang::CXXMethodDecl",pcpp"clang::Decl"))
     s = split(string(rt.parameters[1].parameters[1].parameters[1]),"::")[end]
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
@@ -1502,7 +1503,10 @@ stagedfunction cxxref(expr)
     end
 
     if isaValueDecl(d)
-        expr = dre = CreateDeclRefExpr(d; islvalue=isaVarDecl(d)||isaFunctionDecl(d), cxxscope=cxxscope)
+        expr = dre = CreateDeclRefExpr(d;
+            islvalue = isaVarDecl(d) ||
+                (isaFunctionDecl(d) && !isaCXXMethodDecl(d)),
+            cxxscope=cxxscope)
         #deleteNNSBuilder(nnsbuilder)
         deleteCXXScopeSpec(cxxscope)
 

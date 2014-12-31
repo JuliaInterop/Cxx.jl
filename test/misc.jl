@@ -51,3 +51,12 @@ void foo51() {}
 @test_throws ErrorException (@cxx foo51)
 @test isa((@cxx &foo51),CppFptr)
 
+# References to member functions (#55)
+cxx"""
+class foo55 {
+    foo55() {};
+public:
+    void bar() {};
+};
+"""
+@test isa((@cxx &foo55::bar),CppMFptr)
