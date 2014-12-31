@@ -853,7 +853,7 @@ function juliatype(t::QualType)
         if isFunctionProtoType(t)
             t = pcpp"clang::FunctionProtoType"(t.ptr)
             rt = getReturnType(t)
-            args = pcpp"clang::Type"[]
+            args = QualType[]
             for i = 0:(getNumParams(t)-1)
                 push!(args,getParam(t,i))
             end

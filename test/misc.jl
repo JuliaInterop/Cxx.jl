@@ -60,3 +60,12 @@ public:
 };
 """
 @test isa((@cxx &foo55::bar),CppMFptr)
+
+cxx"""
+class bar55 {
+    bar55() {};
+public:
+    double bar(int) { return 0.0; };
+};
+"""
+@test isa((@cxx &bar55::bar),CppMFptr)
