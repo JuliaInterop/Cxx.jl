@@ -604,6 +604,7 @@ end
 function lookup_name(parts, cxxscope = C_NULL, start=translation_unit(), addlast=false)
     cur = start
     for (i,fpart) in enumerate(parts)
+        lastcur = cur
         (addlast || (i != length(parts))) && nnsextend(cxxscope,fpart)
         cur = _lookup_name(fpart,primary_ctx(toctx(cur)))
         if cur == C_NULL
@@ -635,7 +636,7 @@ function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
         else
-            error("Unhandled template parameter type")
+            error("Unhandled template parameter type ($t)")
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
@@ -659,7 +660,7 @@ function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cp
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
         else
-            error("Unhandled template parameter type")
+            error("Unhandled template parameter type ($t)")
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
@@ -1155,14 +1156,16 @@ function declfornns{nns}(::Type{CppNNS{nns}},cxxscope=C_NULL)
         if !isa(n, Symbol)
             if n <: CppTemplate
                 d = lookup_name((n.parameters[1],),C_NULL,d)
-                @show d
                 cxxt = cxxtmplt(d)
                 @assert cxxt != C_NULL
                 arr = Any[]
                 for arg in n.parameters[2]
-                    @show arg
-                    if arg <: CppNNS
-                        push!(arr,typeForNNS(arg))
+                    if isa(arg,Type)
+                        if arg <: CppNNS
+                            push!(arr,typeForNNS(arg))
+                        elseif arg <: CppPtr
+                            push!(arr,cpptype(arg))
+                        end
                     else
                         push!(arr,arg)
                     end
@@ -1606,6 +1609,8 @@ end
 function to_prefix(expr, isaddrof=false)
     if isa(expr,Symbol)
         return (Expr(:tuple,quot(expr)), isaddrof)
+    elseif isa(expr, Bool)
+        return (Expr(:tuple,expr),isaddrof)
     elseif isexpr(expr,:(::))
         nns1, isaddrof = to_prefix(expr.args[1],isaddrof)
         nns2, _ = to_prefix(expr.args[2],isaddrof)
@@ -1622,7 +1627,8 @@ function to_prefix(expr, isaddrof=false)
         for i = 2:length(expr.args)
             nns2, isaddrof2 = to_prefix(expr.args[i],false)
             @assert !isaddrof2
-            push!(tup.args,:(CppNNS{$nns2}))
+            isnns = length(nns2.args) > 1 || isa(nns2.args[1],Expr)
+            push!(tup.args, isnns ? :(CppNNS{$nns2}) : nns2.args[1])
         end
         @assert length(nns.args) == 1
         @assert isexpr(nns.args[1],:quote)

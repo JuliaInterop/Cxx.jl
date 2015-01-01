@@ -69,3 +69,14 @@ public:
 };
 """
 @test isa((@cxx &bar55::bar),CppMFptr)
+
+# booleans as template arguments
+cxx"""
+template < bool T > class baz {
+    baz() {};
+public:
+    void bar() {};
+};
+"""
+
+@cxx &baz{false}::bar
