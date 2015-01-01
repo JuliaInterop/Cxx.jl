@@ -63,19 +63,6 @@ function defineMacro(Name)
     ccall((:defineMacro, libcxxffi), Void, (Ptr{Uint8},), Name)
 end
 
-function cxx_std_lib_version()
-    const valid_versions = ["4.8", "4.9"]
-    @linux_only begin
-        base = "/usr/include/c++/"
-    end
-    vers = readdir(base)
-    filter!(x->in(x, valid_versions), vers)
-    length(vers) > 0 || error("Could not find C++ standard library.")
-    sort!(vers)
-    # choose newest version
-    return vers[end]
-end
-
 # # # Types we will use to represent C++ values
 
 # TODO: Maybe use Ptr{CppValue} and Ptr{CppFunc} instead?
@@ -246,12 +233,99 @@ basepath = joinpath(JULIA_HOME, "../../")
     didfind || error("Could not find C++ standard library. Is XCode installed?")
 end
 
+# Translated from Generic_GCC::GCCInstallationDetector::ScanLibDirForGCCTriple
+function ScanLibDirForGCCTriple(base,triple)
+    LibSuffixes = [
+        ("/gcc/" * triple,"/../../.."),
+        # Skip cross compilers
+        # "gcc-cross"
+        ("/" * triple * "/gcc/" * triple, "/../../../.."),
+        ("/" * triple, "/../..")
+        # Don't try to find ubuntu weirdness
+        # hopefully recent enough versions don't
+        # have this mismatch
+        # "/i386-linux-gnu/gcc/" * triple
+    ]
+    Version = v"0.0.0"
+    VersionString = ""
+    GccPath = ""
+    for (suffix,isuffix) in LibSuffixes
+        path = base * suffix
+        isdir(path) || continue
+        for dir in readdir(path)
+            CandidateVersion = try
+                VersionNumber(dir)
+            catch
+                continue
+            end
+            # Ignore versions less than 4.8
+            if CandidateVersion < v"4.8" ||
+                CandidateVersion < Version
+                continue
+            end
+            InstallPath = path * "/" * dir
+            IncPath = InstallPath * isuffix * "/../include"
+            if !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
+               !isdir( IncPath * "/c++/" * dir )
+                continue
+            end
+            Version = CandidateVersion
+            VersionString = dir
+            InstallPath = path * "/" * VersionString
+            GccPath = InstallPath * isuffix
+        end
+    end
+    return (Version, VersionString, GccPath)
+end
+
+function AddLinuxHeaderPaths()
+    # Taken from Clang's ToolChains.cpp
+    const X86_64LibDirs = ["/lib64", "/lib"]
+    const X86_64Triples = [
+    "x86_64-linux-gnu", "x86_64-unknown-linux-gnu", "x86_64-pc-linux-gnu",
+    "x86_64-redhat-linux6E", "x86_64-redhat-linux", "x86_64-suse-linux",
+    "x86_64-manbo-linux-gnu", "x86_64-linux-gnu", "x86_64-slackware-linux",
+    "x86_64-linux-android", "x86_64-unknown-linux"
+    ]
+
+    const Prefixes = ["/usr"]
+
+    Version = v"0.0.0"
+    Path = VersionString = Triple = ""
+    for prefix in Prefixes
+        isdir(prefix) || continue
+        for dir in X86_64LibDirs
+            isdir(prefix) || continue
+            for triple in X86_64Triples
+                CandidateVersion, CandidateVersionString, CandidatePath =
+                    ScanLibDirForGCCTriple(prefix*dir,triple)
+                if CandidateVersion > Version
+                    Version = CandidateVersion
+                    VersionString = CandidateVersionString
+                    Path = CandidatePath
+                    Triple = triple
+                end
+            end
+        end
+    end
+
+    if Version == v"0.0.0"
+        error("Could not find C++ standard library")
+    end
+
+    found = false
+
+    incpath = Path * "/../include"
+
+    addHeaderDir(incpath, kind = C_System)
+    addHeaderDir(incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
+    addHeaderDir(incpath * "/c++/" * VersionString, kind = C_System)
+    addHeaderDir(incpath * "/" * Triple, kind = C_System)
+end
+
 @linux_only begin
-    ver = cxx_std_lib_version()
-    addHeaderDir("/usr/include/c++/$ver", kind = C_System);
-    addHeaderDir("/usr/include/x86_64-linux-gnu/c++/$ver/", kind = C_System);
+    AddLinuxHeaderPaths()
     addHeaderDir("/usr/include", kind = C_System);
-    addHeaderDir("/usr/include/x86_64-linux-gnu", kind = C_System);
 end
 
 @windows_only begin
