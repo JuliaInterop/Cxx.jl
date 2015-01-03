@@ -138,7 +138,7 @@ panel = LineEdit.Prompt("C++ > ";
 repl = Base.active_repl
 
 panel.on_done = REPL.respond(repl,panel) do line
-    process_cxx_string(string(line,"\n;"), isTopLevelExpression(line))
+    process_cxx_string(string(line,"\n;"), isTopLevelExpression(line), :REPL, 1, 1)
 end
 
 main_mode = repl.interface.modes[1]

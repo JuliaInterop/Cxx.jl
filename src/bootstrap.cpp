@@ -318,12 +318,12 @@ DLLEXPORT void add_directory(int kind, int isFramework, const char *dirname)
   clang::Preprocessor &pp = clang_parser->getPreprocessor();
   auto dir = fm.getDirectory(dirname);
   if (dir == NULL)
-    std::cout << "WARNING: Could not add directory" << dirname << "to clang search path!\n";
+    std::cout << "WARNING: Could not add directory " << dirname << " to clang search path!\n";
   else
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
 
-static int _cxxparse(const clang::DirectoryLookup *CurDir)
+DLLEXPORT int _cxxparse()
 {
     clang::Sema &sema = clang_compiler->getSema();
     clang::ASTConsumer *Consumer = &sema.getASTConsumer();
@@ -363,7 +363,7 @@ DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
     clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
 
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
-    return _cxxparse(CurDir);
+    return _cxxparse();
 }
 
 /*
@@ -471,7 +471,7 @@ DLLEXPORT void ActOnFinishNamespaceDef(clang::Decl *D)
 
 DLLEXPORT void EnterSourceFile(char *data, size_t length)
 {
-    const clang::DirectoryLookup *CurDir;
+    const clang::DirectoryLookup *CurDir = nullptr;
     clang::FileManager &fm = clang_compiler->getFileManager();
     clang::SourceManager &sm = clang_compiler->getSourceManager();
     clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
@@ -480,10 +480,27 @@ DLLEXPORT void EnterSourceFile(char *data, size_t length)
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
 }
 
+DLLEXPORT void EnterVirtualFile(char *data, size_t length, char *VirtualPath, size_t PathLength)
+{
+    const clang::DirectoryLookup *CurDir = nullptr;
+    clang::FileManager &fm = clang_compiler->getFileManager();
+    clang::SourceManager &sm = clang_compiler->getSourceManager();
+    llvm::StringRef FileName(VirtualPath, PathLength);
+    llvm::StringRef Code(data,length);
+    std::unique_ptr<llvm::MemoryBuffer> Buf =
+      llvm::MemoryBuffer::getMemBuffer(Code, FileName);
+    const clang::FileEntry *Entry =
+        fm.getVirtualFile(FileName, Buf->getBufferSize(), 0);
+    sm.overrideFileContents(Entry, std::move(Buf));
+    clang::FileID FID = sm.createFileID(Entry,sm.getLocForStartOfFile(sm.getMainFileID()),clang::SrcMgr::C_User);
+    clang::Preprocessor &P = clang_parser->getPreprocessor();
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+}
+
 DLLEXPORT int cxxparse(char *data, size_t length)
 {
     EnterSourceFile(data, length);
-    return _cxxparse(nullptr);
+    return _cxxparse();
 }
 
 DLLEXPORT void defineMacro(const char *Name)
@@ -501,6 +518,7 @@ DLLEXPORT void init_julia_clang_env() {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     clang_compiler = new clang::CompilerInstance;
     clang_compiler->getDiagnosticOpts().ShowColors = 1;
+    clang_compiler->getDiagnosticOpts().ShowPresumedLoc = 1;
     clang_compiler->createDiagnostics();
     clang_compiler->getLangOpts().CPlusPlus = 1;
     clang_compiler->getLangOpts().CPlusPlus11 = 1;

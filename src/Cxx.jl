@@ -44,9 +44,21 @@ function cxxinclude(fname; dir = Base.source_path() === nothing ? pwd() : dirnam
     RunGlobalConstructors()
 end
 
+EnterBuffer(buf) = ccall((:EnterSourceFile,libcxxffi),Void,(Ptr{Uint8},Csize_t),buf,sizeof(buf))
+EnterVirtualSource(buf,file::ByteString) = ccall((:EnterVirtualFile,libcxxffi),Void,(Ptr{Uint8},Csize_t,Ptr{Uint8},Csize_t),buf,sizeof(buf),file,sizeof(file))
+EnterVirtualSource(buf,file::Symbol) = EnterVirtualSource(buf,bytestring(file))
+
 function cxxparse(string)
     if ccall((:cxxparse, libcxxffi), Cint, (Ptr{Uint8}, Csize_t), string, sizeof(string)) == 0
         error("Could not parse string")
+    end
+    RunGlobalConstructors()
+end
+
+function ParseVirtual(string, VirtualFileName, FileName, Line, Column)
+    EnterVirtualSource(string, VirtualFileName)
+    if ccall(:_cxxparse,Cint,()) == 0
+        error("Could not parse C++ code at $FileName:$Line:$Column")
     end
     RunGlobalConstructors()
 end
@@ -124,7 +136,7 @@ immutable JLCppCast{T,JLT}
     end
 end
 
-macro jpcpp_str(s)
+macro jpcpp_str(s,args...)
     JLCppCast{CppBaseType{symbol(s)}}
 end
 
@@ -158,19 +170,19 @@ const NullCVR = (false,false,false)
 simpleCppType(s) = CppBaseType{symbol(s)}
 simpleCppValue(s) = CppValue{simpleCppType(s),NullCVR}
 
-macro pcpp_str(s)
+macro pcpp_str(s,args...)
     CppPtr{simpleCppValue(s),NullCVR}
 end
 
-macro cpcpp_str(s)
+macro cpcpp_str(s,args...)
     CppPtr{CppValue{simpleCppType(s),(true,false,false)},NullCVR}
 end
 
-macro rcpp_str(s)
+macro rcpp_str(s,args...)
     CppRef{simpleCppType(s),NullCVR}
 end
 
-macro vcpp_str(s)
+macro vcpp_str(s,args...)
     simpleCppValue(s)
 end
 
@@ -1827,14 +1839,13 @@ function ArgCleanup(e,sv)
     end
 end
 
-const sourcebuffers = String[]
+const sourcebuffers = Array((String,Symbol,Int,Int),0)
 
 immutable SourceBuf{id}; end
 sourceid{id}(::Type{SourceBuf{id}}) = id
 
 icxxcounter = 0
 
-EnterBuffer(buf) = ccall((:EnterSourceFile,libcxxffi),Void,(Ptr{Uint8},Csize_t),buf,sizeof(buf))
 ActOnStartOfFunction(D) = pcpp"clang::Decl"(ccall((:ActOnStartOfFunction,libcxxffi),Ptr{Void},(Ptr{Void},),D))
 ParseFunctionStatementBody(D) = ccall((:ParseFunctionStatementBody,libcxxffi),Void,(Ptr{Void},),D)
 
@@ -1858,7 +1869,7 @@ SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl
 # Create a clang FunctionDecl with the given body and
 # and the given types for embedded __juliavars
 #
-function CreateFunctionWithBody(body,args...)
+function CreateFunctionWithBody(body,args...; filename = symbol(""), line = 1, col = 1)
     global icxxcounter
 
     argtypes = (Int,QualType)[]
@@ -1883,7 +1894,11 @@ function CreateFunctionWithBody(body,args...)
         end
     end
 
-    EnterBuffer(body)
+    if filename == symbol("")
+        EnterBuffer(body)
+    else
+        EnterVirtualSource(body,VirtualFileName(filename))
+    end
 
     local FD
     local dne
@@ -1920,24 +1935,59 @@ end
 
 stagedfunction cxxstr_impl(sourcebuf, args...)
     id = sourceid(sourcebuf)
-    buf = sourcebuffers[id]
+    buf, filename, line, col = sourcebuffers[id]
 
-    FD, llvmargs, argidxs = CreateFunctionWithBody(buf, args...)
+    FD, llvmargs, argidxs = CreateFunctionWithBody(buf, args...; filename = filename, line = line, col = col)
 
     dne = CreateDeclRefExpr(FD)
     return CallDNE(dne,tuple(llvmargs...); argidxs = argidxs)
 end
 
-function process_cxx_string(str,global_scope = true)
+#
+# Generate a virtual name for a file in the same directory as `filename`.
+# This will be the virtual filename for clang to refer to the source snippet by.
+# What this is doesn't really matter as long as it's distring for every snippet,
+# as we #line it to the proper filename afterwards anyway.
+#
+VirtualFileNameCounter = 0
+function VirtualFileName(filename)
+    global VirtualFileNameCounter
+    name = joinpath(dirname(string(filename)),string("__cxxjl_",VirtualFileNameCounter,".cpp"))
+    VirtualFileNameCounter += 1
+    name
+end
+
+function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,col=1)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
     # TODO: Consider if we need more advanced scope information in which
     # case we should probably switch to __julia_varN instead of putting
     # things in namespaces.
+    # TODO: It would be nice diagnostics were reported on the original source,
+    # rather than the source with __julia* substitutions
     pos = 1
     sourcebuf = IOBuffer()
-    !global_scope && write(sourcebuf,"{\n")
+    if !global_scope
+        write(sourcebuf,"{\n")
+    end
+    if filename != symbol("")
+        if filename == :none
+            filename = :REPL
+        end
+        write(sourcebuf,"#line $line \"$filename\"\n")
+        if filename == :REPL
+            filename = symbol(joinpath(pwd(),"REPL"))
+        end
+    end
+    # Clang has no function for setting the column
+    # so we just write a bunch of spaces to match the
+    # indentation for the first line.
+    # However, due to the processing below columns are off anyway,
+    # so let's not do this until we can actually gurantee it'll be correct
+    # for _ in 1:(col-1)
+    #    write(sourcebuf," ")
+    # end
     exprs = Any[]
     isexprs = Bool[]
     global varnum
@@ -1978,6 +2028,12 @@ function process_cxx_string(str,global_scope = true)
             startvarnum += 1
             push!(argcleanup.args,:(ArgCleanup($s,$sv)))
         end
+        parsecode = filename == "" ? :( cxxparse($(takebuf_string(sourcebuf))) ) :
+            :( ParseVirtual( $(takebuf_string(sourcebuf)),
+                $( VirtualFileName(filename) ),
+                $( quot(filename) ),
+                $( line ),
+                $( col )) )
         return quote
             let
                 jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
@@ -1985,14 +2041,14 @@ function process_cxx_string(str,global_scope = true)
                 ctx = toctx(pcpp"clang::Decl"(ns.ptr))
                 unsafe_store!(jns,ns.ptr)
                 $argsetup
-                cxxparse($(takebuf_string(sourcebuf)))
+                $parsecode
                 unsafe_store!(jns,C_NULL)
                 $argcleanup
             end
         end
     else
         write(sourcebuf,"\n}")
-        push!(sourcebuffers,takebuf_string(sourcebuf))
+        push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
         id = length(sourcebuffers)
         ret = Expr(:call,cxxstr_impl,:(SourceBuf{$id}()))
         for (i,e) in enumerate(exprs)
@@ -2003,18 +2059,18 @@ function process_cxx_string(str,global_scope = true)
     end
 end
 
-macro cxx_str(str)
-    process_cxx_string(str,true)
+macro cxx_str(str,args...)
+    process_cxx_string(str,true,args...)
 end
 
-macro icxx_str(str)
-    process_cxx_string(str,false)
+macro icxx_str(str,args...)
+    process_cxx_string(str,false,args...)
 end
 
-macro icxx_mstr(str)
-    process_cxx_string(str,false)
+macro icxx_mstr(str,args...)
+    process_cxx_string(str,false,args...)
 end
 
-macro cxx_mstr(str)
-    process_cxx_string(str,true)
+macro cxx_mstr(str,args...)
+    process_cxx_string(str,true,args...)
 end

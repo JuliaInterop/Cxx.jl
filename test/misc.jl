@@ -79,4 +79,18 @@ public:
 };
 """
 
-@cxx &baz{false}::bar
+@test isa((@cxx &baz{false}::bar),CppMFptr)
+
+# Includes relative to the source directory (#48)
+cxx"""
+#include "./incpathtest.inc"
+"""
+@test (@cxx incpathtest) == 1
+
+function foo48()
+icxx"""
+#include "./incpathtest.inc"
+return incpathtest;
+"""
+end
+@test foo48() == 1
