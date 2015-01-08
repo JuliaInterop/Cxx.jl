@@ -73,6 +73,13 @@ cxx""" void cppfunction(args){ . . .} """ => @cxx cppfunction(args)
 julia_function (args) icxx""" *code here*  """ end
 ```    
 
+### The C++ REPL
+
+This package contains an experimental C++ REPL feature. To use it,
+`include(Pkg.dir("Cxx","src","CxxREPL","replpane.jl")), which
+will add a new pane to your REPL that is accessible by pressing the
+`<` key.
+
 ### **Using Cxx.jl:** 
 
 #### Example 1: Embedding a simple C++ function in Julia
