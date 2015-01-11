@@ -257,7 +257,6 @@ function cpptype{rt, args}(p::Type{CppFunc{rt,args}})
     makeFunctionType(cpptype(rt),QualType[cpptype(arg) for arg in args])
 end
 cpptype{f}(p::Type{CppFptr{f}}) = pointerTo(cpptype(f))
-cpptype{T,jlt}(p::Type{JLCppCast{T,jlt}}) = pointerTo(cpptype(T))
 
 # # # # Section 2: Mapping Julia types to clang types
 #

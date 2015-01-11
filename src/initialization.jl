@@ -95,6 +95,13 @@ function ParseVirtual(string, VirtualFileName, FileName, Line, Column)
         error("Could not parse C++ code at $FileName:$Line:$Column")
 end
 
+setup_cpp_env(f::pcpp"llvm::Function") =
+    ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ptr{Void},),f)
+function cleanup_cpp_env(state)
+    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ptr{Void},),state)
+    RunGlobalConstructors()
+end
+
 # Include paths and macro handling
 
 # The kind of include directory
