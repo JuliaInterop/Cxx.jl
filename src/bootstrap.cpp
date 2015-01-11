@@ -345,7 +345,7 @@ DLLEXPORT int _cxxparse()
     return 1;
 }
 
-DLLEXPORT int cxxinclude(char *fname, char *sourcepath, int isAngled)
+DLLEXPORT int cxxinclude(char *fname, int isAngled)
 {
     const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = clang_compiler->getFileManager();
