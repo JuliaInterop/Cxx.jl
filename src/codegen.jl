@@ -543,79 +543,14 @@ function emitRefExpr(expr, pvd = nothing, ct = nothing)
 end
 
 # Handle calls
-
-# This code is common between here and cxx_str handling
-function _CallDNE(dne, argt, callargs, pvds; argidxs = [1:length(argt)])
-    if dne == C_NULL
-        error("Could not resolve DNE")
-    end
-
-    rslot = C_NULL
-
-    ce = CreateCallExpr(dne,callargs)
-
-    if ce == C_NULL
-        error("Failed to create CallExpr")
-    end
-
-    # First we need to get the return type of the C++ expression
-    rt = BuildDecltypeType(ce)
-    rett = juliatype(rt)
-
-    llvmargt = [argt...]
-
-    issret = (rett != None) && rett <: CppValue
-
-    if issret
-        llvmargt = [Ptr{Uint8},llvmargt]
-    end
-
-    llvmrt = julia_to_llvm(rett)
-
-    # Let's create an LLVM fuction
-    f = CreateFunction(issret ? julia_to_llvm(Void) : llvmrt,
-        map(julia_to_llvm,llvmargt))
-
-    # Clang's code emitter needs some extra information about the function, so let's
-    # initialize that as well
-    state = setup_cpp_env(f)
-
-    builder = irbuilder()
-
-    args = llvmargs(builder, f, llvmargt)
-    associateargs(builder,argt,issret ? args[2:end] : args,pvds)
-
-    if issret
-        rslot = CreateBitCast(builder,args[1],getPointerTo(toLLVM(rt)))
-    end
-
-    MarkDeclarationsReferencedInExpr(ce)
-    ret = EmitCallExpr(ce,rslot)
-
-    if rett <: CppValue
-        ret = C_NULL
-    end
-
-    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = argidxs)
-end
-
-function CallDNE(dne, argt; kwargs...)
-    callargs, pvds = buildargexprs(dne, argt)
-    _CallDNE(dne,argt,callargs,pvds)
-end
-
 function _cppcall(expr, thiscall, isnew, argt)
     check_args(argt, expr)
 
     callargs, pvds = buildargexprs(argt)
 
-    ret = rslot = C_NULL
-    rt = Void
-    builder = irbuilder()
-    llvmargt = [argt...]
-
+    rett = Void
     isne = isctce = isce = false
-    issret = false
+    ce = nE = ctce = C_NULL
 
     if thiscall
         @assert expr <: CppNNS
@@ -627,8 +562,6 @@ function _cppcall(expr, thiscall, isnew, argt)
         (me == C_NULL) && error("Could not find member $name")
 
         ce = BuildCallToMemberFunction(me,callargs[2:end])
-
-        isce = true
     else
         targs = ()
         if expr <: CppTemplate
@@ -670,12 +603,9 @@ function _cppcall(expr, thiscall, isnew, argt)
                     error("Could not construct `new` expression")
                 end
                 MarkDeclarationsReferencedInExpr(nE)
-                isne = true
             else
-                issret = true
                 rt = QualType(typeForDecl(cxxd))
                 ctce = BuildCXXTypeConstructExpr(rt,callargs)
-                isctce = true
             end
         else
             myctx = getContext(d)
@@ -686,17 +616,32 @@ function _cppcall(expr, thiscall, isnew, argt)
             dne = BuildDeclarationNameExpr(split(string(fname),"::")[end],myctx)
 
             ce = CreateCallExpr(dne,callargs)
-
-            isce = true
         end
     end
 
-    if isce
+    EmitExpr(ce,nE,ctce, argt, pvds, rett)
+end
+
+# Emits either a CallExpr, a NewExpr, or a CxxConstructExpr, depending on which
+# one is non-NULL
+function EmitExpr(ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
+    builder = irbuilder()
+    llvmargt = [argt...]
+    issret = false
+    rslot = C_NULL
+    rt = C_NULL
+    ret = C_NULL
+
+    if ce != C_NULL
         # First we need to get the return type of the C++ expression
         rt = BuildDecltypeType(ce)
         rett = juliatype(rt)
 
         issret = (rett != None) && rett <: CppValue
+    elseif ctce != C_NULL
+        issret = true
+        rt = GetExprResultType(ctce)
+        @show rt
     end
     if issret
         llvmargt = [Ptr{Uint8},llvmargt]
@@ -719,7 +664,7 @@ function _cppcall(expr, thiscall, isnew, argt)
     args = llvmargs(builder, f, llvmargt)
     associateargs(builder, argt, issret ? args[2:end] : args,pvds)
 
-    if isce
+    if ce != C_NULL
         if issret
             rslot = CreateBitCast(builder,args[1],getPointerTo(toLLVM(rt)))
         end
@@ -728,16 +673,16 @@ function _cppcall(expr, thiscall, isnew, argt)
         if rett <: CppValue
             ret = C_NULL
         end
-    elseif isne
+    elseif nE != C_NULL
         ret = EmitCXXNewExpr(nE)
-    elseif isctce
+    elseif ctce != C_NULL
         MarkDeclarationsReferencedInExpr(ctce)
         EmitAnyExprToMem(ctce,args[1],true)
     end
 
     # Common return path for everything that's calling a normal function
     # (i.e. everything but constructors)
-    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state)
+    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; kwargs...)
 end
 
 #

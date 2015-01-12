@@ -157,6 +157,12 @@ function CreateFunctionWithBody(body,args...; filename = symbol(""), line = 1, c
     FD, llvmargs, argidxs
 end
 
+function CallDNE(dne, argt; kwargs...)
+    callargs, pvds = buildargexprs(argt)
+    ce = CreateCallExpr(dne,callargs)
+    EmitExpr(ce,C_NULL,C_NULL,argt,pvds; kwargs...)
+end
+
 stagedfunction cxxstr_impl(sourcebuf, args...)
     id = sourceid(sourcebuf)
     buf, filename, line, col = sourcebuffers[id]
@@ -165,7 +171,7 @@ stagedfunction cxxstr_impl(sourcebuf, args...)
 
     dne = CreateDeclRefExpr(FD)
     argt = tuple(llvmargs...)
-    return _CallDNE(dne,argt,buildargexprs(argt)...; argidxs = argidxs)
+    return CallDNE(dne,argt; argidxs = argidxs)
 end
 
 #
