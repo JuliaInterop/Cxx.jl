@@ -542,7 +542,17 @@ function emitRefExpr(expr, pvd = nothing, ct = nothing)
         ct !== nothing ? [ct] : [],llvmrt,rett,rt,ret,state)
 end
 
-# Handle calls
+#
+# Call Handling
+#
+# There are four major cases we need to take care of:
+#
+# 1) Membercall, e.g. @cxx foo->bar(...)
+# 2) Regular call, e.g. @cxx foo()
+# 3) Constructors e.g. @cxx fooclass()
+# 4) Heap allocation, e.g. @cxxnew fooclass()
+#
+
 function _cppcall(expr, thiscall, isnew, argt)
     check_args(argt, expr)
 
@@ -552,7 +562,7 @@ function _cppcall(expr, thiscall, isnew, argt)
     isne = isctce = isce = false
     ce = nE = ctce = C_NULL
 
-    if thiscall
+    if thiscall # membercall
         @assert expr <: CppNNS
         fname = expr.parameters[1][1]
         @assert isa(fname,Symbol)
@@ -576,8 +586,7 @@ function _cppcall(expr, thiscall, isnew, argt)
         if primary_decl != C_NULL
             d = primary_decl
         end
-        # Let's see if we're constructing something. And, if so, let's
-        # setup an array to accept the result
+        # Let's see if we're constructing something.
         cxxd = dcastCXXRecordDecl(d)
         fname = symbol(_decl_name(d))
         cxxt = cxxtmplt(d)
@@ -692,7 +701,6 @@ end
 # access to an alarming number of parameters. Hopefully this can be cleaned up
 # in the future
 #
-
 function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt)])
     argt = Type[argt...]
 
