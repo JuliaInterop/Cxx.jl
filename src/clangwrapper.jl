@@ -70,7 +70,7 @@ BuildCallToMemberFunction(me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"}
 BuildMemberReference(base, t, IsArrow, name) =
     pcpp"clang::Expr"(ccall((:BuildMemberReference,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Cint,Ptr{Uint8}),base, t, IsArrow, name))
 
-DeduceReturnType(expr) = QualType(ccall((:DeduceReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
+GetExprResultType(expr) = QualType(ccall((:DeduceReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
 GetFunctionReturnType(FD::pcpp"clang::FunctionDecl") = QualType(ccall((:GetFunctionReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),FD))
 BuildDecltypeType(expr) = QualType(ccall((:BuildDecltypeType,libcxxffi),Ptr{Void},(Ptr{Void},),expr))
 
@@ -136,6 +136,10 @@ EmitCXXNewExpr(E::pcpp"clang::Expr") = pcpp"llvm::Value"(ccall((:EmitCXXNewExpr,
 EmitAnyExpr(E::pcpp"clang::Expr") = pcpp"llvm::Value"(ccall((:EmitAnyExpr,libcxxffi),Ptr{Void},(Ptr{Void},),E))
 
 EmitAnyExprToMem(expr,mem,isInit) = ccall((:emitexprtomem,libcxxffi),Void,(Ptr{Void},Ptr{Void},Cint),expr,mem,isInit)
+
+EmitCppMemberCallExpr(mce,rslot) = pcpp"llvm::Value"(ccall((:emitcppmembercallexpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),mce.ptr,rslot))
+
+EmitCallExpr(ce,rslot) = pcpp"llvm::Value"(ccall((:emitcallexpr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),ce.ptr,rslot))
 
 cxxsizeof(t::pcpp"clang::CXXRecordDecl") = ccall((:cxxsizeof,libcxxffi),Csize_t,(Ptr{Void},),t)
 cxxsizeof(t::QualType) = ccall((:cxxsizeofType,libcxxffi),Csize_t,(Ptr{Void},),t)
