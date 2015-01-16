@@ -650,7 +650,7 @@ function EmitExpr(ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     elseif ctce != C_NULL
         issret = true
         rt = GetExprResultType(ctce)
-        @show rt
+        #@show rt
     end
     if issret
         llvmargt = [Ptr{Uint8},llvmargt]

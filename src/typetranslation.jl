@@ -432,7 +432,7 @@ function juliatype(t::QualType)
         elseif kind == cSChar
             return Int8
         end
-        @show kind
+        #@show kind
         dump(t)
         error("Unrecognized Integer type")
     elseif isFloatingType(t)
