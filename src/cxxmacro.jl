@@ -94,12 +94,12 @@ function to_prefix(expr, isaddrof=false)
     elseif isexpr(expr,:&)
         return to_prefix(expr.args[1],true)
     elseif isexpr(expr,:$)
-        @show expr.args[1]
+        #@show expr.args[1]
         return (Expr(:tuple,expr.args[1],),isaddrof)
     elseif isexpr(expr,:curly)
         nns, isaddrof = to_prefix(expr.args[1],isaddrof)
         tup = Expr(:tuple)
-        @show expr
+        #@show expr
         for i = 2:length(expr.args)
             nns2, isaddrof2 = to_prefix(expr.args[i],false)
             @assert !isaddrof2
