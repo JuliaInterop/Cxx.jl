@@ -254,7 +254,7 @@ end
 end
 
 # Also add clang's intrinsic headers
-addHeaderDir(joinpath(basepath,"usr/lib/clang/3.6.0/include/"), kind = C_ExternCSystem)
+addHeaderDir(joinpath(basepath,"usr/lib/clang/3.7.0/include/"), kind = C_ExternCSystem)
 
 # __dso_handle is usually added by the linker when not present. However, since
 # we're not passing through a linker, we need to add it ourselves.
