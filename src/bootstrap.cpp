@@ -228,8 +228,8 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
       clang_cgm->EmitTentativeDefinition(D);
     }
 
-    virtual void HandleVTable(clang::CXXRecordDecl *RD, bool DefinitionRequired) {
-      clang_cgm->EmitVTable(RD, DefinitionRequired);
+    virtual void HandleVTable(clang::CXXRecordDecl *RD) {
+      clang_cgm->EmitVTable(RD);
     }
 };
 
