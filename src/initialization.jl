@@ -129,22 +129,26 @@ end
 # Clang has some code for this in Driver/, but it is not easily accessible for
 # our use case. Instead, we have custom logic here, which should be sufficient
 # for most use cases. This logic will be adjusted as the need arises.
-
 basepath = joinpath(JULIA_HOME, "../../")
-depspath = joinpath(basepath,"deps")
+
+# Sometimes it is useful to skip this step and do it yourself, e.g. when building
+# a custom standard library.
+nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
 @osx_only begin
-    xcode_path =
-        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
-    didfind = false
-    for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
-        if isdir(joinpath(xcode_path,path))
-            addHeaderDir(joinpath(xcode_path,path), kind = C_ExternCSystem)
-            didfind = true
+    if !nostdcxx
+        xcode_path =
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
+        didfind = false
+        for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
+            if isdir(joinpath(xcode_path,path))
+                addHeaderDir(joinpath(xcode_path,path), kind = C_ExternCSystem)
+                didfind = true
+            end
         end
+        didfind || error("Could not find C++ standard library. Is XCode installed?")
     end
-    didfind || error("Could not find C++ standard library. Is XCode installed?")
 end
 
 # On linux the situation is a little more complicated as the system header is
@@ -241,17 +245,21 @@ function AddLinuxHeaderPaths()
     addHeaderDir(incpath * "/" * Triple, kind = C_System)
 end
 
-@linux_only begin
-    AddLinuxHeaderPaths()
-    addHeaderDir("/usr/include", kind = C_System);
-end
+if !nostdcxx
 
-@windows_only begin
-      base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
-      addHeaderDir(joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
-      #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
-      addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
-      addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
+    @linux_only begin
+        AddLinuxHeaderPaths()
+        addHeaderDir("/usr/include", kind = C_System);
+    end
+
+    @windows_only begin
+          base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
+          addHeaderDir(joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
+          #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
+          addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
+          addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
+    end
+
 end
 
 # Also add clang's intrinsic headers
@@ -260,7 +268,6 @@ addHeaderDir(joinpath(JULIA_HOME,"../lib/clang/3.7.0/include/"), kind = C_Extern
 # __dso_handle is usually added by the linker when not present. However, since
 # we're not passing through a linker, we need to add it ourselves.
 cxxparse("""
-#include <stdint.h>
 extern "C" {
     void __dso_handle() {}
 }
