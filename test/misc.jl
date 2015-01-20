@@ -49,7 +49,7 @@ void foo51() {}
 """
 
 @test_throws ErrorException (@cxx foo51)
-@test isa((@cxx &foo51),CppFptr)
+@test isa((@cxx &foo51),Cxx.CppFptr)
 
 # References to member functions (#55)
 cxx"""
@@ -59,7 +59,7 @@ public:
     void bar() {};
 };
 """
-@test isa((@cxx &foo55::bar),CppMFptr)
+@test isa((@cxx &foo55::bar),Cxx.CppMFptr)
 
 cxx"""
 class bar55 {
@@ -68,7 +68,7 @@ public:
     double bar(int) { return 0.0; };
 };
 """
-@test isa((@cxx &bar55::bar),CppMFptr)
+@test isa((@cxx &bar55::bar),Cxx.CppMFptr)
 
 # booleans as template arguments
 cxx"""
@@ -79,7 +79,7 @@ public:
 };
 """
 
-@test isa((@cxx &baz{false}::bar),CppMFptr)
+@test isa((@cxx &baz{false}::bar),Cxx.CppMFptr)
 
 # Includes relative to the source directory (#48)
 cxx"""

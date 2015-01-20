@@ -1,8 +1,8 @@
 # LLVM Headers
 
-addHeaderDir(joinpath(basepath,"usr/include"))
-addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/"))
-addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/clang/include/"))
+addHeaderDir(joinpath(JULIA_HOME,"../include"))
+addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/clang/"))
+addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/clang/include/"))
 
 
 # Load LLVM and clang libraries

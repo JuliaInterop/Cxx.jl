@@ -12,7 +12,7 @@ function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     @assert @cxx t->isSized()
     div((@cxx dl->getTypeSizeInBits(t)),8)
 end
-@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(lookup_name(["llvm","ExecutionEngine"]).ptr)) >= 152
+@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(["llvm","ExecutionEngine"]).ptr)) >= 152
 
 code_llvmf(f,t) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), f, t, false))
 function code_graph(f,args)
@@ -35,14 +35,14 @@ clangmod = pcpp"llvm::Module"(unsafe_load(cglobal(:clang_shadow_module,Ptr{Void}
 ptr = @cxx clangmod->getFunction(pointer("_Z1fv"))
 @assert ptr != C_NULL
 
-jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
-ns = createNamespace("julia")
+jns = cglobal((:julia_namespace,Cxx.libcxxffi),Ptr{Void})
+ns = Cxx.createNamespace("julia")
 
 # This is basically the manual expansion of the cxx_str macro
 unsafe_store!(jns,ns.ptr)
-ctx = toctx(pcpp"clang::Decl"(ns.ptr))
-d = CreateVarDecl(ctx,"xvar1",cpptype(Int64))
-AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(d.ptr))
+ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
+d = Cxx.CreateVarDecl(ctx,"xvar1",Cxx.cpptype(Int64))
+Cxx.AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(d.ptr))
 cxxparse("""
 extern llvm::Module *clang_shadow_module;
 extern llvm::LLVMContext &jl_LLVMContext;
@@ -62,10 +62,10 @@ GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module)->getNamedValue(
 # LLDB test
 
 
-addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/lldb/include"))
+addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/lldb/include"))
 
 # Because LLDB includes private headers from public ones! For shame.
-addHeaderDir(joinpath(basepath,"deps/llvm-svn/tools/lldb/include/lldb/Target"))
+addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/lldb/include/lldb/Target"))
 defineMacro("LLDB_DISABLE_PYTHON") # NO!
 cxxinclude("lldb/Interpreter/CommandInterpreter.h")
 cxxinclude("lldb/Interpreter/CommandReturnObject.h")

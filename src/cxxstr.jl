@@ -28,11 +28,10 @@ function SetDeclInitializer(decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant"
     ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{Void},Ptr{Void}),decl,val)
 end
 
-function ssv(e::ANY,ctx,varnum)
+function ssv(e::ANY,ctx,varnum,thunk)
     T = typeof(e)
     if isa(e,Expr) || isa(e,Symbol)
         # Create a thunk that contains this expression
-        thunk = eval(:( ()->($e) ))
         linfo = thunk.code
         (tree, ty) = Base.typeinf(linfo,(),())
         T = ty
@@ -255,38 +254,43 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
         for expr in exprs
             s = gensym()
             sv = gensym()
-            push!(argsetup.args,:(($s, $sv) = ssv($expr,ctx,$startvarnum)))
+            push!(argsetup.args,quote
+                ($s, $sv) =
+                    let e = $expr
+                        Cxx.ssv(e,ctx,$startvarnum,eval(:( ()->($e) )))
+                    end
+                end)
             startvarnum += 1
-            push!(argcleanup.args,:(ArgCleanup($s,$sv)))
+            push!(argcleanup.args,:(Cxx.ArgCleanup($s,$sv)))
         end
         parsecode = filename == "" ? :( cxxparse($(takebuf_string(sourcebuf))) ) :
-            :( ParseVirtual( $(takebuf_string(sourcebuf)),
+            :( Cxx.ParseVirtual( $(takebuf_string(sourcebuf)),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( line ),
                 $( col )) )
-        return quote
+        return esc(quote
             let
-                jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
-                ns = createNamespace("julia")
-                ctx = toctx(pcpp"clang::Decl"(ns.ptr))
+                jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
+                ns = Cxx.createNamespace("julia")
+                ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
                 unsafe_store!(jns,ns.ptr)
                 $argsetup
                 $parsecode
                 unsafe_store!(jns,C_NULL)
                 $argcleanup
             end
-        end
+        end)
     else
         write(sourcebuf,"\n}")
         push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
         id = length(sourcebuffers)
-        ret = Expr(:call,cxxstr_impl,:(SourceBuf{$id}()))
+        ret = Expr(:call,cxxstr_impl,:(Cxx.SourceBuf{$id}()))
         for (i,e) in enumerate(exprs)
             @assert !isexprs[i]
             push!(ret.args,e)
         end
-        return ret
+        return esc(ret)
     end
 end
 

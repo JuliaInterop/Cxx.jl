@@ -14,7 +14,7 @@ julia_global = 1
 
 cxx"""
 uint64_t bar() {
-    return (uint64_t)$:(julia_global::Int64);
+    return (uint64_t)$:(global julia_global::Int64);
 }
 """
 

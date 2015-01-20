@@ -1,18 +1,18 @@
 function cpp_ref(expr,nns,isaddrof)
     @assert isa(expr, Symbol)
     nns = Expr(:tuple,nns.args...,quot(expr))
-    x = :(CppNNS{$nns}())
-    ret = Expr(:call, :cxxref, isaddrof ? :(CppAddr($x)) : x)
+    x = :(Cxx.CppNNS{$nns}())
+    ret = esc(Expr(:call, :(Cxx.cxxref), isaddrof ? :(Cxx.CppAddr($x)) : x))
 end
 
 function refderefarg(arg)
     if isexpr(arg,:call)
         # is unary *
         if length(arg.args) == 2 && arg.args[1] == :*
-            return :( CppDeref($(refderefarg(arg.args[2]))) )
+            return :( Cxx.CppDeref($(refderefarg(arg.args[2]))) )
         end
     elseif isexpr(arg,:&)
-        return :( CppAddr($(refderefarg(arg.args[1]))) )
+        return :( Cxx.CppAddr($(refderefarg(arg.args[1]))) )
     end
     arg
 end
@@ -61,25 +61,25 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
     # Add `this` as the first argument
     this !== nothing && unshift!(arguments, this)
 
-    e = curly = :( CppNNS{$nns} )
+    e = curly = :( Cxx.CppNNS{$nns} )
 
     # Add templating
     if targs != ()
-        e = :( CppTemplate{$curly,$targs} )
+        e = :( Cxx.CppTemplate{$curly,$targs} )
     end
 
     # The actual call to the staged function
     ret = Expr(:call, isnew ?
-        :cxxnewcall : this === nothing ? :cppcall : :cppcall_member)
+        :(Cxx.cxxnewcall) : this === nothing ? :(Cxx.cppcall) : :(Cxx.cppcall_member) )
     push!(ret.args,:($e()))
     append!(ret.args,arguments)
-    ret
+    esc(ret)
 end
 
 function build_cpp_ref(member, this, isaddrof)
     @assert isa(member,Symbol)
-    x = :(CppExpr{$(quot(symbol(member))),()}())
-    ret = Expr(:call, :cxxmemref, isaddrof ? :(CppAddr($x)) : x, this)
+    x = :(Cxx.CppExpr{$(quot(symbol(member))),()}())
+    ret = esc(Expr(:call, :(Cxx.cxxmemref), isaddrof ? :(Cxx.CppAddr($x)) : x, this))
 end
 
 function to_prefix(expr, isaddrof=false)
@@ -109,7 +109,7 @@ function to_prefix(expr, isaddrof=false)
         @assert length(nns.args) == 1
         @assert isexpr(nns.args[1],:quote)
 
-        return (Expr(:tuple,:(CppTemplate{$(nns.args[1]),$tup}),),isaddrof)
+        return (Expr(:tuple,:(Cxx.CppTemplate{$(nns.args[1]),$tup}),),isaddrof)
     end
     error("Invalid NNS $expr")
 end

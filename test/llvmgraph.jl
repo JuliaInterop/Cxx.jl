@@ -15,7 +15,7 @@ immutable LLVMGraph{GraphType,NodeType} <: AbstractGraph{NodeType,Edge{NodeType}
 end
 
 function LLVMGraph{GraphType}(g::GraphType)
-    LLVMGraph{GraphType,pcpp(@cxx llvm::GraphTraits{$(GraphType)}::NodeType)}(g)
+    LLVMGraph{GraphType,Cxx.pcpp(@cxx llvm::GraphTraits{$(GraphType)}::NodeType)}(g)
 end
 
 is_directed(g::LLVMGraph) = true

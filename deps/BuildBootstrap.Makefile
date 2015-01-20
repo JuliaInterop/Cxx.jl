@@ -5,7 +5,7 @@ include $(JULIAHOME)/Make.inc
 FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) -I$(build_includedir) \
 		-I$(JULIAHOME)/src/support \
 		-I$(call exec,$(LLVM_CONFIG) --includedir) \
-		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
+		-I$(JULIAHOME)/$(DEPS_DIR)/llvm-$(LLVM_VER)/tools/clang/lib
 
 JULIA_LDFLAGS = -L$(build_shlibdir) -L$(build_libdir)
 
@@ -66,9 +66,14 @@ build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build
 	@$(call PRINT_CC, $(CXX) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
 
 
+LINKED_LIBS = $(CLANG_LIBS)
+ifeq ($(BUILD_LLDB),1)
+LINKED_LIBS += $(LLDB_LIBS)
+endif
+
 ifneq (,$(wildcard $(build_shlibdir)/libjulia.$(SHLIB_EXT)))
 usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o | usr/lib
-	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(CLANG_LIBS) $(LLDB_LIBS) $(NO_WHOLE_ARCHIVE) $< )
+	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 	@cp usr/lib/libcxxffi.$(SHLIB_EXT) $(build_shlibdir)
 else
 usr/lib/libcxxffi.$(SHLIB_EXT):
@@ -80,7 +85,7 @@ endif
 
 ifneq (,$(wildcard $(build_shlibdir)/libjulia-debug.$(SHLIB_EXT)))
 usr/lib/libcxxffi-debug.$(SHLIB_EXT): build/bootstrap.o | usr/lib
-	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia-debug $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(CLANG_LIBS) $(LLDB_LIBS) $(NO_WHOLE_ARCHIVE) $< )
+	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia-debug $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 else
 usr/lib/libcxxffi-debug.$(SHLIB_EXT):
 	@echo "Not building debug library because corresponding julia DEBUG library does not exist."
