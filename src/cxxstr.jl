@@ -97,6 +97,7 @@ function CreateFunctionWithBody(body,args...; filename = symbol(""), line = 1, c
 
     argtypes = (Int,QualType)[]
     typeargs = (Int,QualType)[]
+    callargs = Int[]
     llvmargs = Any[]
     argidxs = Int[]
     # Make a first part about the arguments
@@ -109,7 +110,14 @@ function CreateFunctionWithBody(body,args...; filename = symbol(""), line = 1, c
             body = replace(body,"__juliavar$i","__juliatype$i")
             push!(typeargs,(i,cpptype(arg.parameters[1])))
         else
-            T = cpptype(arg)
+            # This is temporary until we can find a better solution
+            if arg <: Function
+                body = replace(body,"__juliavar$i","jl_call0(__juliavar$i)")
+                push!(callargs,i)
+                T = cpptype(pcpp"jl_function_t")
+            else
+                T = cpptype(arg)
+            end
             (arg <: CppValue) && (T = referenceTo(T))
             push!(argtypes,(i,T))
             push!(llvmargs,arg)
@@ -240,9 +248,6 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
                 isexpr ? string("__julia::call",varnum,"()") :
                          string("__julia::var",varnum))
             varnum += 1
-        elseif isexpr
-            write(sourcebuf, string("__julia::call",varnum,"()"))
-            varnum += 1
         else
             write(sourcebuf, string("__juliavar",localvarnum))
             localvarnum += 1
@@ -285,12 +290,21 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
         write(sourcebuf,"\n}")
         push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
         id = length(sourcebuffers)
-        ret = Expr(:call,cxxstr_impl,:(Cxx.SourceBuf{$id}()))
+        setup = Expr(:block)
+        cxxstr = Expr(:call,cxxstr_impl,:(Cxx.SourceBuf{$id}()))
         for (i,e) in enumerate(exprs)
-            @assert !isexprs[i]
-            push!(ret.args,e)
+            if isexprs[i]
+                s = gensym()
+                @assert isa(e,QuoteNode)
+                e = e.value
+                push!(setup.args,Expr(:(=),s,Expr(:->,Expr(:tuple),e)))
+                push!(cxxstr.args,s)
+            else
+                push!(cxxstr.args,e)
+            end
         end
-        return ret
+        push!(setup.args,cxxstr)
+        return setup
     end
 end
 

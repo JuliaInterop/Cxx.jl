@@ -40,3 +40,19 @@ function foobar()
     end
 end
 foobar()
+
+function inlineexpr()
+    a = Int64[0]
+    b = Int64[0]
+    icxx"""
+        for (int i = 0; i < 10; ++i) {
+            if (i < 5)
+                $:(a[1] += 1);
+            else
+                $:(b[1] += 1);
+        }
+    """
+    @assert a[1] == 5
+    @assert b[1] == 5
+end
+inlineexpr()

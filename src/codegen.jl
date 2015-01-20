@@ -90,6 +90,7 @@ stripmodifier{T,CVR}(p::Union(Type{CppPtr{T,CVR}},
 stripmodifier{s}(p::Type{CppEnum{s}}) = p
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier(p::CxxBuiltinTypes) = p
+stripmodifier(p::Type{Function}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = p
 stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
 
@@ -101,6 +102,7 @@ resolvemodifier{s}(p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
 resolvemodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
 resolvemodifier{f}(cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
+resolvemodifier(p::Type{Function}, e::pcpp"clang::Expr") = e
 
 # For everything else, perform the appropriate transformation
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
@@ -123,6 +125,11 @@ resolvemodifier{T}(p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
 # same in julia and Clang
 resolvemodifier_llvm{ptr}(builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
 resolvemodifier_llvm(builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
+
+# Functions are also simple (for now) since we're just passing them through
+# as an jl_function_t*
+resolvemodifier_llvm(builder, t::Type{Function}, v::pcpp"llvm::Value") = v
+
 
 function resolvemodifier_llvm{T,CVR}(builder,
     t::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}), v::pcpp"llvm::Value")

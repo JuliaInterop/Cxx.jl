@@ -258,6 +258,8 @@ function cpptype{rt, args}(p::Type{CppFunc{rt,args}})
 end
 cpptype{f}(p::Type{CppFptr{f}}) = pointerTo(cpptype(f))
 
+cpptype(F::Type{Function}) = cpptype(pcpp"jl_function_t")
+
 # # # # Section 2: Mapping Julia types to clang types
 #
 # Somewhat simpler than the above, because we simply need to call the

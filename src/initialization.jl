@@ -270,5 +270,8 @@ addHeaderDir(joinpath(JULIA_HOME,"../lib/clang/3.7.0/include/"), kind = C_Extern
 cxxparse("""
 extern "C" {
     void __dso_handle() {}
+    struct jl_value_t;
+    struct jl_function_t;
+    extern jl_value_t *jl_call0(jl_function_t *);
 }
 """)
