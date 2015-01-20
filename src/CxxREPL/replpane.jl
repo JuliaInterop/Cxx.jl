@@ -1,4 +1,5 @@
 import Base: LineEdit, REPL
+using Cxx
 
 # Some of this code is derived from cling.
 # Copyright (c) 2007-2014 by the Authors.
@@ -37,7 +38,7 @@ import Base: LineEdit, REPL
 
 # Load Clang Headers
 
-addHeaderDir(joinpath(basepath,"usr/include"))
+addHeaderDir(joinpath(JULIA_HOME,"../include"))
 
 cxx"""
 #define __STDC_LIMIT_MACROS
@@ -49,8 +50,8 @@ cxx"""
 #include "clang/Frontend/CompilerInstance.h"
 """
 
-currentParser() = pcpp"clang::Parser"(unsafe_load(cglobal((:clang_parser,libcxxffi),Ptr{Void})))
-compiler() = pcpp"clang::CompilerInstance"(unsafe_load(cglobal((:clang_compiler,libcxxffi),Ptr{Void})))
+currentParser() = pcpp"clang::Parser"(unsafe_load(cglobal((:clang_parser,Cxx.libcxxffi),Ptr{Void})))
+compiler() = pcpp"clang::CompilerInstance"(unsafe_load(cglobal((:clang_compiler,Cxx.libcxxffi),Ptr{Void})))
 
 cxx"""
 // From bootstrap.cpp
@@ -138,7 +139,7 @@ panel = LineEdit.Prompt("C++ > ";
 repl = Base.active_repl
 
 panel.on_done = REPL.respond(repl,panel) do line
-    process_cxx_string(string(line,"\n;"), isTopLevelExpression(line), :REPL, 1, 1)
+    Cxx.process_cxx_string(string(line,"\n;"), isTopLevelExpression(line), :REPL, 1, 1)
 end
 
 main_mode = repl.interface.modes[1]
@@ -169,3 +170,5 @@ b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap,
 panel.keymap_dict = LineEdit.keymap(b)
 
 main_mode.keymap_dict = LineEdit.keymap_merge(main_mode.keymap_dict, cxx_keymap);
+
+nothing

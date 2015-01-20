@@ -269,7 +269,7 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
                 $( quot(filename) ),
                 $( line ),
                 $( col )) )
-        return esc(quote
+        return quote
             let
                 jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
                 ns = Cxx.createNamespace("julia")
@@ -280,7 +280,7 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
                 unsafe_store!(jns,C_NULL)
                 $argcleanup
             end
-        end)
+        end
     else
         write(sourcebuf,"\n}")
         push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
@@ -290,22 +290,22 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
             @assert !isexprs[i]
             push!(ret.args,e)
         end
-        return esc(ret)
+        return ret
     end
 end
 
 macro cxx_str(str,args...)
-    process_cxx_string(str,true,args...)
+    esc(process_cxx_string(str,true,args...))
 end
 
 macro icxx_str(str,args...)
-    process_cxx_string(str,false,args...)
+    esc(process_cxx_string(str,false,args...))
 end
 
 macro icxx_mstr(str,args...)
-    process_cxx_string(str,false,args...)
+    esc(process_cxx_string(str,false,args...))
 end
 
 macro cxx_mstr(str,args...)
-    process_cxx_string(str,true,args...)
+    esc(process_cxx_string(str,true,args...))
 end
