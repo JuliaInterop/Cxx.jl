@@ -138,7 +138,12 @@
 # are discussed below)
 #
 
+module Cxx
+
 using Base.Meta
+
+export @pcpp_str, @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr, @cxx,
+    addHeaderDir, defineMacro, cxxinclude
 
 include("cxxtypes.jl")
 include("initialization.jl")
@@ -148,3 +153,5 @@ include("codegen.jl")
 include("cxxmacro.jl")
 include("cxxstr.jl")
 include("utils.jl")
+
+end

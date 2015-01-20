@@ -5,7 +5,7 @@
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
+push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps-svn/usr/lib/"))
 
 const libcxxffi =
     string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
@@ -27,7 +27,7 @@ init()
 # us a list of all global constructors declared so far that need to be run
 # and put them in a single function. Calling this function, will then in turn
 # call all the global constructors and initialize them as needed.
-import Base: llvmcall
+import Base: llvmcall, cglobal
 
 CollectGlobalConstructors() = pcpp"llvm::Function"(
     ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},()))
@@ -254,7 +254,7 @@ end
 end
 
 # Also add clang's intrinsic headers
-addHeaderDir(joinpath(basepath,"usr/lib/clang/3.7.0/include/"), kind = C_ExternCSystem)
+addHeaderDir(joinpath(JULIA_HOME,"../lib/clang/3.7.0/include/"), kind = C_ExternCSystem)
 
 # __dso_handle is usually added by the linker when not present. However, since
 # we're not passing through a linker, we need to add it ourselves.
