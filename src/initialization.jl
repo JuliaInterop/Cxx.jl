@@ -5,7 +5,7 @@
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps-svn/usr/lib/"))
+push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
 
 const libcxxffi =
     string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
