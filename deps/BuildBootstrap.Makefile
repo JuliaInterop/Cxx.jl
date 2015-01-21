@@ -5,7 +5,7 @@ include $(JULIAHOME)/Make.inc
 FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) -I$(build_includedir) \
 		-I$(JULIAHOME)/src/support \
 		-I$(call exec,$(LLVM_CONFIG) --includedir) \
-		-I$(JULIAHOME)/$(DEPS_DIR)/llvm-$(LLVM_VER)/tools/clang/lib
+		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
 
 JULIA_LDFLAGS = -L$(build_shlibdir) -L$(build_libdir)
 
