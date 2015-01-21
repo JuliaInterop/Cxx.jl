@@ -142,7 +142,7 @@ module Cxx
 
 using Base.Meta
 
-export @cpcpp_str, @pcpp_str, @vcpp_str, @rcpp_str, cast,
+export cast,
        @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr,
        @cxx, @cxxnew,
        addHeaderDir, defineMacro, cxxinclude, cxxparse,

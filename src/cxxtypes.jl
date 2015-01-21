@@ -37,6 +37,7 @@
 #
 
 import Base: ==, cconvert
+export @cpcpp_str, @pcpp_str, @vcpp_str, @rcpp_str
 
 # Represents a base C++ type
 # i.e. a type that is not a pointer, a reference or a template
