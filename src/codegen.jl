@@ -54,7 +54,7 @@ immutable JLCppCast{T,JLT}
     end
 end
 
-cpptype{T,jlt}(p::Type{JLCppCast{T,jlt}}) = pointerTo(cpptype(T))
+cpptype{T,jlt}(p::Type{JLCppCast{T,jlt}}) = pointerTo(C,cpptype(C,T))
 
 macro jpcpp_str(s,args...)
     JLCppCast{CppBaseType{symbol(s)}}
@@ -94,27 +94,27 @@ stripmodifier(p::Type{Function}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = p
 stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
 
-resolvemodifier{T,CVR}(p::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}},
+resolvemodifier{T,CVR}(C,p::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}},
     Type{CppValue{T,CVR}}), e::pcpp"clang::Expr") = e
-resolvemodifier(p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
-resolvemodifier{T}(p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
-resolvemodifier{s}(p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
-resolvemodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
-resolvemodifier{f}(cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
-resolvemodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
-resolvemodifier(p::Type{Function}, e::pcpp"clang::Expr") = e
+resolvemodifier(C,p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
+resolvemodifier{T}(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
+resolvemodifier{s}(C,p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
+resolvemodifier{base,fptr}(C,p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
+resolvemodifier{f}(C,cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
+resolvemodifier{T,JLT}(C,p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
+resolvemodifier(C,p::Type{Function}, e::pcpp"clang::Expr") = e
 
 # For everything else, perform the appropriate transformation
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
 stripmodifier{T}(p::Type{CppDeref{T}}) = T
 stripmodifier{T}(p::Type{CppAddr{T}}) = T
 
-resolvemodifier{T,To}(p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") =
-    createCast(e,cpptype(To),CK_BitCast)
-resolvemodifier{T}(p::Type{CppDeref{T}}, e::pcpp"clang::Expr") =
-    createDerefExpr(e)
-resolvemodifier{T}(p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
-    CreateAddrOfExpr(e)
+resolvemodifier{T,To}(C,p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") =
+    createCast(C,e,cpptype(C,To),CK_BitCast)
+resolvemodifier{T}(C,p::Type{CppDeref{T}}, e::pcpp"clang::Expr") =
+    createDerefExpr(C,e)
+resolvemodifier{T}(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
+    CreateAddrOfExpr(C,e)
 
 # The LLVM operations themselves are slightly more tricky, since we need
 # to translate from julia's llvm representation to clang's llvm representation
@@ -123,49 +123,49 @@ resolvemodifier{T}(p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
 
 # Builtin types and plain pointers are easy - they are represented the
 # same in julia and Clang
-resolvemodifier_llvm{ptr}(builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
-resolvemodifier_llvm(builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm{ptr}(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(C, builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 
 # Functions are also simple (for now) since we're just passing them through
 # as an jl_function_t*
-resolvemodifier_llvm(builder, t::Type{Function}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(C, builder, t::Type{Function}, v::pcpp"llvm::Value") = v
 
 
-function resolvemodifier_llvm{T,CVR}(builder,
+function resolvemodifier_llvm{T,CVR}(C, builder,
     t::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}), v::pcpp"llvm::Value")
     # CppPtr and CppRef are julia immutables with one field, so at the LLVM
     # level they are represented as LLVM structrs with one (pointer) field.
     # To get at the pointer itself, we simply need to emit an extract
     # instruction
-    ExtractValue(v,0)
+    ExtractValue(C,v,0)
 end
 
 # Same situation as the pointer case
-resolvemodifier_llvm{s}(builder, t::Type{CppEnum{s}}, v::pcpp"llvm::Value") =
-    ExtractValue(v,0)
-resolvemodifier_llvm{f}(builder, t::Type{CppFptr{f}}, v::pcpp"llvm::Value") =
-    ExtractValue(v,0)
+resolvemodifier_llvm{s}(C, builder, t::Type{CppEnum{s}}, v::pcpp"llvm::Value") =
+    ExtractValue(C,v,0)
+resolvemodifier_llvm{f}(C, builder, t::Type{CppFptr{f}}, v::pcpp"llvm::Value") =
+    ExtractValue(C,v,0)
 
 # Very similar to the pointer case, but since there may be additional wrappers
 # hiding behind the T, we need to recursively call back into
 # resolvemodifier_llvm
-resolvemodifier_llvm{T,To}(builder, t::Type{CppCast{T,To}}, v::pcpp"llvm::Value") =
-    resolvemodifier_llvm(builder, T, ExtractValue(v,0))
-resolvemodifier_llvm{T}(builder, t::Type{CppDeref{T}}, v::pcpp"llvm::Value") =
-    resolvemodifier_llvm(builder, T, ExtractValue(v,0))
-resolvemodifier_llvm{T}(builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") =
-    resolvemodifier_llvm(builder, T, ExtractValue(v,0))
+resolvemodifier_llvm{T,To}(C, builder, t::Type{CppCast{T,To}}, v::pcpp"llvm::Value") =
+    resolvemodifier_llvm(C,builder, T, ExtractValue(C,v,0))
+resolvemodifier_llvm{T}(C, builder, t::Type{CppDeref{T}}, v::pcpp"llvm::Value") =
+    resolvemodifier_llvm(C,builder, T, ExtractValue(C,v,0))
+resolvemodifier_llvm{T}(C, builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") =
+    resolvemodifier_llvm(C,builder, T, ExtractValue(C,v,0))
 
 
 # We need to cast from a named struct with two fields to an anonymous struct
 # with two fields. This isn't bitcastable, so we need to use to sets of insert
 # and extract instructions
-function resolvemodifier_llvm{base,fptr}(builder,
+function resolvemodifier_llvm{base,fptr}(C, builder,
         t::Type{CppMFptr{base,fptr}}, v::pcpp"llvm::Value")
     t = getLLVMStructType([julia_to_llvm(Uint64),julia_to_llvm(Uint64)])
     undef = getUndefValue(t)
-    i1 = InsertValue(builder, undef, ExtractValue(v,0), 0)
-    return InsertValue(builder, i1, ExtractValue(v,1), 1)
+    i1 = InsertValue(builder, undef, ExtractValue(C,v,0), 0)
+    return InsertValue(builder, i1, ExtractValue(C,v,1), 1)
 end
 
 # We want to pass the content of a C-compatible julia struct to C++. Recall that
@@ -183,7 +183,7 @@ end
 # type pointer. Thus to get to the data, all we have to do is skip the type
 # pointer.
 #
-function resolvemodifier_llvm{T,jlt}(builder,
+function resolvemodifier_llvm{T,jlt}(C, builder,
         t::Type{JLCppCast{T,jlt}}, v::pcpp"llvm::Value")
     # Skip the type pointer to get to the actual data
     return CreateConstGEP1_32(builder,v,1)
@@ -205,10 +205,10 @@ end
 #    We start here
 #
 
-function resolvemodifier_llvm{s,targs}(builder,
+function resolvemodifier_llvm{s,targs}(C, builder,
         t::Type{CppValue{s,targs}}, v::pcpp"llvm::Value")
     @assert v != C_NULL
-    ty = cpptype(t)
+    ty = cpptype(C, t)
     if !isPointerType(getType(v))
         dump(v)
         error("Value is not of pointer type")
@@ -219,7 +219,7 @@ function resolvemodifier_llvm{s,targs}(builder,
         CreateBitCast(builder,array,getPointerTo(getType(array))))
     # Get the data pointer
     data = CreateConstGEP1_32(builder,arrayp,1)
-    dp = CreateBitCast(builder,data,getPointerTo(getPointerTo(tollvmty(ty))))
+    dp = CreateBitCast(builder,data,getPointerTo(getPointerTo(toLLVM(C,ty))))
     # A pointer to the actual data
     CreateLoad(builder,dp)
 end
@@ -232,47 +232,47 @@ end
 # caveats named in typetranslation.jl still apply.
 #
 
-function typeForNNS{nns}(T::Type{CppNNS{nns}})
+function typeForNNS{nns}(C,T::Type{CppNNS{nns}})
     if length(nns) == 1 && (nns[1] <: CppPtr || nns[1] <: CppRef)
-        return cpptype(nns[1])
+        return cpptype(C,nns[1])
     end
-    typeForDecl(declfornns(T))
+    typeForDecl(declfornns(C,T))
 end
 
-function declfornns{nns}(::Type{CppNNS{nns}},cxxscope=C_NULL)
+function declfornns{nns}(C,::Type{CppNNS{nns}},cxxscope=C_NULL)
     @assert isa(nns,Tuple)
-    d = tu = translation_unit()
+    d = tu = translation_unit(C)
     for (i,n) in enumerate(nns)
         if !isa(n, Symbol)
             if n <: CppTemplate
-                d = lookup_name((n.parameters[1],),C_NULL,d)
+                d = lookup_name(C, (n.parameters[1],),C_NULL,d)
                 cxxt = cxxtmplt(d)
                 @assert cxxt != C_NULL
                 arr = Any[]
                 for arg in n.parameters[2]
                     if isa(arg,Type)
                         if arg <: CppNNS
-                            push!(arr,typeForNNS(arg))
+                            push!(arr,typeForNNS(C,arg))
                         elseif arg <: CppPtr
-                            push!(arr,cpptype(arg))
+                            push!(arr,cpptype(C,arg))
                         end
                     else
                         push!(arr,arg)
                     end
                 end
-                d = specialize_template_clang(cxxt,arr,cpptype)
+                d = specialize_template_clang(C,cxxt,arr)
                 @assert d != C_NULL
                 # TODO: Do we need to extend the cxxscope here
             else
                 @assert d == tu
-                t = cpptype(n)
+                t = cpptype(C, n)
                 dump(t)
                 dump(getPointeeType(t))
                 # TODO: Do we need to extend the cxxscope here
                 d = getAsCXXRecordDecl(getPointeeType(t))
             end
         else
-            d = lookup_name((n,), cxxscope, d, i != length(nns))
+            d = lookup_name(C, (n,), cxxscope, d, i != length(nns))
         end
         @assert d != C_NULL
     end
@@ -359,14 +359,14 @@ end
 # compatible with the type expected by clang.
 #
 # Returns the list of processed arguments
-function llvmargs(builder, f, argt)
+function llvmargs(C, builder, f, argt)
     args = Array(pcpp"llvm::Value", length(argt))
     for i in 1:length(argt)
         t = argt[i]
         args[i] = pcpp"llvm::Value"(ccall(
             (:get_nth_argument,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),f,i-1))
         @assert args[i] != C_NULL
-        args[i] = resolvemodifier_llvm(builder, t, args[i])
+        args[i] = resolvemodifier_llvm(C, builder, t, args[i])
         if args[i] == C_NULL
             error("Failed to process argument")
         end
@@ -374,33 +374,33 @@ function llvmargs(builder, f, argt)
     args
 end
 
-function buildargexprs(argt)
+function buildargexprs(C, argt)
     callargs = pcpp"clang::Expr"[]
     pvds = pcpp"clang::ParmVarDecl"[]
     for i in 1:length(argt)
         #@show argt[i]
         t = argt[i]
         st = stripmodifier(t)
-        argit = cpptype(st)
-        st <: CppValue && (argit = pointerTo(argit))
-        argpvd = CreateParmVarDecl(argit)
+        argit = cpptype(C, st)
+        st <: CppValue && (argit = pointerTo(C,argit))
+        argpvd = CreateParmVarDecl(C, argit)
         push!(pvds, argpvd)
-        expr = CreateDeclRefExpr(argpvd)
-        st <: CppValue && (expr = createDerefExpr(expr))
-        expr = resolvemodifier(t, expr)
+        expr = CreateDeclRefExpr(C, argpvd)
+        st <: CppValue && (expr = createDerefExpr(C, expr))
+        expr = resolvemodifier(C, t, expr)
         push!(callargs,expr)
     end
     callargs, pvds
 end
 
-function associateargs(builder,argt,args,pvds)
+function associateargs(C, builder,argt,args,pvds)
     for i = 1:length(args)
         t = stripmodifier(argt[i])
-        argit = cpptype(t)
+        argit = cpptype(C, t)
         if t <: CppValue
-            argit = pointerTo(argit)
+            argit = pointerTo(C,argit)
         end
-        AssociateValue(pvds[i],argit,args[i])
+        AssociateValue(C, pvds[i],argit,args[i])
     end
 end
 
@@ -408,9 +408,9 @@ end
 
 # Some utilities
 
-function irbuilder()
+function irbuilder(C)
     pcpp"clang::CodeGen::CGBuilderTy"(
-        ccall((:clang_get_builder,libcxxffi),Ptr{Void},()))
+        ccall((:clang_get_builder,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
 end
 function julia_to_llvm(x::ANY)
     pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(Any,),x))
@@ -453,7 +453,8 @@ end
 #
 
 # Handle member references, i.e. syntax of the form `@cxx foo->bar`
-stagedfunction cxxmemref(expr, args...)
+stagedfunction cxxmemref(CT::CxxInstance, expr, args...)
+    C = instance(CT)
     this = args[1]
     check_args([this], expr)
     isaddrof = false
@@ -461,11 +462,11 @@ stagedfunction cxxmemref(expr, args...)
         expr = expr.parameters[1]
         isaddrof = true
     end
-    exprs, pvds = buildargexprs([this])
-    me = BuildMemberReference(exprs[1], cpptype(this), this <: CppPtr,
+    exprs, pvds = buildargexprs(C,[this])
+    me = BuildMemberReference(C, exprs[1], cpptype(C, this), this <: CppPtr,
         expr.parameters[1])
-    isaddrof && (me = CreateAddrOfExpr(me))
-    emitRefExpr(me, pvds[1], this)
+    isaddrof && (me = CreateAddrOfExpr(C,me))
+    emitRefExpr(C, me, pvds[1], this)
 end
 
 # Handle all other references. This is more complicated than the above for two
@@ -473,15 +474,16 @@ end
 # a) We can reference types (e.g. `@cxx int`)
 # b) Clang cares about how the reference was qualified, so we need to deal with
 #    cxxscopes.
-stagedfunction cxxref(expr)
+stagedfunction cxxref(CT,expr)
+    C = instance(CT)
     isaddrof = false
     if expr <: CppAddr
         expr = expr.parameters[1]
         isaddrof = true
     end
 
-    cxxscope = newCXXScopeSpec()
-    d = declfornns(expr,cxxscope)
+    cxxscope = newCXXScopeSpec(C)
+    d = declfornns(C,expr,cxxscope)
     @assert d.ptr != C_NULL
 
     # If this is a typedef or something we'll try to get the primary one
@@ -491,7 +493,7 @@ stagedfunction cxxref(expr)
     end
 
     if isaValueDecl(d)
-        expr = dre = CreateDeclRefExpr(d;
+        expr = dre = CreateDeclRefExpr(C, d;
             islvalue = isaVarDecl(d) ||
                 (isaFunctionDecl(d) && !isaCXXMethodDecl(d)),
             cxxscope=cxxscope)
@@ -499,16 +501,16 @@ stagedfunction cxxref(expr)
         deleteCXXScopeSpec(cxxscope)
 
         if isaddrof
-            expr = CreateAddrOfExpr(dre)
+            expr = CreateAddrOfExpr(C,dre)
         end
 
-        return emitRefExpr(expr)
+        return emitRefExpr(C, expr)
     else
         return :( $(juliatype(QualType(typeForDecl(d)))) )
     end
 end
 
-function emitRefExpr(expr, pvd = nothing, ct = nothing)
+function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     # Ask clang what the type is we're expecting
     rt = GetExprResultType(expr)
 
@@ -530,22 +532,22 @@ function emitRefExpr(expr, pvd = nothing, ct = nothing)
     (pvd != nothing) && push!(argt,ct)
 
     llvmrt = julia_to_llvm(rett)
-    f = CreateFunction(llvmrt, map(julia_to_llvm,argt))
-    state = setup_cpp_env(f)
-    builder = irbuilder()
+    f = CreateFunction(C, llvmrt, map(julia_to_llvm,argt))
+    state = setup_cpp_env(C, f)
+    builder = irbuilder(C)
 
-    args = llvmargs(builder, f, argt)
+    args = llvmargs(C, builder, f, argt)
 
-    (pvd != nothing) && associateargs(builder,[ct],args[needsret ? 1:1 : 2:2],[pvd])
+    (pvd != nothing) && associateargs(C,builder,[ct],args[needsret ? 1:1 : 2:2],[pvd])
 
-    MarkDeclarationsReferencedInExpr(expr)
+    MarkDeclarationsReferencedInExpr(C, expr)
     if !needsret
-        ret = EmitAnyExpr(expr)
+        ret = EmitAnyExpr(C, expr)
     else
-        EmitAnyExprToMem(expr, args[1], false)
+        EmitAnyExprToMem(C, expr, args[1], false)
     end
 
-    createReturn(builder,f,ct !== nothing ? (ct,) : (),
+    createReturn(C,builder,f,ct !== nothing ? (ct,) : (),
         ct !== nothing ? [ct] : [],llvmrt,rett,rt,ret,state)
 end
 
@@ -560,10 +562,11 @@ end
 # 4) Heap allocation, e.g. @cxxnew fooclass()
 #
 
-function _cppcall(expr, thiscall, isnew, argt)
+function _cppcall(CT, expr, thiscall, isnew, argt)
+    C = instance(CT)
     check_args(argt, expr)
 
-    callargs, pvds = buildargexprs(argt)
+    callargs, pvds = buildargexprs(C,argt)
 
     rett = Void
     isne = isctce = isce = false
@@ -574,11 +577,11 @@ function _cppcall(expr, thiscall, isnew, argt)
         fname = expr.parameters[1][1]
         @assert isa(fname,Symbol)
 
-        me = BuildMemberReference(callargs[1], cpptype(argt[1]),
+        me = BuildMemberReference(C,callargs[1], cpptype(C, argt[1]),
             argt[1] <: CppPtr, fname)
         (me == C_NULL) && error("Could not find member $name")
 
-        ce = BuildCallToMemberFunction(me,callargs[2:end])
+        ce = BuildCallToMemberFunction(C,me,callargs[2:end])
     else
         targs = ()
         if expr <: CppTemplate
@@ -586,7 +589,7 @@ function _cppcall(expr, thiscall, isnew, argt)
             expr = expr.args[1]
         end
 
-        d = declfornns(expr)
+        d = declfornns(C,expr)
         @assert d.ptr != C_NULL
         # If this is a typedef or something we'll try to get the primary one
         primary_decl = to_decl(primary_ctx(toctx(d)))
@@ -599,7 +602,7 @@ function _cppcall(expr, thiscall, isnew, argt)
         cxxt = cxxtmplt(d)
         if cxxd != C_NULL || cxxt != C_NULL
             if cxxd == C_NULL
-                cxxd = specialize_template(cxxt,targs,cpptype)
+                cxxd = specialize_template(C,cxxt,targs)
             end
 
             # targs may have changed because the name is canonical
@@ -614,14 +617,14 @@ function _cppcall(expr, thiscall, isnew, argt)
 
             if isnew
                 rett = CppPtr{T,NullCVR}
-                nE = BuildCXXNewExpr(QualType(typeForDecl(cxxd)),callargs)
+                nE = BuildCXXNewExpr(C,QualType(typeForDecl(cxxd)),callargs)
                 if nE == C_NULL
                     error("Could not construct `new` expression")
                 end
-                MarkDeclarationsReferencedInExpr(nE)
+                MarkDeclarationsReferencedInExpr(C,nE)
             else
                 rt = QualType(typeForDecl(cxxd))
-                ctce = BuildCXXTypeConstructExpr(rt,callargs)
+                ctce = BuildCXXTypeConstructExpr(C,rt,callargs)
             end
         else
             myctx = getContext(d)
@@ -629,19 +632,19 @@ function _cppcall(expr, thiscall, isnew, argt)
                 myctx = getParentContext(myctx)
             end
             @assert myctx != C_NULL
-            dne = BuildDeclarationNameExpr(split(string(fname),"::")[end],myctx)
+            dne = BuildDeclarationNameExpr(C, split(string(fname),"::")[end],myctx)
 
-            ce = CreateCallExpr(dne,callargs)
+            ce = CreateCallExpr(C, dne,callargs)
         end
     end
 
-    EmitExpr(ce,nE,ctce, argt, pvds, rett)
+    EmitExpr(C,ce,nE,ctce, argt, pvds, rett)
 end
 
 # Emits either a CallExpr, a NewExpr, or a CxxConstructExpr, depending on which
 # one is non-NULL
-function EmitExpr(ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
-    builder = irbuilder()
+function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
+    builder = irbuilder(C)
     llvmargt = [argt...]
     issret = false
     rslot = C_NULL
@@ -650,7 +653,7 @@ function EmitExpr(ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
 
     if ce != C_NULL
         # First we need to get the return type of the C++ expression
-        rt = BuildDecltypeType(ce)
+        rt = BuildDecltypeType(C,ce)
         rett = juliatype(rt)
 
         issret = (rett != None) && rett <: CppValue
@@ -666,39 +669,39 @@ function EmitExpr(ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     llvmrt = julia_to_llvm(rett)
 
     # Let's create an LLVM function
-    f = CreateFunction(issret ? julia_to_llvm(Void) : llvmrt,
+    f = CreateFunction(C, issret ? julia_to_llvm(Void) : llvmrt,
         map(julia_to_llvm,llvmargt))
 
     # Clang's code emitter needs some extra information about the function, so let's
     # initialize that as well
-    state = setup_cpp_env(f)
+    state = setup_cpp_env(C,f)
 
-    builder = irbuilder()
+    builder = irbuilder(C)
 
     # First compute the llvm arguments (unpacking them from their julia wrappers),
     # then associate them with the clang level variables
-    args = llvmargs(builder, f, llvmargt)
-    associateargs(builder, argt, issret ? args[2:end] : args,pvds)
+    args = llvmargs(C, builder, f, llvmargt)
+    associateargs(C, builder, argt, issret ? args[2:end] : args,pvds)
 
     if ce != C_NULL
         if issret
-            rslot = CreateBitCast(builder,args[1],getPointerTo(toLLVM(rt)))
+            rslot = CreateBitCast(builder,args[1],getPointerTo(toLLVM(C,rt)))
         end
-        MarkDeclarationsReferencedInExpr(ce)
-        ret = EmitCallExpr(ce,rslot)
+        MarkDeclarationsReferencedInExpr(C,ce)
+        ret = EmitCallExpr(C,ce,rslot)
         if rett <: CppValue
             ret = C_NULL
         end
     elseif nE != C_NULL
-        ret = EmitCXXNewExpr(nE)
+        ret = EmitCXXNewExpr(C,nE)
     elseif ctce != C_NULL
-        MarkDeclarationsReferencedInExpr(ctce)
-        EmitAnyExprToMem(ctce,args[1],true)
+        MarkDeclarationsReferencedInExpr(C,ctce)
+        EmitAnyExprToMem(C,ctce,args[1],true)
     end
 
     # Common return path for everything that's calling a normal function
     # (i.e. everything but constructors)
-    createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; kwargs...)
+    createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; kwargs...)
 end
 
 #
@@ -708,7 +711,7 @@ end
 # access to an alarming number of parameters. Hopefully this can be cleaned up
 # in the future
 #
-function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt)])
+function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt)])
     argt = Type[argt...]
 
     jlrt = rett
@@ -728,15 +731,15 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs 
             elseif rett <: CppMFptr
                 undef = getUndefValue(llvmrt)
                 i1 = InsertValue(builder,undef,CreateBitCast(builder,
-                        ExtractValue(ret,0),getStructElementType(llvmrt,0)),0)
+                        ExtractValue(C,ret,0),getStructElementType(llvmrt,0)),0)
                 ret = InsertValue(builder,i1,CreateBitCast(builder,
-                        ExtractValue(ret,1),getStructElementType(llvmrt,1)),1)
+                        ExtractValue(C,ret,1),getStructElementType(llvmrt,1)),1)
             end
             CreateRet(builder,ret)
         end
     end
 
-    cleanup_cpp_env(state)
+    cleanup_cpp_env(C,state)
 
     args2 = Expr[]
     for (j,i) = enumerate(argidxs)
@@ -750,7 +753,7 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs 
 
     if (rett != None) && rett <: CppValue
         arguments = [:(pointer(r.data)), args2]
-        size = cxxsizeof(rt)
+        size = cxxsizeof(C,rt)
         return Expr(:block,
             :( r = ($(rett))(Array(Uint8,$size)) ),
             Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
@@ -761,15 +764,15 @@ function createReturn(builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs 
 end
 
 # And finally the staged functions to drive the call logic above
-stagedfunction cppcall(expr, args...)
-    _cppcall(expr, false, false, args)
+stagedfunction cppcall(CT::CxxInstance, expr, args...)
+    _cppcall(CT, expr, false, false, args)
 end
 
-stagedfunction cppcall_member(expr, args...)
-    _cppcall(expr, true, false, args)
+stagedfunction cppcall_member(CT::CxxInstance, expr, args...)
+    _cppcall(CT, expr, true, false, args)
 end
 
-stagedfunction cxxnewcall(expr, args...)
-    _cppcall(expr, false, true, args)
+stagedfunction cxxnewcall(CT::CxxInstance, expr, args...)
+    _cppcall(CT, expr, false, true, args)
 end
 

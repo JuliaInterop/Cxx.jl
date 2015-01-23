@@ -7,9 +7,9 @@
 # of this type
 
 # # # Built-in clang types
-chartype() = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_cchar,libcxxffi),Ptr{Void}))))
-winttype() = QualType(pcpp"clang::Type"(unsafe_load(cglobal((:cT_wint,libcxxffi),Ptr{Void}))))
-cpptype(::Type{Uint8}) = chartype()
+chartype(C) = QualType(pcpp"clang::Type"(ccall((:cT_cchar,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)))
+winttype(C) = QualType(pcpp"clang::Type"(ccall((:cT_wint,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)))
+cpptype(C,::Type{Uint8}) = chartype(C)
 
 # Mapping some basic julia bitstypes to C's intrinsic types
 # We could use Cint, etc. here, but we actually already do that
@@ -26,11 +26,9 @@ for (jlt, sym) in
      (Float64, :cT_float64))
 
     # For each type, do the mapping by loading the appropriate global
-    @eval cpptype(::Type{$jlt}) = QualType(pcpp"clang::Type"(
-        unsafe_load(cglobal(
-            ($(quot(sym)), libcxxffi),
-            Ptr{Void} ))
-        ))
+    @eval cpptype(C::ClangCompiler,::Type{$jlt}) = QualType(pcpp"clang::Type"(
+        ccall(($(quot(sym)), libcxxffi),
+            Ptr{Void},(Ptr{ClangCompiler},),&C )))
 
 end
 
@@ -90,24 +88,23 @@ end
 # E.g. if the CxxScopeSpec already contains ::foo, it could be extended to
 # ::foo::bar by calling nnsexpend(S,"bar")
 #
-function nnsextend(cxxscope,part)
+function nnsextend(C,cxxscope,part)
     if cxxscope != C_NULL
-        errorOccured = ccall((:BuildNNS,libcxxffi),Bool,
-            (Ptr{Void},Ptr{Uint8}),cxxscope,part)
+        errorOccured = BuildNNS(C,cxxscope,part)
         if errorOccured
             error("Failed to extend NNS with part $part")
         end
     end
 end
 
-function lookup_name(parts, cxxscope = C_NULL, start=translation_unit(), addlast=false)
+function lookup_name(C::ClangCompiler,parts, cxxscope = C_NULL, start=translation_unit(C), addlast=false)
     cur = start
     for (i,fpart) in enumerate(parts)
         lastcur = cur
-        (addlast || (i != length(parts))) && nnsextend(cxxscope,fpart)
-        cur = _lookup_name(fpart,primary_ctx(toctx(cur)))
+        (addlast || (i != length(parts))) && nnsextend(C,cxxscope,fpart)
+        cur = _lookup_name(C,fpart,primary_ctx(toctx(cur)))
         if cur == C_NULL
-            if lastcur == translation_unit()
+            if lastcur == translation_unit(C)
                 error("Could not find $fpart in translation unit")
             else
                 error("Could not find $fpart in context $(_decl_name(lastcur))")
@@ -118,17 +115,17 @@ function lookup_name(parts, cxxscope = C_NULL, start=translation_unit(), addlast
 end
 
 # Convenience method for splitting a qualified name into actual parts
-function lookup_ctx(fname::String;
-    cxxscope=C_NULL, cur=translation_unit(), addlast = false)
-    lookup_name(split(fname,"::"),cxxscope,cur, addlast)
+function lookup_ctx(C, fname::String;
+    cxxscope=C_NULL, cur=translation_unit(C), addlast = false)
+    lookup_name(C, split(fname,"::"),cxxscope,cur, addlast)
 end
-lookup_ctx(fname::Symbol; kwargs...) = lookup_ctx(string(fname); kwargs...)
+lookup_ctx(C, fname::Symbol; kwargs...) = lookup_ctx(C, string(fname); kwargs...)
 
 # # Template instantiations for decl lookups
 
 # Specialize a ClassTemplateDecl cxxt with a list of template arguments given
 # by `targs`
-function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs)
+function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     @assert cxxt != C_NULL
     integralValues = zeros(Uint64,length(targs))
     integralValuesPresent = zeros(Uint8,length(targs))
@@ -136,9 +133,9 @@ function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs)
     ts = Array(QualType,length(targs))
     for (i,t) in enumerate(targs)
         if isa(t,Type)
-            ts[i] = cpptype(t)
+            ts[i] = cpptype(C,t)
         elseif isa(t,Integer) || isa(t,CppEnum)
-            ts[i] = cpptype(typeof(t))
+            ts[i] = cpptype(C,typeof(t))
             integralValues[i] = convert(Uint64,isa(t,CppEnum) ? t.val : t)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
@@ -147,12 +144,12 @@ function specialize_template(cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ptr{Void},Ptr{Void},Ptr{Uint64},Ptr{Uint32},Ptr{Uint8},Uint32),
-            cxxt.ptr,[p.ptr for p in ts],integralValues,bitwidths,integralValuesPresent,length(ts)))
+            (Ptr{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Ptr{Uint64},Ptr{Uint8},Uint32),
+            &C,cxxt.ptr,[p.ptr for p in ts],integralValues,integralValuesPresent,length(ts)))
     d
 end
 
-function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cpptype)
+function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     @assert cxxt != C_NULL
     integralValues = zeros(Uint64,length(targs))
     integralValuesPresent = zeros(Uint8,length(targs))
@@ -162,7 +159,7 @@ function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cp
         if isa(t,pcpp"clang::Type") || isa(t,QualType)
             ts[i] = QualType(t)
         elseif isa(t,Integer) || isa(t,CppEnum)
-            ts[i] = cpptype(typeof(t))
+            ts[i] = cpptype(C, typeof(t))
             integralValues[i] = convert(Uint64,isa(t,CppEnum) ? t.val : t)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
@@ -171,27 +168,27 @@ function specialize_template_clang(cxxt::pcpp"clang::ClassTemplateDecl",targs,cp
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ptr{Void},Ptr{Void},Ptr{Uint64},Ptr{Uint32},Ptr{Uint8},Uint32),
-            cxxt.ptr,[p.ptr for p in ts],integralValues,bitwidths,integralValuesPresent,length(ts)))
+            (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{Uint64},Ptr{Uint8},Uint32),&C,
+            cxxt.ptr,[p.ptr for p in ts],integralValues,integralValuesPresent,length(ts)))
     d
 end
 
 # # The actual decl lookup
 # since we split out all the actual meat above, this is now simple
 
-function cppdecl{fname}(T::Type{CppBaseType{fname}})
+function cppdecl{fname}(C,T::Type{CppBaseType{fname}})
     # Let's get a clang level representation of this type
-    lookup_ctx(fname)
+    lookup_ctx(C,fname)
 end
-cppdecl{s}(::Type{CppEnum{s}}) = lookup_ctx(s)
+cppdecl{s}(C,::Type{CppEnum{s}}) = lookup_ctx(C,s)
 
-function cppdecl{T,targs}(TT::Type{CppTemplate{T,targs}})
-    ctx = cppdecl(T)
+function cppdecl{T,targs}(C,TT::Type{CppTemplate{T,targs}})
+    ctx = cppdecl(C,T)
 
     # Do the acutal template resolution
     cxxt = cxxtmplt(ctx)
     @assert cxxt != C_NULL
-    deduced_class = specialize_template(cxxt,targs)
+    deduced_class = specialize_template(C,cxxt,targs)
     ctx = deduced_class
 
     ctx
@@ -199,9 +196,9 @@ end
 
 # For getting the decl ignore the CVR qualifiers, pointer qualification, etc.
 # and just do the lookup on the base decl
-function cppdecl{T,CVR}(::Union(
+function cppdecl{T,CVR}(C,::Union(
     Type{CppPtr{T,CVR}}, Type{CppValue{T,CVR}}, Type{CppRef{T,CVR}}))
-    cppdecl(T)
+    cppdecl(C,T)
 end
 
 # Get a clang Type * for the decl we have looked up.
@@ -237,28 +234,28 @@ addQualifiers(clangT::pcpp"clang::Type",CVR) = addQualifiers(QualType(clangT.ptr
 
 # And finally the actual definition of cpptype
 
-cpptype{s}(p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(p)))
-function cpptype{T,CVR}(p::Type{CppPtr{T,CVR}})
-    addQualifiers(pointerTo(cpptype(T)),CVR)
+cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(C,cppdecl(p)))
+function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
+    addQualifiers(pointerTo(C,cpptype(C,T)),CVR)
 end
-function cpptype{T,CVR}(p::Type{CppValue{T,CVR}})
-    addQualifiers(typeForDecl(cppdecl(T)),CVR)
+function cpptype{T,CVR}(C,p::Type{CppValue{T,CVR}})
+    addQualifiers(typeForDecl(cppdecl(C,T)),CVR)
 end
-function cpptype{T,CVR}(p::Type{CppRef{T,CVR}})
-    referenceTo(addQualifiers(typeForDecl(cppdecl(T)),CVR))
+function cpptype{T,CVR}(C,p::Type{CppRef{T,CVR}})
+    referenceTo(C,addQualifiers(typeForDecl(cppdecl(C,T)),CVR))
 end
 
-cpptype{T}(p::Type{Ptr{T}}) = pointerTo(cpptype(T))
+cpptype{T}(C,p::Type{Ptr{T}}) = pointerTo(C,cpptype(C,T))
 
-function cpptype{base,fptr}(p::Type{CppMFptr{base,fptr}})
-    makeMemberFunctionType(cpptype(base), cpptype(fptr))
+function cpptype{base,fptr}(C,p::Type{CppMFptr{base,fptr}})
+    makeMemberFunctionType(C, cpptype(C,base), cpptype(C,fptr))
 end
-function cpptype{rt, args}(p::Type{CppFunc{rt,args}})
-    makeFunctionType(cpptype(rt),QualType[cpptype(arg) for arg in args])
+function cpptype{rt, args}(C,p::Type{CppFunc{rt,args}})
+    makeFunctionType(C, cpptype(C,rt),QualType[cpptype(C,arg) for arg in args])
 end
-cpptype{f}(p::Type{CppFptr{f}}) = pointerTo(cpptype(f))
+cpptype{f}(C,p::Type{CppFptr{f}}) = pointerTo(C,cpptype(C,f))
 
-cpptype(F::Type{Function}) = cpptype(pcpp"jl_function_t")
+cpptype(C,F::Type{Function}) = cpptype(C,pcpp"jl_function_t")
 
 # # # # Section 2: Mapping Julia types to clang types
 #

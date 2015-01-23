@@ -2,7 +2,7 @@ function cpp_ref(expr,nns,isaddrof)
     @assert isa(expr, Symbol)
     nns = Expr(:tuple,nns.args...,quot(expr))
     x = :(Cxx.CppNNS{$nns}())
-    ret = esc(Expr(:call, :(Cxx.cxxref), isaddrof ? :(Cxx.CppAddr($x)) : x))
+    ret = esc(Expr(:call, :(Cxx.cxxref), :__current_compiler__, isaddrof ? :(Cxx.CppAddr($x)) : x))
 end
 
 function refderefarg(arg)
@@ -70,7 +70,9 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
 
     # The actual call to the staged function
     ret = Expr(:call, isnew ?
-        :(Cxx.cxxnewcall) : this === nothing ? :(Cxx.cppcall) : :(Cxx.cppcall_member) )
+        :(Cxx.cxxnewcall) : this === nothing ? :(Cxx.cppcall) : :(Cxx.cppcall_member),
+        :__current_compiler__
+    )
     push!(ret.args,:($e()))
     append!(ret.args,arguments)
     esc(ret)
@@ -79,7 +81,7 @@ end
 function build_cpp_ref(member, this, isaddrof)
     @assert isa(member,Symbol)
     x = :(Cxx.CppExpr{$(quot(symbol(member))),()}())
-    ret = esc(Expr(:call, :(Cxx.cxxmemref), isaddrof ? :(Cxx.CppAddr($x)) : x, this))
+    ret = esc(Expr(:call, :(Cxx.cxxmemref), :__current_compiler__, isaddrof ? :(Cxx.CppAddr($x)) : x, this))
 end
 
 function to_prefix(expr, isaddrof=false)

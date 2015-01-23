@@ -145,10 +145,11 @@ using Base.Meta
 export cast,
        @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr,
        @cxx, @cxxnew,
-       addHeaderDir, defineMacro, cxxinclude, cxxparse,
+       addHeaderDir, defineMacro, cxxinclude, cxxparse, new_clang_instance,
        C_User, C_System, C_ExternCSystem
 
 include("cxxtypes.jl")
+include("clanginstances.jl")
 include("initialization.jl")
 include("clangwrapper.jl")
 include("typetranslation.jl")

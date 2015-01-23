@@ -2,6 +2,10 @@ using Cxx
 using Base.Test
 
 cxx"""
+#include <stdint.h>
+"""
+
+cxx"""
 uint64_t foo2() {
     return $(1);
 }

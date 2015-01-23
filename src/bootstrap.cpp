@@ -65,44 +65,535 @@ using namespace llvm;
 extern ExecutionEngine *jl_ExecutionEngine;
 extern llvm::LLVMContext &jl_LLVMContext;
 
-static clang::CodeGen::CodeGenModule *clang_cgm;
-static clang::CodeGen::CodeGenTypes *clang_cgt;
-static clang::CodeGen::CodeGenFunction *clang_cgf;
 static DataLayout *TD;
 
-static clang::ASTContext *clang_astcontext;
+
+struct CxxInstance {
+  llvm::Module *shadow;
+  clang::CompilerInstance *CI;
+  clang::CodeGen::CodeGenModule *CGM;
+  clang::CodeGen::CodeGenFunction *CGF;
+  clang::Parser *Parser;
+};
+#define C CxxInstance *Cxx
+
+extern "C" {
+  #define TYPE_ACCESS(EX,IN)                                    \
+  DLLEXPORT const clang::Type *EX(C) {                          \
+    return Cxx->CI->getASTContext().IN.getTypePtrOrNull();      \
+  }
+
+  TYPE_ACCESS(cT_char,CharTy)
+  TYPE_ACCESS(cT_cchar,CharTy)
+  TYPE_ACCESS(cT_int1,BoolTy)
+  TYPE_ACCESS(cT_int8,SignedCharTy)
+  TYPE_ACCESS(cT_uint8,UnsignedCharTy)
+  TYPE_ACCESS(cT_int16,ShortTy)
+  TYPE_ACCESS(cT_uint16,UnsignedShortTy)
+  TYPE_ACCESS(cT_int32,IntTy)
+  TYPE_ACCESS(cT_uint32,UnsignedIntTy)
+#ifdef __LP64__
+  TYPE_ACCESS(cT_int64,LongTy)
+  TYPE_ACCESS(cT_uint64,UnsignedLongTy)
+#else
+  TYPE_ACCESS(cT_int64,LongLongTy)
+  TYPE_ACCESS(cT_uint64,UnsignedLongLongTy)
+#endif
+  TYPE_ACCESS(cT_size,getSizeType())
+  TYPE_ACCESS(cT_int128,Int128Ty)
+  TYPE_ACCESS(cT_uint128,UnsignedInt128Ty)
+  TYPE_ACCESS(cT_complex64,FloatComplexTy)
+  TYPE_ACCESS(cT_complex128,DoubleComplexTy)
+  TYPE_ACCESS(cT_float32,FloatTy)
+  TYPE_ACCESS(cT_float64,DoubleTy)
+  TYPE_ACCESS(cT_void,VoidTy)
+  TYPE_ACCESS(cT_wint,WIntTy)
+}
+
+// Utilities
+clang::SourceLocation getTrivialSourceLocation(C)
+{
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
+    return sm.getLocForStartOfFile(sm.getMainFileID());
+}
 
 extern "C" {
 
-  DLLEXPORT llvm::Module *clang_shadow_module;
+extern void jl_error(const char *str);
 
-  DLLEXPORT clang::Parser *clang_parser;
-  DLLEXPORT clang::Preprocessor *clang_preprocessor;
-  DLLEXPORT clang::CompilerInstance *clang_compiler;
-
-  // clang types
-  DLLEXPORT const clang::Type *cT_int1;
-  DLLEXPORT const clang::Type *cT_int8;
-  DLLEXPORT const clang::Type *cT_uint8;
-  DLLEXPORT const clang::Type *cT_int16;
-  DLLEXPORT const clang::Type *cT_uint16;
-  DLLEXPORT const clang::Type *cT_int32;
-  DLLEXPORT const clang::Type *cT_uint32;
-  DLLEXPORT const clang::Type *cT_int64;
-  DLLEXPORT const clang::Type *cT_uint64;
-  DLLEXPORT const clang::Type *cT_char;
-  DLLEXPORT const clang::Type *cT_cchar;
-  DLLEXPORT const clang::Type *cT_size;
-  DLLEXPORT const clang::Type *cT_int128;
-  DLLEXPORT const clang::Type *cT_uint128;
-  DLLEXPORT const clang::Type *cT_complex64;
-  DLLEXPORT const clang::Type *cT_complex128;
-  DLLEXPORT const clang::Type *cT_float32;
-  DLLEXPORT const clang::Type *cT_float64;
-  DLLEXPORT const clang::Type *cT_void;
-  DLLEXPORT const clang::Type *cT_pvoid;
-  DLLEXPORT const clang::Type *cT_wint;
+// For initialization.jl
+DLLEXPORT void add_directory(C, int kind, int isFramework, const char *dirname)
+{
+  clang::SrcMgr::CharacteristicKind flag = (clang::SrcMgr::CharacteristicKind)kind;
+  clang::FileManager &fm = Cxx->CI->getFileManager();
+  clang::Preprocessor &pp = Cxx->Parser->getPreprocessor();
+  auto dir = fm.getDirectory(dirname);
+  if (dir == NULL)
+    std::cout << "WARNING: Could not add directory " << dirname << " to clang search path!\n";
+  else
+    pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
+
+DLLEXPORT int _cxxparse(C)
+{
+    clang::Sema &S = Cxx->CI->getSema();
+    clang::ASTConsumer *Consumer = &S.getASTConsumer();
+
+    clang::Parser::DeclGroupPtrTy ADecl;
+
+    while (!Cxx->Parser->ParseTopLevelDecl(ADecl)) {
+      // If we got a null return and something *was* parsed, ignore it.  This
+      // is due to a top-level semicolon, an action override, or a parse error
+      // skipping something.
+      if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
+        return 0;
+    }
+
+    S.DefineUsedVTables();
+    S.PerformPendingInstantiations(false);
+    Cxx->CGM->Release();
+
+    return 1;
+}
+
+DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
+{
+    const clang::DirectoryLookup *CurDir;
+    clang::FileManager &fm = Cxx->CI->getFileManager();
+    clang::Preprocessor &P = Cxx->CI->getPreprocessor();
+
+    const clang::FileEntry *File = P.LookupFile(
+      getTrivialSourceLocation(Cxx), fname,
+      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr);
+
+    if(!File)
+      return 0;
+
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
+
+    clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
+
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+    return _cxxparse(Cxx);
+}
+
+/*
+ * Collect all global initializers into one llvm::Function, which
+ * we can then call.
+ */
+DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
+{
+    clang::CodeGen::CodeGenModule::CtorList &ctors = Cxx->CGM->getGlobalCtors();
+    if (ctors.empty()) {
+        return NULL;
+    }
+
+    // First create the function into which to collect
+    llvm::Function *InitF = Function::Create(
+      llvm::FunctionType::get(
+          llvm::Type::getVoidTy(jl_LLVMContext),
+          false),
+      llvm::GlobalValue::ExternalLinkage,
+      "",
+      Cxx->shadow
+      );
+    llvm::IRBuilder<true> builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
+
+    for (auto ctor : ctors) {
+        builder.CreateCall(ctor.Initializer);
+    }
+
+    builder.CreateRetVoid();
+
+    ctors.clear();
+
+    return InitF;
+}
+
+DLLEXPORT void EnterSourceFile(C, char *data, size_t length)
+{
+    const clang::DirectoryLookup *CurDir = nullptr;
+    clang::FileManager &fm = Cxx->CI->getFileManager();
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
+    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
+      0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
+    clang::Preprocessor &P = Cxx->Parser->getPreprocessor();
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+}
+
+DLLEXPORT void EnterVirtualFile(C, char *data, size_t length, char *VirtualPath, size_t PathLength)
+{
+    const clang::DirectoryLookup *CurDir = nullptr;
+    clang::FileManager &fm = Cxx->CI->getFileManager();
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
+    llvm::StringRef FileName(VirtualPath, PathLength);
+    llvm::StringRef Code(data,length);
+    std::unique_ptr<llvm::MemoryBuffer> Buf =
+      llvm::MemoryBuffer::getMemBuffer(Code, FileName);
+    const clang::FileEntry *Entry =
+        fm.getVirtualFile(FileName, Buf->getBufferSize(), 0);
+    sm.overrideFileContents(Entry, std::move(Buf));
+    clang::FileID FID = sm.createFileID(Entry,sm.getLocForStartOfFile(sm.getMainFileID()),clang::SrcMgr::C_User);
+    clang::Preprocessor &P = Cxx->Parser->getPreprocessor();
+    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
+}
+
+DLLEXPORT int cxxparse(C, char *data, size_t length)
+{
+    EnterSourceFile(Cxx, data, length);
+    return _cxxparse(Cxx);
+}
+
+DLLEXPORT void defineMacro(C,const char *Name)
+{
+  clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
+  // Get the identifier.
+  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
+
+  clang::MacroInfo *MI = PP.AllocateMacroInfo(getTrivialSourceLocation(Cxx));
+
+  PP.appendDefMacroDirective(Id, MI);
+}
+
+// For typetranslation.jl
+DLLEXPORT bool BuildNNS(C, clang::CXXScopeSpec *spec, const char *Name)
+{
+  clang::Preprocessor &PP = Cxx->CI->getPreprocessor();
+  // Get the identifier.
+  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
+  return Cxx->CI->getSema().BuildCXXNestedNameSpecifier(
+    nullptr, *Id,
+    getTrivialSourceLocation(Cxx),
+    getTrivialSourceLocation(Cxx),
+    clang::QualType(),
+    false,
+    *spec,
+    nullptr,
+    false,
+    nullptr
+  );
+}
+
+DLLEXPORT void *lookup_name(C, char *name, clang::DeclContext *ctx)
+{
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
+    clang::CXXScopeSpec spec;
+    spec.setBeginLoc(sm.getLocForStartOfFile(sm.getMainFileID()));
+    spec.setEndLoc(sm.getLocForStartOfFile(sm.getMainFileID()));
+    clang::DeclarationName DName(&Cxx->CI->getASTContext().Idents.get(name));
+    clang::Sema &cs = Cxx->CI->getSema();
+    cs.RequireCompleteDeclContext(spec,ctx);
+    //return dctx->lookup(DName).front();
+    clang::LookupResult R(cs, DName, getTrivialSourceLocation(Cxx), clang::Sema::LookupAnyName);
+    cs.LookupQualifiedName(R, ctx, false);
+    return R.empty() ? NULL : R.getRepresentativeDecl();
+}
+
+DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **types, uint64_t *integralValues,int8_t *integralValuePresent, size_t nargs)
+{
+  clang::TemplateArgument *targs = new clang::TemplateArgument[nargs];
+  for (size_t i = 0; i < nargs; ++i) {
+    if (integralValuePresent[i] == 1)
+      targs[i] = clang::TemplateArgument(Cxx->CI->getASTContext(),
+        llvm::APSInt(llvm::APInt(8,integralValues[i])),clang::QualType::getFromOpaquePtr(types[i]));
+    else
+      targs[i] = clang::TemplateArgument(clang::QualType::getFromOpaquePtr(types[i]));
+  }
+  void *InsertPos;
+  clang::ClassTemplateSpecializationDecl *ret =
+    tmplt->findSpecialization(ArrayRef<clang::TemplateArgument>(targs,nargs),
+    InsertPos);
+  if (!ret)
+  {
+    ret = clang::ClassTemplateSpecializationDecl::Create(Cxx->CI->getASTContext(),
+                            tmplt->getTemplatedDecl()->getTagKind(),
+                            tmplt->getDeclContext(),
+                            tmplt->getTemplatedDecl()->getLocStart(),
+                            tmplt->getLocation(),
+                            tmplt,
+                            targs,
+                            nargs, nullptr);
+    tmplt->AddSpecialization(ret, InsertPos);
+    if (tmplt->isOutOfLine())
+      ret->setLexicalDeclContext(tmplt->getLexicalDeclContext());
+  }
+  delete[] targs;
+  return ret;
+}
+
+DLLEXPORT void *typeForDecl(clang::Decl *D)
+{
+    clang::TypeDecl *ty = dyn_cast<clang::TypeDecl>(D);
+    if (ty == NULL)
+      return NULL;
+    return (void *)ty->getTypeForDecl();
+}
+
+DLLEXPORT void *withConst(void *T)
+{
+    return clang::QualType::getFromOpaquePtr(T).withConst().getAsOpaquePtr();
+}
+
+DLLEXPORT void *withVolatile(void *T)
+{
+    return clang::QualType::getFromOpaquePtr(T).withVolatile().getAsOpaquePtr();
+}
+
+DLLEXPORT void *withRestrict(void *T)
+{
+    return clang::QualType::getFromOpaquePtr(T).withRestrict().getAsOpaquePtr();
+}
+
+DLLEXPORT char *decl_name(clang::NamedDecl *decl)
+{
+    std::string str = decl->getQualifiedNameAsString().data();
+    char * cstr = (char*)malloc(str.length()+1);
+    std::strcpy (cstr, str.c_str());
+    return cstr;
+}
+
+DLLEXPORT char *simple_decl_name(clang::NamedDecl *decl)
+{
+    std::string str = decl->getNameAsString().data();
+    char * cstr = (char*)malloc(str.length()+1);
+    std::strcpy (cstr, str.c_str());
+    return cstr;
+}
+
+// For cxxstr
+void *createNamespace(C,char *name)
+{
+  clang::IdentifierInfo *Id = Cxx->CI->getPreprocessor().getIdentifierInfo(name);
+  return (void*)clang::NamespaceDecl::Create(
+        Cxx->CI->getASTContext(),
+        Cxx->CI->getASTContext().getTranslationUnitDecl(),
+        false,
+        getTrivialSourceLocation(Cxx),
+        getTrivialSourceLocation(Cxx),
+        Id,
+        nullptr
+        );
+}
+
+DLLEXPORT void SetDeclInitializer(C, clang::VarDecl *D, llvm::Constant *CI)
+{
+    llvm::Constant *Const = Cxx->CGM->GetAddrOfGlobalVar(D);
+    if (!isa<llvm::GlobalVariable>(Const))
+      jl_error("Clang did not create a global variable for the given VarDecl");
+    llvm::GlobalVariable *GV = cast<llvm::GlobalVariable>(Const);
+    GV->setInitializer(CI);
+    GV->setConstant(true);
+}
+
+DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F)
+{
+  llvm::Constant *Const = Cxx->CGM->GetAddrOfFunction(D);
+  if (!isa<llvm::Function>(Const))
+    jl_error("Clang did not create function for the given FunctionDecl");
+  llvm::Function *OF = cast<llvm::Function>(Const);
+  llvm::ValueToValueMapTy VMap;
+  llvm::ClonedCodeInfo CCI;
+  llvm::Function *NF = llvm::CloneFunction(F,VMap,true,&CCI);
+  // TODO: Ideally we would delete the cloned function
+  // once we're done with the inlineing, but clang delays
+  // emitting some functions (e.g. constructors) until
+  // they're used.
+  Cxx->shadow->getFunctionList().push_back(NF);
+  StringRef Name = OF->getName();
+  OF->replaceAllUsesWith(NF);
+  OF->removeFromParent();
+  NF->setName(Name);
+  while (true)
+  {
+    if (NF->getNumUses() == 0)
+      return;
+    Value::user_iterator I = NF->user_begin();
+    if (llvm::isa<llvm::CallInst>(*I)) {
+      llvm::InlineFunctionInfo IFI;
+      llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,true);
+    } else {
+      jl_error("Tried to do something other than calling it to a julia expression");
+    }
+  }
+}
+
+DLLEXPORT void *ActOnStartOfFunction(C, clang::Decl *D)
+{
+  clang::Sema &sema = Cxx->CI->getSema();
+  return (void*)sema.ActOnStartOfFunctionDef(Cxx->Parser->getCurScope(), D);
+}
+
+DLLEXPORT void ParseFunctionStatementBody(C, clang::Decl *D)
+{
+  clang::Parser::ParseScope BodyScope(Cxx->Parser, clang::Scope::FnScope|clang::Scope::DeclScope);
+  Cxx->Parser->ConsumeToken();
+
+  clang::Sema &sema = Cxx->CI->getSema();
+
+  // Slightly modified
+  assert(Cxx->Parser->getCurToken().is(clang::tok::l_brace));
+  clang::SourceLocation LBraceLoc = Cxx->Parser->getCurToken().getLocation();
+
+  clang::PrettyDeclStackTraceEntry CrashInfo(sema, D, LBraceLoc,
+                                      "parsing function body");
+
+  // Do not enter a scope for the brace, as the arguments are in the same scope
+  // (the function body) as the body itself.  Instead, just read the statement
+  // list and put it into a CompoundStmt for safe keeping.
+  clang::StmtResult FnBody(Cxx->Parser->ParseCompoundStatementBody(true));
+
+  // If the function body could not be parsed, make a bogus compoundstmt.
+  if (FnBody.isInvalid()) {
+    clang::Sema::CompoundScopeRAII CompoundScope(sema);
+    FnBody = sema.ActOnCompoundStmt(LBraceLoc, LBraceLoc, None, false);
+  }
+
+  clang::CompoundStmt *Body = cast<clang::CompoundStmt>(FnBody.get());
+
+  // If we don't yet have a return statement, implicitly return
+  // the result of the last statement
+  if (cast<clang::FunctionDecl>(D)->getReturnType()->isUndeducedType())
+  {
+    clang::Stmt *last = Body->body_back();
+    if (last && isa<clang::Expr>(last))
+      Body->setLastStmt(
+        sema.BuildReturnStmt(getTrivialSourceLocation(Cxx), cast<clang::Expr>(last)).get());
+  }
+
+  BodyScope.Exit();
+  sema.ActOnFinishFunctionBody(D, Body);
+}
+
+DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
+{
+  Cxx->Parser->EnterScope(clang::Scope::DeclScope);
+  clang::ParsedAttributes attrs(Cxx->Parser->getAttrFactory());
+  return Cxx->CI->getSema().ActOnStartNamespaceDef(
+      Cxx->Parser->getCurScope(),
+      getTrivialSourceLocation(Cxx),
+      getTrivialSourceLocation(Cxx),
+      getTrivialSourceLocation(Cxx),
+      Cxx->Parser->getPreprocessor().getIdentifierInfo(name),
+      getTrivialSourceLocation(Cxx),
+      attrs.getList()
+      );
+}
+
+DLLEXPORT void ActOnFinishNamespaceDef(C, clang::Decl *D)
+{
+  Cxx->Parser->ExitScope();
+  Cxx->CI->getSema().ActOnFinishNamespaceDef(
+      D, getTrivialSourceLocation(Cxx)
+      );
+}
+
+// For codegen.jl
+
+DLLEXPORT int typeconstruct(C,void *type, clang::Expr **rawexprs, size_t nexprs, void **ret)
+{
+    clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
+    clang::MultiExprArg Exprs(rawexprs,nexprs);
+
+    clang::Sema &sema = Cxx->CI->getSema();
+    clang::TypeSourceInfo *TInfo = Cxx->CI->getASTContext().getTrivialTypeSourceInfo(Ty);
+
+    if (Ty->isDependentType() || clang::CallExpr::hasAnyTypeDependentArguments(Exprs)) {
+        *ret = clang::CXXUnresolvedConstructExpr::Create(Cxx->CI->getASTContext(), TInfo,
+                                                      getTrivialSourceLocation(Cxx),
+                                                      Exprs,
+                                                      getTrivialSourceLocation(Cxx));
+        return true;
+    }
+
+    clang::ExprResult Result;
+
+    if (Exprs.size() == 1) {
+        clang::Expr *Arg = Exprs[0];
+        Result = sema.BuildCXXFunctionalCastExpr(TInfo, getTrivialSourceLocation(Cxx),
+          Arg, getTrivialSourceLocation(Cxx));
+        if (Result.isInvalid())
+          return false;
+
+        *ret = Result.get();
+        return true;
+    }
+
+    if (!Ty->isVoidType() &&
+        sema.RequireCompleteType(getTrivialSourceLocation(Cxx), Ty,
+                            clang::diag::err_invalid_incomplete_type_use)) {
+        assert(false);
+        return false;
+    }
+
+    if (sema.RequireNonAbstractType(getTrivialSourceLocation(Cxx), Ty,
+                               clang::diag::err_allocation_of_abstract_type)) {
+        assert(false);
+        return false;
+    }
+
+    clang::InitializedEntity Entity = clang::InitializedEntity::InitializeTemporary(TInfo);
+    clang::InitializationKind Kind =
+        Exprs.size() ?  clang::InitializationKind::CreateDirect(getTrivialSourceLocation(Cxx),
+          getTrivialSourceLocation(Cxx), getTrivialSourceLocation(Cxx))
+        : clang::InitializationKind::CreateValue(getTrivialSourceLocation(Cxx),
+          getTrivialSourceLocation(Cxx), getTrivialSourceLocation(Cxx));
+    clang::InitializationSequence InitSeq(sema, Entity, Kind, Exprs);
+    Result = InitSeq.Perform(sema, Entity, Kind, Exprs);
+
+    if (Result.isInvalid())
+      return false;
+
+    *ret = Result.get();
+    return true;
+}
+
+DLLEXPORT void *BuildCXXNewExpr(C, clang::Type *type, clang::Expr **exprs, size_t nexprs)
+{
+  clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
+  return (void*) Cxx->CI->getSema().BuildCXXNew(clang::SourceRange(),
+    false, getTrivialSourceLocation(Cxx),
+    clang::MultiExprArg(), getTrivialSourceLocation(Cxx), clang::SourceRange(),
+    Ty, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(Ty),
+    NULL, clang::SourceRange(sm.getLocForStartOfFile(sm.getMainFileID()),
+      sm.getLocForStartOfFile(sm.getMainFileID())),
+    new (Cxx->CI->getASTContext()) clang::ParenListExpr(Cxx->CI->getASTContext(),getTrivialSourceLocation(Cxx),
+      ArrayRef<clang::Expr*>(exprs, nexprs), getTrivialSourceLocation(Cxx)), false).get();
+  //return (clang_astcontext) new clang::CXXNewExpr(clang_astcontext, false, nE, dE, )
+}
+
+DLLEXPORT void *EmitCXXNewExpr(C, clang::Expr *E)
+{
+  assert(isa<clang::CXXNewExpr>(E));
+  return (void*)Cxx->CGF->EmitCXXNewExpr(cast<clang::CXXNewExpr>(E));
+}
+
+DLLEXPORT void *build_call_to_member(C, clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
+{
+  if (MemExprE->getType() == Cxx->CI->getASTContext().BoundMemberTy ||
+         MemExprE->getType() == Cxx->CI->getASTContext().OverloadTy)
+    return (void*)Cxx->CI->getSema().BuildCallToMemberFunction(NULL,
+      MemExprE,getTrivialSourceLocation(Cxx),clang::MultiExprArg(exprs,nexprs),getTrivialSourceLocation(Cxx)).get();
+  else {
+    return (void*) new (&Cxx->CI->getASTContext()) clang::CXXMemberCallExpr(Cxx->CI->getASTContext(),
+        MemExprE,ArrayRef<clang::Expr*>(exprs,nexprs),
+        cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
+        clang::VK_RValue,getTrivialSourceLocation(Cxx));
+  }
+}
+
+// For CxxREPL
+DLLEXPORT void *clang_compiler(C)
+{
+  return (void*)Cxx->CI;
+}
+DLLEXPORT void *clang_parser(C)
+{
+  return (void*)Cxx->Parser;
+}
+
+
+// Legacy
 
 static llvm::Type *T_int32;
 
@@ -120,85 +611,26 @@ typedef struct cppcall_state {
     llvm::Instruction *alloca_bb_ptr;
 } cppcall_state_t;
 
-clang::SourceLocation getTrivialSourceLocation()
-{
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-    return sm.getLocForStartOfFile(sm.getMainFileID());
-}
 
-extern "C" {
-  extern void jl_error(const char *str);
-  void *julia_namespace = 0;
-  void *createNamespace(char *name)
-  {
-    clang::IdentifierInfo *Id = clang_preprocessor->getIdentifierInfo(name);
-    return (void*)clang::NamespaceDecl::Create(
-          *clang_astcontext,
-          clang_astcontext->getTranslationUnitDecl(),
-          false,
-          getTrivialSourceLocation(),
-          getTrivialSourceLocation(),
-          Id,
-          nullptr
-          );
-  }
-  DLLEXPORT void SetDeclInitializer(clang::VarDecl *D, llvm::Constant *CI)
-  {
-      llvm::Constant *C = clang_cgm->GetAddrOfGlobalVar(D);
-      if (!isa<llvm::GlobalVariable>(C))
-        jl_error("Clang did not create a global variable for the given VarDecl");
-      llvm::GlobalVariable *GV = cast<llvm::GlobalVariable>(C);
-      GV->setInitializer(CI);
-      GV->setConstant(true);
-  }
-  DLLEXPORT void ReplaceFunctionForDecl(clang::FunctionDecl *D, llvm::Function *F)
-  {
-      llvm::Constant *C = clang_cgm->GetAddrOfFunction(D);
-      if (!isa<llvm::Function>(C))
-        jl_error("Clang did not create function for the given FunctionDecl");
-      llvm::Function *OF = cast<llvm::Function>(C);
-      llvm::ValueToValueMapTy VMap;
-      llvm::ClonedCodeInfo CCI;
-      llvm::Function *NF = llvm::CloneFunction(F,VMap,true,&CCI);
-      // TODO: Ideally we would delete the cloned function
-      // once we're done with the inlineing, but clang delays
-      // emitting some functions (e.g. constructors) until
-      // they're used.
-      clang_shadow_module->getFunctionList().push_back(NF);
-      StringRef Name = OF->getName();
-      OF->replaceAllUsesWith(NF);
-      OF->removeFromParent();
-      NF->setName(Name);
-      while (true)
-      {
-        if (NF->getNumUses() == 0)
-          return;
-        Value::user_iterator I = NF->user_begin();
-        if (llvm::isa<llvm::CallInst>(*I)) {
-          llvm::InlineFunctionInfo IFI;
-          llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,true);
-        } else {
-          jl_error("Tried to do something other than calling it to a julia expression");
-        }
-      }
-  }
+
 }
 
 class JuliaCodeGenerator : public clang::ASTConsumer {
   public:
-    JuliaCodeGenerator() {}
+    JuliaCodeGenerator(C) : Cxx(*Cxx) {}
+    CxxInstance Cxx;
 
     virtual ~JuliaCodeGenerator() {}
 
     virtual void HandleCXXStaticMemberVarInstantiation(clang::VarDecl *VD) {
-      clang_cgm->HandleCXXStaticMemberVarInstantiation(VD);
+      Cxx.CGM->HandleCXXStaticMemberVarInstantiation(VD);
     }
 
     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
       // Make sure to emit all elements of a Decl.
       for (clang::DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I) {
         if (!(*I)->isInvalidDecl())
-          clang_cgm->EmitTopLevelDecl(*I);
+          Cxx.CGM->EmitTopLevelDecl(*I);
       }
       return true;
     }
@@ -208,11 +640,11 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
     /// client hack on the type, which can occur at any point in the file
     /// (because these can be defined in declspecs).
     virtual void HandleTagDeclDefinition(clang::TagDecl *D) {
-      clang_cgm->UpdateCompletedType(D);
+      Cxx.CGM->UpdateCompletedType(D);
 
       // In C++, we may have member functions that need to be emitted at this
       // point.
-      if (clang_astcontext->getLangOpts().CPlusPlus && !D->isDependentContext()) {
+      if (Cxx.CI->getASTContext().getLangOpts().CPlusPlus && !D->isDependentContext()) {
         for (clang::DeclContext::decl_iterator M = D->decls_begin(),
                                      MEnd = D->decls_end();
              M != MEnd; ++M)
@@ -220,18 +652,23 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
             if (Method->doesThisDeclarationHaveABody() &&
                 (Method->hasAttr<clang::UsedAttr>() ||
                  Method->hasAttr<clang::ConstructorAttr>()))
-              clang_cgm->EmitTopLevelDecl(Method);
+              Cxx.CGM->EmitTopLevelDecl(Method);
       }
     }
 
     virtual void CompleteTentativeDefinition(clang::VarDecl *D) {
-      clang_cgm->EmitTentativeDefinition(D);
+      Cxx.CGM->EmitTentativeDefinition(D);
     }
 
     virtual void HandleVTable(clang::CXXRecordDecl *RD) {
-      clang_cgm->EmitVTable(RD);
+      Cxx.CGM->EmitVTable(RD);
     }
 };
+
+
+extern "C" {
+  void *julia_namespace = 0;
+}
 
 class JuliaSemaSource : public clang::ExternalSemaSource
 {
@@ -252,401 +689,108 @@ public:
 
 extern "C" {
 
-void myParseAST(clang::Sema &S, bool PrintStats, bool SkipFunctionBodies) {
-  // Collect global stats on Decls/Stmts (until we have a module streamer).
-  if (PrintStats) {
-    clang::Decl::EnableStatistics();
-    clang::Stmt::EnableStatistics();
-  }
 
-  // Also turn on collection of stats inside of the Sema object.
-  bool OldCollectStats = PrintStats;
-  std::swap(OldCollectStats, S.CollectStats);
-
-  clang::ASTConsumer *Consumer = &S.getASTConsumer();
-
-  clang::Parser &P = *clang_parser;
-
-  S.getPreprocessor().EnterMainSourceFile();
-  P.Initialize();
-
-  // C11 6.9p1 says translation units must have at least one top-level
-  // declaration. C++ doesn't have this restriction. We also don't want to
-  // complain if we have a precompiled header, although technically if the PCH
-  // is empty we should still emit the (pedantic) diagnostic.
-  clang::Parser::DeclGroupPtrTy ADecl;
-  clang::ExternalASTSource *External = S.getASTContext().getExternalSource();
-  if (External)
-    External->StartTranslationUnit(Consumer);
-
-  if (P.ParseTopLevelDecl(ADecl)) {
-    if (!External && !S.getLangOpts().CPlusPlus)
-      P.Diag(clang::diag::ext_empty_translation_unit);
-  } else {
-    do {
-      // If we got a null return and something *was* parsed, ignore it.  This
-      // is due to a top-level semicolon, an action override, or a parse error
-      // skipping something.
-      if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
-        return;
-    } while (!P.ParseTopLevelDecl(ADecl));
-  }
-
-  // Process any TopLevelDecls generated by #pragma weak.
-  for (llvm::SmallVectorImpl<clang::Decl *>::iterator
-       I = S.WeakTopLevelDecls().begin(),
-       E = S.WeakTopLevelDecls().end(); I != E; ++I)
-    Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
-
-  Consumer->HandleTranslationUnit(S.getASTContext());
-
-  std::swap(OldCollectStats, S.CollectStats);
-  if (PrintStats) {
-    llvm::errs() << "\nSTATISTICS:\n";
-    P.getActions().PrintStats();
-    S.getASTContext().PrintStats();
-    clang::Decl::PrintStats();
-    clang::Stmt::PrintStats();
-    Consumer->PrintStats();
-  }
-}
-
-DLLEXPORT void add_directory(int kind, int isFramework, const char *dirname)
-{
-  clang::SrcMgr::CharacteristicKind flag = (clang::SrcMgr::CharacteristicKind)kind;
-  clang::FileManager &fm = clang_compiler->getFileManager();
-  clang::Preprocessor &pp = clang_parser->getPreprocessor();
-  auto dir = fm.getDirectory(dirname);
-  if (dir == NULL)
-    std::cout << "WARNING: Could not add directory " << dirname << " to clang search path!\n";
-  else
-    pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
-}
-
-DLLEXPORT int _cxxparse()
-{
-    clang::Sema &sema = clang_compiler->getSema();
-    clang::ASTConsumer *Consumer = &sema.getASTConsumer();
-
-    clang::Parser::DeclGroupPtrTy ADecl;
-
-    while (!clang_parser->ParseTopLevelDecl(ADecl)) {
-      // If we got a null return and something *was* parsed, ignore it.  This
-      // is due to a top-level semicolon, an action override, or a parse error
-      // skipping something.
-      if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
-        return 0;
-    }
-
-    clang_compiler->getSema().DefineUsedVTables();
-    clang_compiler->getSema().PerformPendingInstantiations(false);
-    clang_cgm->Release();
-
-    return 1;
-}
-
-DLLEXPORT int cxxinclude(char *fname, int isAngled)
-{
-    const clang::DirectoryLookup *CurDir;
-    clang::FileManager &fm = clang_compiler->getFileManager();
-    clang::Preprocessor &P = clang_parser->getPreprocessor();
-
-    const clang::FileEntry *File = P.LookupFile(
-      getTrivialSourceLocation(), fname,
-      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr);
-
-    if(!File)
-      return 0;
-
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-
-    clang::FileID FID = sm.createFileID(File, sm.getLocForStartOfFile(sm.getMainFileID()), P.getHeaderSearchInfo().getFileDirFlavor(File));
-
-    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
-    return _cxxparse();
-}
-
-/*
- * Collect all global initializers into one llvm::Function, which
- * we can then call.
- */
-DLLEXPORT llvm::Function *CollectGlobalConstructors()
-{
-    clang::CodeGen::CodeGenModule::CtorList &ctors = clang_cgm->getGlobalCtors();
-    if (ctors.empty()) {
-        return NULL;
-    }
-
-    // First create the function into which to collect
-    llvm::Function *InitF = Function::Create(
-      llvm::FunctionType::get(
-          llvm::Type::getVoidTy(jl_LLVMContext),
-          false),
-      llvm::GlobalValue::ExternalLinkage,
-      "",
-      clang_shadow_module
-      );
-    llvm::IRBuilder<true> builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
-
-    for (auto ctor : ctors) {
-        builder.CreateCall(ctor.Initializer);
-    }
-
-    builder.CreateRetVoid();
-
-    ctors.clear();
-
-    return InitF;
-}
-
-DLLEXPORT void *ActOnStartOfFunction(clang::Decl *D)
-{
-    clang::Sema &sema = clang_compiler->getSema();
-    return (void*)sema.ActOnStartOfFunctionDef(clang_parser->getCurScope(), D);
-}
-
-DLLEXPORT void ParseFunctionStatementBody(clang::Decl *D)
-{
-    clang::Parser::ParseScope BodyScope(clang_parser, clang::Scope::FnScope|clang::Scope::DeclScope);
-    clang_parser->ConsumeToken();
-
-    clang::Sema &sema = clang_compiler->getSema();
-
-    // Slightly modified
-    assert(clang_parser->getCurToken().is(clang::tok::l_brace));
-    clang::SourceLocation LBraceLoc = clang_parser->getCurToken().getLocation();
-
-    clang::PrettyDeclStackTraceEntry CrashInfo(sema, D, LBraceLoc,
-                                        "parsing function body");
-
-    // Do not enter a scope for the brace, as the arguments are in the same scope
-    // (the function body) as the body itself.  Instead, just read the statement
-    // list and put it into a CompoundStmt for safe keeping.
-    clang::StmtResult FnBody(clang_parser->ParseCompoundStatementBody(true));
-
-    // If the function body could not be parsed, make a bogus compoundstmt.
-    if (FnBody.isInvalid()) {
-      clang::Sema::CompoundScopeRAII CompoundScope(sema);
-      FnBody = sema.ActOnCompoundStmt(LBraceLoc, LBraceLoc, None, false);
-    }
-
-    clang::CompoundStmt *Body = cast<clang::CompoundStmt>(FnBody.get());
-
-    // If we don't yet have a return statement, implicitly return
-    // the result of the last statement
-    if (cast<clang::FunctionDecl>(D)->getReturnType()->isUndeducedType())
-    {
-      clang::Stmt *last = Body->body_back();
-      if (last && isa<clang::Expr>(last))
-        Body->setLastStmt(
-          sema.BuildReturnStmt(getTrivialSourceLocation(), cast<clang::Expr>(last)).get());
-    }
-
-    BodyScope.Exit();
-    sema.ActOnFinishFunctionBody(D, Body);
-}
-
-DLLEXPORT void *ActOnStartNamespaceDef(char *name)
-{
-  clang_parser->EnterScope(clang::Scope::DeclScope);
-  clang::ParsedAttributes attrs(clang_parser->getAttrFactory());
-  return clang_compiler->getSema().ActOnStartNamespaceDef(
-      clang_parser->getCurScope(),
-      getTrivialSourceLocation(),
-      getTrivialSourceLocation(),
-      getTrivialSourceLocation(),
-      clang_parser->getPreprocessor().getIdentifierInfo(name),
-      getTrivialSourceLocation(),
-      attrs.getList()
-      );
-}
-
-DLLEXPORT void ActOnFinishNamespaceDef(clang::Decl *D)
-{
-  clang_parser->ExitScope();
-  clang_compiler->getSema().ActOnFinishNamespaceDef(
-      D, getTrivialSourceLocation()
-      );
-}
-
-DLLEXPORT void EnterSourceFile(char *data, size_t length)
-{
-    const clang::DirectoryLookup *CurDir = nullptr;
-    clang::FileManager &fm = clang_compiler->getFileManager();
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
-      0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
-    clang::Preprocessor &P = clang_parser->getPreprocessor();
-    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
-}
-
-DLLEXPORT void EnterVirtualFile(char *data, size_t length, char *VirtualPath, size_t PathLength)
-{
-    const clang::DirectoryLookup *CurDir = nullptr;
-    clang::FileManager &fm = clang_compiler->getFileManager();
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-    llvm::StringRef FileName(VirtualPath, PathLength);
-    llvm::StringRef Code(data,length);
-    std::unique_ptr<llvm::MemoryBuffer> Buf =
-      llvm::MemoryBuffer::getMemBuffer(Code, FileName);
-    const clang::FileEntry *Entry =
-        fm.getVirtualFile(FileName, Buf->getBufferSize(), 0);
-    sm.overrideFileContents(Entry, std::move(Buf));
-    clang::FileID FID = sm.createFileID(Entry,sm.getLocForStartOfFile(sm.getMainFileID()),clang::SrcMgr::C_User);
-    clang::Preprocessor &P = clang_parser->getPreprocessor();
-    P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
-}
-
-DLLEXPORT int cxxparse(char *data, size_t length)
-{
-    EnterSourceFile(data, length);
-    return _cxxparse();
-}
-
-DLLEXPORT void defineMacro(const char *Name)
-{
-  clang::Preprocessor &PP = clang_parser->getPreprocessor();
-  // Get the identifier.
-  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
-
-  clang::MacroInfo *MI = PP.AllocateMacroInfo(getTrivialSourceLocation());
-
-  PP.appendDefMacroDirective(Id, MI);
-}
-
-DLLEXPORT void init_julia_clang_env() {
+DLLEXPORT void init_clang_instance(C) {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
-    clang_compiler = new clang::CompilerInstance;
-    clang_compiler->getDiagnosticOpts().ShowColors = 1;
-    clang_compiler->getDiagnosticOpts().ShowPresumedLoc = 1;
-    clang_compiler->createDiagnostics();
-    clang_compiler->getLangOpts().CPlusPlus = 1;
-    clang_compiler->getLangOpts().CPlusPlus11 = 1;
-    clang_compiler->getLangOpts().CPlusPlus14 = 1;
-    clang_compiler->getLangOpts().LineComment = 1;
-    clang_compiler->getLangOpts().Bool = 1;
-    clang_compiler->getLangOpts().WChar = 1;
-    clang_compiler->getLangOpts().C99 = 1;
-    clang_compiler->getLangOpts().RTTI = 0;
-    clang_compiler->getLangOpts().RTTIData = 0;
-    clang_compiler->getLangOpts().ImplicitInt = 0;
+    Cxx->CI = new clang::CompilerInstance;
+    Cxx->CI->getDiagnosticOpts().ShowColors = 1;
+    Cxx->CI->getDiagnosticOpts().ShowPresumedLoc = 1;
+    Cxx->CI->createDiagnostics();
+    Cxx->CI->getLangOpts().CPlusPlus = 1;
+    Cxx->CI->getLangOpts().CPlusPlus11 = 1;
+    Cxx->CI->getLangOpts().CPlusPlus14 = 1;
+    Cxx->CI->getLangOpts().LineComment = 1;
+    Cxx->CI->getLangOpts().Bool = 1;
+    Cxx->CI->getLangOpts().WChar = 1;
+    Cxx->CI->getLangOpts().C99 = 1;
+    Cxx->CI->getLangOpts().RTTI = 0;
+    Cxx->CI->getLangOpts().RTTIData = 0;
+    Cxx->CI->getLangOpts().ImplicitInt = 0;
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
-    clang_compiler->getPreprocessorOpts().UsePredefines = 1;
-    clang_compiler->getHeaderSearchOpts().UseBuiltinIncludes = 1;
-    clang_compiler->getHeaderSearchOpts().UseLibcxx = 1;
-    clang_compiler->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
-    clang_compiler->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
-    clang_compiler->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
-    clang_compiler->getCodeGenOpts().DwarfVersion = 2;
-    clang_compiler->getTargetOpts().Triple = llvm::Triple::normalize(llvm::sys::getProcessTriple());
-    clang_compiler->setTarget(clang::TargetInfo::CreateTargetInfo(
-      clang_compiler->getDiagnostics(),
-      std::make_shared<clang::TargetOptions>(clang_compiler->getTargetOpts())));
-    clang::TargetInfo &tin = clang_compiler->getTarget();
-    clang_compiler->createFileManager();
-    clang_compiler->createSourceManager(clang_compiler->getFileManager());
-    clang_compiler->createPreprocessor(clang::TU_Prefix);
-    clang_preprocessor = &clang_compiler->getPreprocessor();
-    clang_compiler->createASTContext();
-    clang_shadow_module = new llvm::Module("clangShadow",jl_LLVMContext);
-    clang_astcontext = &clang_compiler->getASTContext();
-#ifdef LLVM36
-    clang_compiler->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(new JuliaCodeGenerator()));
-#else
-    clang_compiler->setASTConsumer(new JuliaCodeGenerator());
-#endif
-    clang_compiler->createSema(clang::TU_Prefix,NULL);
-    clang_compiler->getSema().addExternalSource(new JuliaSemaSource());
+    Cxx->CI->getPreprocessorOpts().UsePredefines = 1;
+    Cxx->CI->getHeaderSearchOpts().UseBuiltinIncludes = 1;
+    Cxx->CI->getHeaderSearchOpts().UseLibcxx = 1;
+    Cxx->CI->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
+    Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
+    Cxx->CI->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
+    Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
+    Cxx->CI->getTargetOpts().Triple = llvm::Triple::normalize(llvm::sys::getProcessTriple());
+    Cxx->CI->setTarget(clang::TargetInfo::CreateTargetInfo(
+      Cxx->CI->getDiagnostics(),
+      std::make_shared<clang::TargetOptions>(Cxx->CI->getTargetOpts())));
+    clang::TargetInfo &tin = Cxx->CI->getTarget();
+    Cxx->CI->createFileManager();
+    Cxx->CI->createSourceManager(Cxx->CI->getFileManager());
+    Cxx->CI->createPreprocessor(clang::TU_Prefix);
+    Cxx->CI->createASTContext();
+    Cxx->shadow = new llvm::Module("clangShadow",jl_LLVMContext);
     TD = new DataLayout(tin.getTargetDescription());
-    clang_cgm = new clang::CodeGen::CodeGenModule(
-        *clang_astcontext,
-        clang_compiler->getCodeGenOpts(),
-        *clang_shadow_module,
+    Cxx->CGM = new clang::CodeGen::CodeGenModule(
+        Cxx->CI->getASTContext(),
+        Cxx->CI->getCodeGenOpts(),
+        *Cxx->shadow,
         *TD,
-        clang_compiler->getDiagnostics());
-    clang_cgt = &(clang_cgm->getTypes());
-    clang_cgf = new clang::CodeGen::CodeGenFunction(*clang_cgm);
-    clang_cgf->CurFuncDecl = NULL;
-    clang_cgf->CurCodeDecl = NULL;
+        Cxx->CI->getDiagnostics());
+    Cxx->CGF = new clang::CodeGen::CodeGenFunction(*Cxx->CGM);
+    Cxx->CGF->CurFuncDecl = NULL;
+    Cxx->CGF->CurCodeDecl = NULL;
+
+    // Cxx isn't fully initialized yet, but that's fine since JuliaCodeGenerator does
+    // not need the parser
+    Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(new JuliaCodeGenerator(Cxx)));
+
+    Cxx->CI->createSema(clang::TU_Prefix,NULL);
+    Cxx->CI->getSema().addExternalSource(new JuliaSemaSource());
 
     T_int32 = Type::getInt32Ty(jl_LLVMContext);
 
-    cT_int1  = clang_astcontext->BoolTy.getTypePtrOrNull();
-    cT_cchar = clang_astcontext->CharTy.getTypePtrOrNull();
-    cT_int8  = clang_astcontext->SignedCharTy.getTypePtrOrNull();
-    cT_uint8 = clang_astcontext->UnsignedCharTy.getTypePtrOrNull();
-    cT_int16 = clang_astcontext->ShortTy.getTypePtrOrNull();
-    cT_uint16 = clang_astcontext->UnsignedShortTy.getTypePtrOrNull();
-    cT_int32 = clang_astcontext->IntTy.getTypePtrOrNull();
-    cT_uint32 = clang_astcontext->UnsignedIntTy.getTypePtrOrNull();
-    cT_char = clang_astcontext->IntTy.getTypePtrOrNull();
-#ifdef __LP64__
-    cT_int64 = clang_astcontext->LongTy.getTypePtrOrNull();
-    cT_uint64 = clang_astcontext->UnsignedLongTy.getTypePtrOrNull();
-#else
-    cT_int64 = clang_astcontext->LongLongTy.getTypePtrOrNull();
-    cT_uint64 = clang_astcontext->UnsignedLongLongTy.getTypePtrOrNull();
-#endif
-    cT_size = clang_astcontext->getSizeType().getTypePtrOrNull();
-    cT_int128 = clang_astcontext->Int128Ty.getTypePtrOrNull();
-    cT_uint128 = clang_astcontext->UnsignedInt128Ty.getTypePtrOrNull();
-    cT_complex64 = clang_astcontext->FloatComplexTy.getTypePtrOrNull();
-    cT_complex128 = clang_astcontext->DoubleComplexTy.getTypePtrOrNull();
+    clang::Sema &sema = Cxx->CI->getSema();
+    clang::Preprocessor &pp = Cxx->CI->getPreprocessor();
+    Cxx->Parser = new clang::Parser(pp, sema, false);
 
-    cT_float32 = clang_astcontext->FloatTy.getTypePtrOrNull();
-    cT_float64 = clang_astcontext->DoubleTy.getTypePtrOrNull();
-    cT_void = clang_astcontext->VoidTy.getTypePtrOrNull();
-
-    cT_pvoid = clang_astcontext->getPointerType(clang_astcontext->VoidTy).getTypePtrOrNull();
-
-    cT_wint = clang_astcontext->WIntTy.getTypePtrOrNull();
-
-    clang::Sema &sema = clang_compiler->getSema();
-    clang_parser = new clang::Parser(sema.getPreprocessor(), sema, false);
-
-    clang::Preprocessor &pp = clang_parser->getPreprocessor();
-    clang_compiler->getDiagnosticClient().BeginSourceFile(clang_compiler->getLangOpts(), 0);
+    Cxx->CI->getDiagnosticClient().BeginSourceFile(Cxx->Parser->getLangOpts(), 0);
     pp.getBuiltinInfo().InitializeBuiltins(pp.getIdentifierTable(),
-                                           clang_compiler->getLangOpts());
+                                           Cxx->Parser->getLangOpts());
     pp.enableIncrementalProcessing();
 
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
     sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0), clang::SrcMgr::C_User));
 
     sema.getPreprocessor().EnterMainSourceFile();
-    clang_parser->Initialize();
+    Cxx->Parser->Initialize();
 }
 
 static llvm::Module *cur_module = NULL;
 static llvm::Function *cur_func = NULL;
 
 
-DLLEXPORT void *setup_cpp_env(void *jlfunc)
+DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
 {
     //assert(in_cpp == false);
     //in_cpp = true;
 
+    assert(Cxx->CGF != NULL);
+
     cppcall_state_t *state = new cppcall_state_t;
     state->module = NULL;
     state->func = cur_func;
-    state->CurFn = clang_cgf->CurFn;
-    state->block = clang_cgf->Builder.GetInsertBlock();
-    state->point = clang_cgf->Builder.GetInsertPoint();
-    state->prev_alloca_bb_ptr = clang_cgf->AllocaInsertPt;
+    state->CurFn = Cxx->CGF->CurFn;
+    state->block = Cxx->CGF->Builder.GetInsertBlock();
+    state->point = Cxx->CGF->Builder.GetInsertPoint();
+    state->prev_alloca_bb_ptr = Cxx->CGF->AllocaInsertPt;
 
     llvm::Function *w = (Function *)jlfunc;
     assert(w != NULL);
-    assert(clang_cgf != NULL);
     cur_module = NULL;
     cur_func = w;
 
     Function *ShadowF = (llvm::Function *)jlfunc;
 
-    BasicBlock *b0 = BasicBlock::Create(clang_shadow_module->getContext(), "top", ShadowF);
+    BasicBlock *b0 = BasicBlock::Create(Cxx->shadow->getContext(), "top", ShadowF);
 
     // setup the environment to clang's expecations
-    clang_cgf->Builder.SetInsertPoint( b0 );
+    Cxx->CGF->Builder.SetInsertPoint( b0 );
     // clang expects to alloca memory before the AllocaInsertPt
     // typically, clang would create this pointer when it started emitting the function
     // instead, we create a dummy reference here
@@ -654,30 +798,30 @@ DLLEXPORT void *setup_cpp_env(void *jlfunc)
     llvm::Instruction *alloca_bb_ptr = NULL;
     if (b0->empty()) {
         llvm::Value *Undef = llvm::UndefValue::get(T_int32);
-        clang_cgf->AllocaInsertPt = alloca_bb_ptr = new llvm::BitCastInst(Undef, T_int32, "", b0);
+        Cxx->CGF->AllocaInsertPt = alloca_bb_ptr = new llvm::BitCastInst(Undef, T_int32, "", b0);
     } else {
-        clang_cgf->AllocaInsertPt = &(b0->front());
+        Cxx->CGF->AllocaInsertPt = &(b0->front());
     }
 
-    clang_cgf->CurFn = ShadowF;
+    Cxx->CGF->CurFn = ShadowF;
     state->alloca_bb_ptr = alloca_bb_ptr;
 
     return state;
 }
 
-DLLEXPORT void EmitTopLevelDecl(clang::Decl *D)
+DLLEXPORT void EmitTopLevelDecl(C, clang::Decl *D)
 {
-    clang_cgm->EmitTopLevelDecl(D);
+    Cxx->CGM->EmitTopLevelDecl(D);
 }
 
-DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
+DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
 {
     //assert(in_cpp == true);
     //in_cpp = false;
 
-    clang_compiler->getSema().DefineUsedVTables();
-    clang_compiler->getSema().PerformPendingInstantiations(false);
-    clang_cgm->Release();
+    Cxx->CI->getSema().DefineUsedVTables();
+    Cxx->CI->getSema().PerformPendingInstantiations(false);
+    Cxx->CGM->Release();
 
     // Set all functions and globals to external linkage (MCJIT needs this ugh)
     //for(Module::global_iterator I = jl_Module->global_begin(),
@@ -685,10 +829,10 @@ DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
     //    I->setLinkage(llvm::GlobalVariable::ExternalLinkage);
     //}
 
-    Function *F = clang_cgf->CurFn;
+    Function *F = Cxx->CGF->CurFn;
 
     // cleanup the environment
-    clang_cgf->AllocaInsertPt = 0; // free this ptr reference
+    Cxx->CGF->AllocaInsertPt = 0; // free this ptr reference
     if (state->alloca_bb_ptr)
         state->alloca_bb_ptr->eraseFromParent();
 
@@ -698,112 +842,14 @@ DLLEXPORT void cleanup_cpp_env(cppcall_state_t *state)
     // Hack: MaybeBindToTemporary can cause this to be
     // set if the allocated type has a constructor.
     // For now, ignore.
-    clang_compiler->getSema().ExprNeedsCleanups = false;
+    Cxx->CI->getSema().ExprNeedsCleanups = false;
 
     cur_module = state->module;
     cur_func = state->func;
-    clang_cgf->CurFn = state->CurFn;
-    clang_cgf->Builder.SetInsertPoint(state->block,state->point);
-    clang_cgf->AllocaInsertPt = state->prev_alloca_bb_ptr;
+    Cxx->CGF->CurFn = state->CurFn;
+    Cxx->CGF->Builder.SetInsertPoint(state->block,state->point);
+    Cxx->CGF->AllocaInsertPt = state->prev_alloca_bb_ptr;
     delete state;
-}
-
-
-DLLEXPORT int RequireCompleteType(clang::Type *t)
-{
-  clang::Sema &sema = clang_compiler->getSema();
-  return sema.RequireCompleteType(getTrivialSourceLocation(),clang::QualType(t,0),0);
-}
-
-
-DLLEXPORT int typeconstruct(void *type, clang::Expr **rawexprs, size_t nexprs, void **ret)
-{
-    clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
-    clang::MultiExprArg Exprs(rawexprs,nexprs);
-
-    clang::Sema &sema = clang_compiler->getSema();
-    clang::TypeSourceInfo *TInfo = clang_astcontext->getTrivialTypeSourceInfo(Ty);
-
-    if (Ty->isDependentType() || clang::CallExpr::hasAnyTypeDependentArguments(Exprs)) {
-        *ret = clang::CXXUnresolvedConstructExpr::Create(*clang_astcontext, TInfo,
-                                                      getTrivialSourceLocation(),
-                                                      Exprs,
-                                                      getTrivialSourceLocation());
-        return true;
-    }
-
-    clang::ExprResult Result;
-
-    if (Exprs.size() == 1) {
-        clang::Expr *Arg = Exprs[0];
-        Result = sema.BuildCXXFunctionalCastExpr(TInfo, getTrivialSourceLocation(),
-          Arg, getTrivialSourceLocation());
-        if (Result.isInvalid())
-          return false;
-
-        *ret = Result.get();
-        return true;
-    }
-
-    if (!Ty->isVoidType() &&
-        sema.RequireCompleteType(getTrivialSourceLocation(), Ty,
-                            clang::diag::err_invalid_incomplete_type_use)) {
-        assert(false);
-        return false;
-    }
-
-    if (sema.RequireNonAbstractType(getTrivialSourceLocation(), Ty,
-                               clang::diag::err_allocation_of_abstract_type)) {
-        assert(false);
-        return false;
-    }
-
-    clang::InitializedEntity Entity = clang::InitializedEntity::InitializeTemporary(TInfo);
-    clang::InitializationKind Kind =
-        Exprs.size() ?  clang::InitializationKind::CreateDirect(getTrivialSourceLocation(), getTrivialSourceLocation(), getTrivialSourceLocation())
-        : clang::InitializationKind::CreateValue(getTrivialSourceLocation(), getTrivialSourceLocation(), getTrivialSourceLocation());
-    clang::InitializationSequence InitSeq(sema, Entity, Kind, Exprs);
-    Result = InitSeq.Perform(sema, Entity, Kind, Exprs);
-
-    if (Result.isInvalid())
-      return false;
-
-    *ret = Result.get();
-    return true;
-}
-
-DLLEXPORT void *BuildCXXNewExpr(clang::Type *type, clang::Expr **exprs, size_t nexprs)
-{
-  clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-  return (void*) clang_compiler->getSema().BuildCXXNew(clang::SourceRange(),
-    false, getTrivialSourceLocation(),
-    clang::MultiExprArg(), getTrivialSourceLocation(), clang::SourceRange(),
-    Ty, clang_astcontext->getTrivialTypeSourceInfo(Ty),
-    NULL, clang::SourceRange(sm.getLocForStartOfFile(sm.getMainFileID()),
-      sm.getLocForStartOfFile(sm.getMainFileID())),
-    new (clang_astcontext) clang::ParenListExpr(*clang_astcontext,getTrivialSourceLocation(),
-      ArrayRef<clang::Expr*>(exprs, nexprs), getTrivialSourceLocation()), false).get();
-  //return (clang_astcontext) new clang::CXXNewExpr(clang_astcontext, false, nE, dE, )
-}
-
-DLLEXPORT void *EmitCXXNewExpr(clang::Expr *E)
-{
-  assert(isa<clang::CXXNewExpr>(E));
-  return (void*)clang_cgf->EmitCXXNewExpr(cast<clang::CXXNewExpr>(E));
-}
-
-DLLEXPORT void *build_call_to_member(clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
-{
-  if (MemExprE->getType() == clang_astcontext->BoundMemberTy ||
-         MemExprE->getType() == clang_astcontext->OverloadTy)
-    return (void*)clang_compiler->getSema().BuildCallToMemberFunction(NULL,MemExprE,getTrivialSourceLocation(),clang::MultiExprArg(exprs,nexprs),getTrivialSourceLocation()).get();
-  else {
-    return (void*) new (clang_astcontext) clang::CXXMemberCallExpr(*clang_astcontext,
-        MemExprE,ArrayRef<clang::Expr*>(exprs,nexprs),
-        cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
-        clang::VK_RValue,getTrivialSourceLocation());
-  }
 }
 
 /*
@@ -812,55 +858,56 @@ ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
 04468                     Expr *ExecConfig, bool IsExecConfig) {
 04469   // Since this might be a postfix expression, get rid of Pare
 */
-DLLEXPORT void *CreateCallExpr(clang::Expr *Fn,clang::Expr **exprs, size_t nexprs)
+DLLEXPORT void *CreateCallExpr(C, clang::Expr *Fn,clang::Expr **exprs, size_t nexprs)
 {
-    return clang_compiler->getSema().ActOnCallExpr(NULL, Fn, getTrivialSourceLocation(),
-      clang::MultiExprArg(exprs,nexprs), getTrivialSourceLocation(), NULL, false).get();
+    return Cxx->CI->getSema().ActOnCallExpr(NULL, Fn, getTrivialSourceLocation(Cxx),
+      clang::MultiExprArg(exprs,nexprs), getTrivialSourceLocation(Cxx), NULL, false).get();
 }
 
-DLLEXPORT void *CreateVarDecl(void *DC, char* name, void *type)
+DLLEXPORT void *CreateVarDecl(C, void *DC, char* name, void *type)
 {
   clang::QualType T = clang::QualType::getFromOpaquePtr(type);
-  clang::VarDecl *D = clang::VarDecl::Create(*clang_astcontext, (clang::DeclContext *)DC,
-    getTrivialSourceLocation(), getTrivialSourceLocation(),
-      clang_preprocessor->getIdentifierInfo(name),
-      T, clang_astcontext->getTrivialTypeSourceInfo(T), clang::SC_Extern);
+  clang::VarDecl *D = clang::VarDecl::Create(Cxx->CI->getASTContext(), (clang::DeclContext *)DC,
+    getTrivialSourceLocation(Cxx), getTrivialSourceLocation(Cxx),
+      Cxx->CI->getPreprocessor().getIdentifierInfo(name),
+      T, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T), clang::SC_Extern);
   return D;
 }
 
-DLLEXPORT void *CreateFunctionDecl(void *DC, char* name, void *type, int isextern)
+DLLEXPORT void *CreateFunctionDecl(C, void *DC, char* name, void *type, int isextern)
 {
   clang::QualType T = clang::QualType::getFromOpaquePtr(type);
-  clang::FunctionDecl *D = clang::FunctionDecl::Create(*clang_astcontext, (clang::DeclContext *)DC,
-    getTrivialSourceLocation(), getTrivialSourceLocation(),
-      clang::DeclarationName(clang_preprocessor->getIdentifierInfo(name)),
-      T, clang_astcontext->getTrivialTypeSourceInfo(T), isextern ? clang::SC_Extern : clang::SC_None);
+  clang::FunctionDecl *D = clang::FunctionDecl::Create(Cxx->CI->getASTContext(), (clang::DeclContext *)DC,
+    getTrivialSourceLocation(Cxx), getTrivialSourceLocation(Cxx),
+      clang::DeclarationName(Cxx->CI->getPreprocessor().getIdentifierInfo(name)),
+      T, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T), isextern ? clang::SC_Extern : clang::SC_None);
   return D;
 }
 
 
-DLLEXPORT void *CreateParmVarDecl(void *type, char *name)
+DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
 {
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
     clang::ParmVarDecl *d = clang::ParmVarDecl::Create(
-        *clang_astcontext,
-        clang_astcontext->getTranslationUnitDecl(), // This is wrong, hopefully it doesn't matter
-        getTrivialSourceLocation(),
-        getTrivialSourceLocation(),
-        &clang_compiler->getPreprocessor().getIdentifierTable().getOwn(name),
+        Cxx->CI->getASTContext(),
+        Cxx->CI->getASTContext().getTranslationUnitDecl(), // This is wrong, hopefully it doesn't matter
+        getTrivialSourceLocation(Cxx),
+        getTrivialSourceLocation(Cxx),
+        &Cxx->CI->getPreprocessor().getIdentifierTable().getOwn(name),
         T,
-        clang_astcontext->getTrivialTypeSourceInfo(T),
+        Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T),
         clang::SC_None,NULL);
     d->setIsUsed();
     return (void*)d;
 }
 
-DLLEXPORT void *CreateTypeDefDecl(clang::DeclContext *DC, char *name, void *type)
+DLLEXPORT void *CreateTypeDefDecl(C, clang::DeclContext *DC, char *name, void *type)
 {
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
-    return (void*)clang::TypedefDecl::Create(*clang_astcontext,DC,getTrivialSourceLocation(),getTrivialSourceLocation(),
-        &clang_compiler->getPreprocessor().getIdentifierTable().getOwn(name),
-        clang_astcontext->getTrivialTypeSourceInfo(T));
+    return (void*)clang::TypedefDecl::Create(Cxx->CI->getASTContext(),DC,getTrivialSourceLocation(Cxx),
+      getTrivialSourceLocation(Cxx),
+        &Cxx->CI->getPreprocessor().getIdentifierTable().getOwn(name),
+        Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T));
 }
 
 DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, size_t npvds)
@@ -868,15 +915,15 @@ DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, s
     FD->setParams(ArrayRef<clang::ParmVarDecl*>(PVDs,npvds));
 }
 
-DLLEXPORT void AssociateValue(clang::Decl *d, void *type, llvm::Value *V)
+DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
 {
     clang::VarDecl *vd = dyn_cast<clang::VarDecl>(d);
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
-    llvm::Type *Ty = clang_cgf->ConvertTypeForMem(T);
-    if (type == cT_int1)
-      V = clang_cgf->Builder.CreateZExt(V, Ty);
+    llvm::Type *Ty = Cxx->CGF->ConvertTypeForMem(T);
+    if (type == cT_int1(Cxx))
+      V = Cxx->CGF->Builder.CreateZExt(V, Ty);
     // Associate the value with this decl
-    clang_cgf->EmitParmDecl(*vd, clang_cgf->Builder.CreateBitCast(V, Ty), false, 0);
+    Cxx->CGF->EmitParmDecl(*vd, Cxx->CGF->Builder.CreateBitCast(V, Ty), false, 0);
 }
 
 DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
@@ -884,27 +931,13 @@ DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
     DC->addDecl(D);
 }
 
-DLLEXPORT void *CreateDeclRefExpr(clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)
+DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)
 {
     clang::QualType T = D->getType();
-    return (void*)clang::DeclRefExpr::Create(*clang_astcontext, scope ?
-            scope->getWithLocInContext(*clang_astcontext) : clang::NestedNameSpecifierLoc(NULL,NULL),
-            getTrivialSourceLocation(), D, false, getTrivialSourceLocation(),
+    return (void*)clang::DeclRefExpr::Create(Cxx->CI->getASTContext(), scope ?
+            scope->getWithLocInContext(Cxx->CI->getASTContext()) : clang::NestedNameSpecifierLoc(NULL,NULL),
+            getTrivialSourceLocation(Cxx), D, false, getTrivialSourceLocation(Cxx),
             T.getNonReferenceType(), islvalue ? clang::VK_LValue : clang::VK_RValue);
-}
-
-DLLEXPORT void *CreateMemberExpr(clang::Expr *base, int isarrow, clang::ValueDecl *memberdecl)
-{
-    return (void*)(clang::Expr*)clang::MemberExpr::Create (
-        *clang_astcontext,
-        base,
-        isarrow,
-        clang::NestedNameSpecifierLoc(),
-        getTrivialSourceLocation(),
-        memberdecl,
-        clang::DeclAccessPair::make(memberdecl,clang::AS_public),
-        clang::DeclarationNameInfo (memberdecl->getDeclName(),getTrivialSourceLocation()),
-        NULL, clang_astcontext->BoundMemberTy, clang::VK_RValue, clang::OK_Ordinary);
 }
 
 DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
@@ -912,10 +945,10 @@ DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
     return expr->getType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *CreateFunction(llvm::Type *rt, llvm::Type** argt, size_t nargs)
+DLLEXPORT void *CreateFunction(C, llvm::Type *rt, llvm::Type** argt, size_t nargs)
 {
   llvm::FunctionType *ft = llvm::FunctionType::get(rt,llvm::ArrayRef<llvm::Type*>(argt,nargs),false);
-  return (void*)llvm::Function::Create(ft, llvm::GlobalValue::ExternalLinkage, "", clang_shadow_module);
+  return (void*)llvm::Function::Create(ft, llvm::GlobalValue::ExternalLinkage, "", Cxx->shadow);
 }
 
 DLLEXPORT void *tovdecl(clang::Decl *D)
@@ -928,13 +961,6 @@ DLLEXPORT void *cxxtmplt(clang::Decl *D)
     return dyn_cast<clang::ClassTemplateDecl>(D);
 }
 
-DLLEXPORT void *typeForDecl(clang::Decl *D)
-{
-    clang::TypeDecl *ty = dyn_cast<clang::TypeDecl>(D);
-    if (ty == NULL)
-      return NULL;
-    return (void *)ty->getTypeForDecl();
-}
 
 DLLEXPORT void *extractTypePtr(void *QT)
 {
@@ -946,62 +972,7 @@ DLLEXPORT unsigned extractCVR(void *QT)
     return clang::QualType::getFromOpaquePtr(QT).getCVRQualifiers();
 }
 
-DLLEXPORT void *withConst(void *T)
-{
-    return clang::QualType::getFromOpaquePtr(T).withConst().getAsOpaquePtr();
-}
-
-DLLEXPORT void *withVolatile(void *T)
-{
-    return clang::QualType::getFromOpaquePtr(T).withVolatile().getAsOpaquePtr();
-}
-
-DLLEXPORT void *withRestrict(void *T)
-{
-    return clang::QualType::getFromOpaquePtr(T).withRestrict().getAsOpaquePtr();
-}
-
-DLLEXPORT void *SpecializeClass(clang::ClassTemplateDecl *tmplt, void **types, uint64_t *integralValues, uint32_t *bitwidths, int8_t *integralValuePresent, size_t nargs)
-{
-  clang::TemplateArgument *targs = new clang::TemplateArgument[nargs];
-  for (size_t i = 0; i < nargs; ++i) {
-    if (integralValuePresent[i] == 1)
-      targs[i] = clang::TemplateArgument(*clang_astcontext,llvm::APSInt(llvm::APInt(8,integralValues[i])),clang::QualType::getFromOpaquePtr(types[i]));
-    else
-      targs[i] = clang::TemplateArgument(clang::QualType::getFromOpaquePtr(types[i]));
-  }
-  void *InsertPos;
-  clang::ClassTemplateSpecializationDecl *ret =
-    tmplt->findSpecialization(ArrayRef<clang::TemplateArgument>(targs,nargs),
-    InsertPos);
-  if (!ret)
-  {
-    ret = clang::ClassTemplateSpecializationDecl::Create(*clang_astcontext,
-                            tmplt->getTemplatedDecl()->getTagKind(),
-                            tmplt->getDeclContext(),
-                            tmplt->getTemplatedDecl()->getLocStart(),
-                            tmplt->getLocation(),
-                            tmplt,
-                            targs,
-                            nargs, nullptr);
-    tmplt->AddSpecialization(ret, InsertPos);
-    if (tmplt->isOutOfLine())
-      ret->setLexicalDeclContext(tmplt->getLexicalDeclContext());
-  }
-  delete[] targs;
-  return ret;
-}
-
-DLLEXPORT void *emitcppmembercallexpr(clang::CXXMemberCallExpr *E, llvm::Value *rslot)
-{
-    clang::CodeGen::RValue ret = clang_cgf->EmitCXXMemberCallExpr(E,clang::CodeGen::ReturnValueSlot(rslot,false));
-    if (ret.isScalar())
-      return ret.getScalarVal();
-    else
-      return ret.getAggregateAddr();
-}
-
-DLLEXPORT void *emitcallexpr(clang::Expr *E, llvm::Value *rslot)
+DLLEXPORT void *emitcallexpr(C, clang::Expr *E, llvm::Value *rslot)
 {
     if (isa<clang::CXXBindTemporaryExpr>(E))
       E = cast<clang::CXXBindTemporaryExpr>(E)->getSubExpr();
@@ -1009,32 +980,26 @@ DLLEXPORT void *emitcallexpr(clang::Expr *E, llvm::Value *rslot)
     clang::CallExpr *CE = dyn_cast<clang::CallExpr>(E);
     assert(CE != NULL);
 
-    clang::CodeGen::RValue ret = clang_cgf->EmitCallExpr(CE,clang::CodeGen::ReturnValueSlot(rslot,false));
+    clang::CodeGen::RValue ret = Cxx->CGF->EmitCallExpr(CE,clang::CodeGen::ReturnValueSlot(rslot,false));
     if (ret.isScalar())
       return ret.getScalarVal();
     else
       return ret.getAggregateAddr();
 }
 
-DLLEXPORT void emitexprtomem(clang::Expr *E, llvm::Value *addr, int isInit)
+DLLEXPORT void emitexprtomem(C,clang::Expr *E, llvm::Value *addr, int isInit)
 {
-    clang_cgf->EmitAnyExprToMem(E, addr, clang::Qualifiers(), isInit);
+    Cxx->CGF->EmitAnyExprToMem(E, addr, clang::Qualifiers(), isInit);
 }
 
-DLLEXPORT void *EmitAnyExpr(clang::Expr *E, llvm::Value *rslot)
+DLLEXPORT void *EmitAnyExpr(C, clang::Expr *E, llvm::Value *rslot)
 {
-    clang::CodeGen::RValue ret = clang_cgf->EmitAnyExpr(E);
+    clang::CodeGen::RValue ret = Cxx->CGF->EmitAnyExpr(E);
     if (ret.isScalar())
       return ret.getScalarVal();
     else
       return ret.getAggregateAddr();
 }
-/*
-Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
-                                SourceLocation LParenLoc,
-                                MultiExprArg Args,
-                                SourceLocation RParenLoc) {
-                                    */
 
 DLLEXPORT void *get_nth_argument(Function *f, size_t n)
 {
@@ -1048,9 +1013,9 @@ DLLEXPORT void *get_nth_argument(Function *f, size_t n)
     return NULL;
 }
 
-DLLEXPORT void *create_extract_value(Value *agg, size_t idx)
+DLLEXPORT void *create_extract_value(C, Value *agg, size_t idx)
 {
-    return clang_cgf->Builder.CreateExtractValue(agg,ArrayRef<unsigned>((unsigned)idx));
+    return Cxx->CGF->Builder.CreateExtractValue(agg,ArrayRef<unsigned>((unsigned)idx));
 }
 
 DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *agg, Value *val, size_t idx)
@@ -1058,24 +1023,9 @@ DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *agg,
     return builder->CreateInsertValue(agg,val,ArrayRef<unsigned>((unsigned)idx));
 }
 
-DLLEXPORT void *lookup_name(char *name, clang::DeclContext *ctx)
+DLLEXPORT void *tu_decl(C)
 {
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
-    clang::CXXScopeSpec spec;
-    spec.setBeginLoc(sm.getLocForStartOfFile(sm.getMainFileID()));
-    spec.setEndLoc(sm.getLocForStartOfFile(sm.getMainFileID()));
-    clang::DeclarationName DName(&clang_astcontext->Idents.get(name));
-    clang::Sema &cs = clang_compiler->getSema();
-    cs.RequireCompleteDeclContext(spec,ctx);
-    //return dctx->lookup(DName).front();
-    clang::LookupResult R(cs, DName, getTrivialSourceLocation(), clang::Sema::LookupAnyName);
-    cs.LookupQualifiedName(R, ctx, false);
-    return R.empty() ? NULL : R.getRepresentativeDecl();
-}
-
-DLLEXPORT void *tu_decl()
-{
-    return clang_astcontext->getTranslationUnitDecl();
+    return Cxx->CI->getASTContext().getTranslationUnitDecl();
 }
 
 DLLEXPORT void *get_primary_dc(clang::DeclContext *dc)
@@ -1118,33 +1068,10 @@ DLLEXPORT void *GetFunctionReturnType(clang::FunctionDecl *FD)
     return FD->getReturnType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *BuildDecltypeType(clang::Expr *E)
+DLLEXPORT void *BuildDecltypeType(C, clang::Expr *E)
 {
-    clang::QualType T = clang_compiler->getSema().BuildDecltypeType(E,E->getLocStart());
-    return clang_astcontext->getCanonicalType(T).getAsOpaquePtr();
-}
-
-DLLEXPORT void *emit_field_ref(clang::Type *BaseType, Value *BaseVal, clang::FieldDecl *FieldDecl)
-{
-    clang::CodeGen::LValue BaseLV = clang_cgf->MakeNaturalAlignAddrLValue(BaseVal,clang::QualType(BaseType,0));
-    clang::CodeGen::LValue LV = clang_cgf->EmitLValueForField(BaseLV,FieldDecl);
-    return LV.getAddress();
-}
-
-DLLEXPORT char *decl_name(clang::NamedDecl *decl)
-{
-    std::string str = decl->getQualifiedNameAsString().data();
-    char * cstr = (char*)malloc(str.length()+1);
-    std::strcpy (cstr, str.c_str());
-    return cstr;
-}
-
-DLLEXPORT char *simple_decl_name(clang::NamedDecl *decl)
-{
-    std::string str = decl->getNameAsString().data();
-    char * cstr = (char*)malloc(str.length()+1);
-    std::strcpy (cstr, str.c_str());
-    return cstr;
+    clang::QualType T = Cxx->CI->getSema().BuildDecltypeType(E,E->getLocStart());
+    return Cxx->CI->getASTContext().getCanonicalType(T).getAsOpaquePtr();
 }
 
 DLLEXPORT void *getTemplateArgs(clang::ClassTemplateSpecializationDecl *tmplt)
@@ -1192,77 +1119,58 @@ DLLEXPORT void *getOriginalTypePtr(clang::ParmVarDecl *d)
   return (void*)d->getOriginalType().getTypePtr();
 }
 
-DLLEXPORT void *getPointerTo(void *T)
+DLLEXPORT void *getPointerTo(C, void *T)
 {
-    return clang_astcontext->getPointerType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
+    return Cxx->CI->getASTContext().getPointerType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getReferenceTo(void *T)
+DLLEXPORT void *getReferenceTo(C, void *T)
 {
-    return clang_astcontext->getLValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
+    return Cxx->CI->getASTContext().getLValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
 }
 
-DLLEXPORT void *createDerefExpr(clang::Expr *expr)
+DLLEXPORT void *createDerefExpr(C, clang::Expr *expr)
 {
-  return (void*)clang_compiler->getSema().CreateBuiltinUnaryOp(getTrivialSourceLocation(),clang::UO_Deref,expr).get();
+  return (void*)Cxx->CI->getSema().CreateBuiltinUnaryOp(getTrivialSourceLocation(Cxx),clang::UO_Deref,expr).get();
 }
 
-DLLEXPORT void *createAddrOfExpr(clang::Expr *expr)
+DLLEXPORT void *createAddrOfExpr(C, clang::Expr *expr)
 {
-  return (void*)clang_compiler->getSema().CreateBuiltinUnaryOp(getTrivialSourceLocation(),clang::UO_AddrOf,expr).get();
+  return (void*)Cxx->CI->getSema().CreateBuiltinUnaryOp(getTrivialSourceLocation(Cxx),clang::UO_AddrOf,expr).get();
 }
 
-DLLEXPORT void *createCast(clang::Expr *expr, clang::Type *t, int kind)
+DLLEXPORT void *createCast(C,clang::Expr *expr, clang::Type *t, int kind)
 {
-  return clang::ImplicitCastExpr::Create(*clang_astcontext,clang::QualType(t,0),(clang::CastKind)kind,expr,NULL,clang::VK_RValue);
+  return clang::ImplicitCastExpr::Create(Cxx->CI->getASTContext(),clang::QualType(t,0),
+    (clang::CastKind)kind,expr,NULL,clang::VK_RValue);
 }
 
-DLLEXPORT void *BuildMemberReference(clang::Expr *base, clang::Type *t, int IsArrow, char *name)
+DLLEXPORT void *BuildMemberReference(C, clang::Expr *base, clang::Type *t, int IsArrow, char *name)
 {
-    clang::DeclarationName DName(&clang_astcontext->Idents.get(name));
-    clang::Sema &sema = clang_compiler->getSema();
+    clang::DeclarationName DName(&Cxx->CI->getASTContext().Idents.get(name));
+    clang::Sema &sema = Cxx->CI->getSema();
     clang::CXXScopeSpec scope;
-    return (void*)sema.BuildMemberReferenceExpr(base,clang::QualType(t,0), getTrivialSourceLocation(), IsArrow, scope,
-      getTrivialSourceLocation(), nullptr, clang::DeclarationNameInfo(DName, getTrivialSourceLocation()), nullptr).get();
+    return (void*)sema.BuildMemberReferenceExpr(base,clang::QualType(t,0), getTrivialSourceLocation(Cxx), IsArrow, scope,
+      getTrivialSourceLocation(Cxx), nullptr, clang::DeclarationNameInfo(DName, getTrivialSourceLocation(Cxx)), nullptr).get();
 }
 
-DLLEXPORT void *BuildDeclarationNameExpr(char *name, clang::DeclContext *ctx)
+DLLEXPORT void *BuildDeclarationNameExpr(C, char *name, clang::DeclContext *ctx)
 {
-    clang::Sema &sema = clang_compiler->getSema();
-    clang::SourceManager &sm = clang_compiler->getSourceManager();
+    clang::Sema &sema = Cxx->CI->getSema();
+    clang::SourceManager &sm = Cxx->CI->getSourceManager();
     clang::CXXScopeSpec spec;
     spec.setBeginLoc(sm.getLocForStartOfFile(sm.getMainFileID()));
     spec.setEndLoc(sm.getLocForStartOfFile(sm.getMainFileID()));
-    clang::DeclarationName DName(&clang_astcontext->Idents.get(name));
+    clang::DeclarationName DName(&Cxx->CI->getASTContext().Idents.get(name));
     sema.RequireCompleteDeclContext(spec,ctx);
-    clang::LookupResult R(sema, DName, getTrivialSourceLocation(), clang::Sema::LookupAnyName);
+    clang::LookupResult R(sema, DName, getTrivialSourceLocation(Cxx), clang::Sema::LookupAnyName);
     sema.LookupQualifiedName(R, ctx, false);
     return (void*)sema.BuildDeclarationNameExpr(spec,R,false).get();
 }
 
-DLLEXPORT void *clang_get_instance()
+DLLEXPORT void *clang_get_builder(C)
 {
-    return clang_compiler;
-}
-
-DLLEXPORT void *clang_get_cgm()
-{
-    return clang_cgm;
-}
-
-DLLEXPORT void *clang_get_cgf()
-{
-    return clang_cgf;
-}
-
-DLLEXPORT void *clang_get_cgt()
-{
-    return clang_cgt;
-}
-
-DLLEXPORT void *clang_get_builder()
-{
-    return (void*)&clang_cgf->Builder;
+    return (void*)&Cxx->CGF->Builder;
 }
 
 DLLEXPORT void *jl_get_llvm_ee()
@@ -1300,12 +1208,6 @@ DLLEXPORT void llvmtdump(void *t)
     ((llvm::Type*) t)->dump();
 }
 
-DLLEXPORT void *tollvmty(void *type)
-{
-    clang::QualType T = clang::QualType::getFromOpaquePtr(type);
-    return (void*)clang_cgf->ConvertTypeForMem(T);
-}
-
 DLLEXPORT void *createLoad(llvm::IRBuilder<false> *builder, llvm::Value *val)
 {
     return builder->CreateLoad(val);
@@ -1314,24 +1216,6 @@ DLLEXPORT void *createLoad(llvm::IRBuilder<false> *builder, llvm::Value *val)
 DLLEXPORT void *CreateConstGEP1_32(llvm::IRBuilder<false> *builder, llvm::Value *val, uint32_t idx)
 {
     return (void*)builder->CreateConstGEP1_32(val,idx);
-}
-
-/*
-DeduceTemplateArguments (FunctionTemplateDecl *FunctionTemplate, TemplateArgumentListInfo *ExplicitTemplateArgs, ArrayRef< Expr * > Args, FunctionDecl *&Specialization, sema::TemplateDeductionInfo &Info)
-*/
-
-DLLEXPORT void *DeduceTemplateArguments(clang::FunctionTemplateDecl *tmplt, clang::Type **spectypes, uint32_t nspectypes, clang::Expr **args, uint32_t nargs)
-{
-    clang::TemplateArgumentListInfo tali;
-    for (size_t i = 0; i < nspectypes; ++i) {
-      clang::QualType T(spectypes[i],0);
-      tali.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(T),
-        clang_astcontext->getTrivialTypeSourceInfo(T)));
-    }
-    clang::sema::TemplateDeductionInfo tdi((getTrivialSourceLocation()));
-    clang::FunctionDecl *decl = NULL;
-    clang_compiler->getSema().DeduceTemplateArguments(tmplt, &tali, ArrayRef<clang::Expr *>(args,nargs), decl, tdi);
-    return (void*) decl;
 }
 
 #define TMember(s)              \
@@ -1413,30 +1297,29 @@ DLLEXPORT void *CreateBitCast(llvm::IRBuilder<false> *builder, llvm::Value *val,
   return (void*)builder->CreateBitCast(val,type);
 }
 
-DLLEXPORT size_t cxxsizeof(clang::CXXRecordDecl *decl)
+DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
 {
   llvm::ExecutionEngine *ee = (llvm::ExecutionEngine *)jl_get_llvm_ee();
-  clang::CodeGen::CodeGenTypes *cgt = (clang::CodeGen::CodeGenTypes *)clang_get_cgt();
+  clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
   auto dl = ee->getDataLayout();
-  clang_compiler->getSema().RequireCompleteType(getTrivialSourceLocation(),
+  Cxx->CI->getSema().RequireCompleteType(getTrivialSourceLocation(Cxx),
     clang::QualType(decl->getTypeForDecl(),0),0);
   auto t = cgt->ConvertRecordDeclType(decl);
   return dl->getTypeSizeInBits(t)/8;
 }
 
-DLLEXPORT size_t cxxsizeofType(void *t)
+DLLEXPORT size_t cxxsizeofType(C, void *t)
 {
   llvm::ExecutionEngine *ee = (llvm::ExecutionEngine *)jl_get_llvm_ee();
   auto dl = ee->getDataLayout();
-  clang::CodeGen::CodeGenTypes *cgt = (clang::CodeGen::CodeGenTypes *)clang_get_cgt();
+  clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
   return dl->getTypeSizeInBits(
     cgt->ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t)))/8;
 }
 
-DLLEXPORT void *ConvertTypeForMem(void *t)
+DLLEXPORT void *ConvertTypeForMem(C, void *t)
 {
-  return (void*)((clang::CodeGen::CodeGenTypes *)clang_get_cgt())->
-    ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t));
+  return (void*)Cxx->CGM->getTypes().ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t));
 }
 
 DLLEXPORT void *getValueType(llvm::Value *val)
@@ -1469,11 +1352,6 @@ DLLEXPORT uint64_t getDCDeclKind(clang::DeclContext *DC)
   return (uint64_t)DC->getDeclKind();
 }
 
-DLLEXPORT void *getASTContext()
-{
-  return clang_astcontext;
-}
-
 DLLEXPORT void *getDirectCallee(clang::CallExpr *e)
 {
   return (void*)e->getDirectCallee();
@@ -1487,21 +1365,11 @@ DLLEXPORT void *getCalleeReturnType(clang::CallExpr *e)
   return (void*)fd->getReturnType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *newNNSBuilder()
+DLLEXPORT void *newCXXScopeSpec(C)
 {
-  return (void*)new clang::NestedNameSpecifierLocBuilder();
-}
-
-DLLEXPORT void *newCXXScopeSpec()
-{
-  clang::CXXScopeSpec *cxx = new clang::CXXScopeSpec();
-  cxx->MakeGlobal(*clang_astcontext,getTrivialSourceLocation());
-  return (void*)cxx;
-}
-
-DLLEXPORT void deleteNNSBuilder(clang::NestedNameSpecifierLocBuilder *builder)
-{
-  delete builder;
+  clang::CXXScopeSpec *scope = new clang::CXXScopeSpec();
+  scope->MakeGlobal(Cxx->CI->getASTContext(),getTrivialSourceLocation(Cxx));
+  return (void*)scope;
 }
 
 DLLEXPORT void deleteCXXScopeSpec(clang::CXXScopeSpec *spec)
@@ -1509,54 +1377,36 @@ DLLEXPORT void deleteCXXScopeSpec(clang::CXXScopeSpec *spec)
   delete spec;
 }
 
-DLLEXPORT bool BuildNNS(clang::CXXScopeSpec *spec, const char *Name)
+DLLEXPORT void ExtendNNS(C,clang::NestedNameSpecifierLocBuilder *builder, clang::NamespaceDecl *d)
 {
-  clang::Preprocessor &PP = clang_parser->getPreprocessor();
+  builder->Extend(Cxx->CI->getASTContext(),d,getTrivialSourceLocation(Cxx),getTrivialSourceLocation(Cxx));
+}
+
+DLLEXPORT void ExtendNNSIdentifier(C,clang::NestedNameSpecifierLocBuilder *builder, const char *Name)
+{
+  clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
   // Get the identifier.
   clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
-  return clang_compiler->getSema().BuildCXXNestedNameSpecifier(
-    nullptr, *Id,
-    getTrivialSourceLocation(),
-    getTrivialSourceLocation(),
-    clang::QualType(),
-    false,
-    *spec,
-    nullptr,
-    false,
-    nullptr
-  );
+  builder->Extend(Cxx->CI->getASTContext(),Id,getTrivialSourceLocation(Cxx),getTrivialSourceLocation(Cxx));
 }
 
-DLLEXPORT void ExtendNNS(clang::NestedNameSpecifierLocBuilder *builder, clang::NamespaceDecl *d)
-{
-  builder->Extend(*clang_astcontext,d,getTrivialSourceLocation(),getTrivialSourceLocation());
-}
-
-DLLEXPORT void ExtendNNSIdentifier(clang::NestedNameSpecifierLocBuilder *builder, const char *Name)
-{
-  clang::Preprocessor &PP = clang_parser->getPreprocessor();
-  // Get the identifier.
-  clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
-  builder->Extend(*clang_astcontext,Id,getTrivialSourceLocation(),getTrivialSourceLocation());
-}
-
-DLLEXPORT void ExtendNNSType(clang::NestedNameSpecifierLocBuilder *builder, void *t)
+DLLEXPORT void ExtendNNSType(C,clang::NestedNameSpecifierLocBuilder *builder, void *t)
 {
   clang::TypeLocBuilder TLBuilder;
   clang::QualType T = clang::QualType::getFromOpaquePtr(t);
   TLBuilder.push<clang::QualifiedTypeLoc>(T);
-  builder->Extend(*clang_astcontext,clang::SourceLocation(),
+  builder->Extend(Cxx->CI->getASTContext(),clang::SourceLocation(),
     TLBuilder.getTypeLocInContext(
-      *clang_astcontext,
+      Cxx->CI->getASTContext(),
       T),
-    getTrivialSourceLocation());
+    getTrivialSourceLocation(Cxx));
 }
 
-DLLEXPORT void *makeFunctionType(void *rt, void **argts, size_t nargs)
+DLLEXPORT void *makeFunctionType(C, void *rt, void **argts, size_t nargs)
 {
   clang::QualType T;
   if (rt == NULL) {
-    T = clang_astcontext->getAutoType(clang::QualType(),
+    T = Cxx->CI->getASTContext().getAutoType(clang::QualType(),
                                  /*decltype(auto)*/true,
                                  /*IsDependent*/   false);
   } else {
@@ -1566,12 +1416,12 @@ DLLEXPORT void *makeFunctionType(void *rt, void **argts, size_t nargs)
   for (size_t i = 0; i < nargs; ++i)
     qargs[i] = clang::QualType::getFromOpaquePtr(argts[i]);
   clang::FunctionProtoType::ExtProtoInfo EPI;
-  return clang_astcontext->getFunctionType(T, llvm::ArrayRef<clang::QualType>(qargs, nargs), EPI).getAsOpaquePtr();
+  return Cxx->CI->getASTContext().getFunctionType(T, llvm::ArrayRef<clang::QualType>(qargs, nargs), EPI).getAsOpaquePtr();
 }
 
-DLLEXPORT void *makeMemberFunctionType(void *FT, clang::Type *cls)
+DLLEXPORT void *makeMemberFunctionType(C, void *FT, clang::Type *cls)
 {
-  return clang_astcontext->getMemberPointerType(clang::QualType::getFromOpaquePtr(FT), cls).getAsOpaquePtr();
+  return Cxx->CI->getASTContext().getMemberPointerType(clang::QualType::getFromOpaquePtr(FT), cls).getAsOpaquePtr();
 }
 
 DLLEXPORT void *getMemberPointerClass(clang::Type *mptr)
@@ -1604,21 +1454,9 @@ DLLEXPORT void *getLLVMStructType(llvm::Type **ts, size_t nts)
   return (void*)llvm::StructType::get(jl_LLVMContext,ArrayRef<llvm::Type*>(ts,nts));
 }
 
-DLLEXPORT void MarkMemberReferenced(clang::Expr *me)
+DLLEXPORT void MarkDeclarationsReferencedInExpr(C,clang::Expr *e)
 {
-  clang::Sema &sema = clang_compiler->getSema();
-  sema.MarkMemberReferenced(dyn_cast<clang::MemberExpr>(me));
-}
-
-DLLEXPORT void MarkAnyDeclReferenced(clang::Decl *d)
-{
-  clang::Sema &sema = clang_compiler->getSema();
-  sema.MarkAnyDeclReferenced(getTrivialSourceLocation(),d,true);
-}
-
-DLLEXPORT void MarkDeclarationsReferencedInExpr(clang::Expr *e)
-{
-  clang::Sema &sema = clang_compiler->getSema();
+  clang::Sema &sema = Cxx->CI->getSema();
   sema.MarkDeclarationsReferencedInExpr(e,true);
 }
 
@@ -1649,6 +1487,23 @@ DLLEXPORT int builtinKind(clang::Type *t)
 DLLEXPORT int isDeclInvalid(clang::Decl *D)
 {
   return D->isInvalidDecl();
+}
+
+// Test Support
+DLLEXPORT void *clang_get_cgt(C)
+{
+  return (void*)&Cxx->CGM->getTypes();
+}
+
+DLLEXPORT void *clang_shadow_module(C)
+{
+  return (void*)Cxx->shadow;
+}
+
+DLLEXPORT int RequireCompleteType(C,clang::Type *t)
+{
+  clang::Sema &sema = Cxx->CI->getSema();
+  return sema.RequireCompleteType(getTrivialSourceLocation(Cxx),clang::QualType(t,0),0);
 }
 
 }

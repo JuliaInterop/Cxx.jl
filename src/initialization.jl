@@ -3,6 +3,10 @@
 # Most of the actual Clang initialization is done on the C++ side, but, e.g.
 # adding header search directories is done in this file.
 
+# Paths
+basepath = joinpath(JULIA_HOME, "../../")
+depspath = joinpath(basepath, "deps")
+
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
 push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
@@ -11,12 +15,16 @@ const libcxxffi =
     string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
 
 # Set up Clang's global data structures
-function init()
+function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
     dlopen(libcxxffi, RTLD_GLOBAL)
-    ccall((:init_julia_clang_env,libcxxffi),Void,())
 end
-init()
+
+function setup_instance()
+    x = Array(ClangCompiler,1)
+    ccall((:init_clang_instance,libcxxffi),Void,(Ptr{Void},),x)
+    x[1]
+end
 
 # Running global constructors
 #
@@ -29,11 +37,11 @@ init()
 # call all the global constructors and initialize them as needed.
 import Base: llvmcall, cglobal
 
-CollectGlobalConstructors() = pcpp"llvm::Function"(
-    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},()))
+CollectGlobalConstructors(C) = pcpp"llvm::Function"(
+    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
 
-function RunGlobalConstructors()
-    p = CollectGlobalConstructors().ptr
+function RunGlobalConstructors(C)
+    p = CollectGlobalConstructors(C).ptr
     # If p is NULL it means we have no constructors to run
     if p != C_NULL
         eval(:(llvmcall($p,Void,())))
@@ -45,13 +53,14 @@ end
 # other situations, it is advisable, to just use cxx"" with regular #include's
 # which makes the intent clear and has the same directory resolution logic
 # as C++
-function cxxinclude(fname; isAngled = false)
-    if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{Uint8}, Cint),
-        fname, isAngled) == 0
+function cxxinclude(C, fname; isAngled = false)
+    if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{ClangCompiler}, Ptr{Uint8}, Cint),
+        &C, fname, isAngled) == 0
         error("Could not include file $fname")
     end
-    RunGlobalConstructors()
+    RunGlobalConstructors(C)
 end
+cxxinclude(fname; isAngled = false) = cxxinclude(instance(__default_compiler__), fname; isAngled = isAngled)
 
 # Tell the clang preprocessor to enter a source buffer.
 # The first method (EnterBuffer) creates the buffer as an anonymous source file.
@@ -59,47 +68,49 @@ end
 # be differences in behavior when compared to regular source files. In
 # particular, there is no way to specify what directory contains an anonymous
 # buffer and hence relative includes do not work.
-function EnterBuffer(buf)
+function EnterBuffer(C,buf)
     ccall((:EnterSourceFile,libcxxffi),Void,
-        (Ptr{Uint8},Csize_t),buf,sizeof(buf))
+        (Ptr{ClangCompiler},Ptr{Uint8},Csize_t),&C,buf,sizeof(buf))
 end
 
 # Enter's the buffer, while pretending it's the contents of the file at path
 # `file`. Note that if `file` actually exists and is included from somewhere
 # else, `buf` will be included instead.
-function EnterVirtualSource(buf,file::ByteString)
+function EnterVirtualSource(C,buf,file::ByteString)
     ccall((:EnterVirtualFile,libcxxffi),Void,
-        (Ptr{Uint8},Csize_t,Ptr{Uint8},Csize_t),
-        buf,sizeof(buf),file,sizeof(file))
+        (Ptr{ClangCompiler},Ptr{Uint8},Csize_t,Ptr{Uint8},Csize_t),
+        &C,buf,sizeof(buf),file,sizeof(file))
 end
-EnterVirtualSource(buf,file::Symbol) = EnterVirtualSource(buf,bytestring(file))
+EnterVirtualSource(C,buf,file::Symbol) = EnterVirtualSource(C,buf,bytestring(file))
 
 # Parses everything until the end of the currently entered source file
 # Returns true if the file was successfully parsed (i.e. no error occurred)
-function ParseToEndOfFile()
-    hadError = ccall(:_cxxparse,Cint,()) == 0
+function ParseToEndOfFile(C)
+    hadError = ccall(:_cxxparse,Cint,(Ptr{ClangCompiler},),&C) == 0
     if !hadError
-        RunGlobalConstructors()
+        RunGlobalConstructors(C)
     end
     !hadError
 end
 
-function cxxparse(string)
-    EnterBuffer(string)
-    ParseToEndOfFile() || error("Could not parse string")
+function cxxparse(C,string)
+    EnterBuffer(C,string)
+    ParseToEndOfFile(C) || error("Could not parse string")
 end
+cxxparse(string) = cxxparse(instance(__default_compiler__),string)
 
-function ParseVirtual(string, VirtualFileName, FileName, Line, Column)
-    EnterVirtualSource(string, VirtualFileName)
-    ParseToEndOfFile() ||
+function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column)
+    EnterVirtualSource(C,string, VirtualFileName)
+    ParseToEndOfFile(C) ||
         error("Could not parse C++ code at $FileName:$Line:$Column")
 end
 
-setup_cpp_env(f::pcpp"llvm::Function") =
-    ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ptr{Void},),f)
-function cleanup_cpp_env(state)
-    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ptr{Void},),state)
-    RunGlobalConstructors()
+setup_cpp_env(C, f::pcpp"llvm::Function") =
+    ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,f)
+
+function cleanup_cpp_env(C, state)
+    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ptr{ClangCompiler}, Ptr{Void}),&C,state)
+    RunGlobalConstructors(C)
 end
 
 # Include paths and macro handling
@@ -114,41 +125,40 @@ const C_ExternCSystem   = 2
 # Add a directory to the clang include path
 # `kind` is one of the options above ans `isFramework` is the equivalent of the
 # `-F` option to clang.
-function addHeaderDir(dirname; kind = C_User, isFramework = false)
+function addHeaderDir(C, dirname; kind = C_User, isFramework = false)
     ccall((:add_directory, libcxxffi), Void,
-        (Cint, Cint, Ptr{Uint8}), kind, isFramework, dirname)
+        (Ptr{ClangCompiler}, Cint, Cint, Ptr{Uint8}), &C, kind, isFramework, dirname)
 end
+addHeaderDir(dirname; kwargs...) = addHeaderDir(instance(__default_compiler__),dirname; kwargs...)
 
 # The equivalent of `#define $Name`
-function defineMacro(Name)
-    ccall((:defineMacro, libcxxffi), Void, (Ptr{Uint8},), Name)
+function defineMacro(C,Name)
+    ccall((:defineMacro, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{Uint8},), &C, Name)
 end
+defineMacro(Name) = defineMacro(instance(__default_compiler__),Name)
 
 # Setup Default Search Paths
 #
 # Clang has some code for this in Driver/, but it is not easily accessible for
 # our use case. Instead, we have custom logic here, which should be sufficient
 # for most use cases. This logic will be adjusted as the need arises.
-basepath = joinpath(JULIA_HOME, "../../")
 
 # Sometimes it is useful to skip this step and do it yourself, e.g. when building
 # a custom standard library.
 nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
-@osx_only begin
-    if !nostdcxx
-        xcode_path =
-            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
-        didfind = false
-        for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
-            if isdir(joinpath(xcode_path,path))
-                addHeaderDir(joinpath(xcode_path,path), kind = C_ExternCSystem)
-                didfind = true
-            end
+@osx_only function addStdHeaders(C)
+    xcode_path =
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
+    didfind = false
+    for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
+        if isdir(joinpath(xcode_path,path))
+            addHeaderDir(C,joinpath(xcode_path,path), kind = C_ExternCSystem)
+            didfind = true
         end
-        didfind || error("Could not find C++ standard library. Is XCode installed?")
     end
+    didfind || error("Could not find C++ standard library. Is XCode installed?")
 end
 
 # On linux the situation is a little more complicated as the system header is
@@ -245,33 +255,50 @@ function AddLinuxHeaderPaths()
     addHeaderDir(incpath * "/" * Triple, kind = C_System)
 end
 
-if !nostdcxx
-
-    @linux_only begin
-        AddLinuxHeaderPaths()
-        addHeaderDir("/usr/include", kind = C_System);
-    end
-
-    @windows_only begin
-          base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
-          addHeaderDir(joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
-          #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
-          addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
-          addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
-    end
-
+@linux_only function addStdHeaders(C)
+    AddLinuxHeaderPaths()
+    addHeaderDir(C,"/usr/include", kind = C_System);
 end
 
-# Also add clang's intrinsic headers
-addHeaderDir(joinpath(JULIA_HOME,"../lib/clang/3.7.0/include/"), kind = C_ExternCSystem)
+@windows_only function addStdHeaders(C)
+      base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
+      addHeaderDir(C,joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
+      #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
+      addHeaderDir(C,joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
+      addHeaderDir(C,joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
+end
 
-# __dso_handle is usually added by the linker when not present. However, since
-# we're not passing through a linker, we need to add it ourselves.
-cxxparse("""
-extern "C" {
-    void __dso_handle() {}
-    struct jl_value_t;
-    struct jl_function_t;
-    extern jl_value_t *jl_call0(jl_function_t *);
-}
-""")
+function addClangHeaders(C)
+    # Also add clang's intrinsic headers
+    addHeaderDir(C,joinpath(JULIA_HOME,"../lib/clang/3.7.0/include/"), kind = C_ExternCSystem)
+end
+
+function initialize_instance!(C)
+    if !nostdcxx
+        addStdHeaders(C)
+    end
+    addClangHeaders(C)
+    # __dso_handle is usually added by the linker when not present. However, since
+    # we're not passing through a linker, we need to add it ourselves.
+    cxxparse(C,"""
+    extern "C" {
+        void __dso_handle() {}
+        struct jl_value_t;
+        struct jl_function_t;
+        extern jl_value_t *jl_call0(jl_function_t *);
+    }
+    """)
+end
+
+function __init__()
+    C = setup_instance()
+    initialize_instance!(C)
+    push!(active_instances, C)
+end
+
+function new_clang_instance()
+    C = setup_instance()
+    initialize_instance!(C)
+    push!(active_instances, C)
+    CxxInstance{length(active_instances)}()
+end

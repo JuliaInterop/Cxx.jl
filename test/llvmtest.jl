@@ -2,17 +2,21 @@ using Cxx
 
 include("llvmincludes.jl")
 
-RequireCompleteType(d::cpcpp"clang::Type") = ccall(:RequireCompleteType,Cint,(Ptr{Void},),d.ptr) > 0
+RequireCompleteType(C,d::cpcpp"clang::Type") = ccall(:RequireCompleteType,Cint,
+    (Ptr{Cxx.ClangCompiler},Ptr{Void}),&C,d.ptr) > 0
 function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     executionEngine = pcpp"llvm::ExecutionEngine"(ccall(:jl_get_llvm_ee,Ptr{Void},()))
-    cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall(:clang_get_cgt,Ptr{Void},()))
+    C = Cxx.instance(__current_compiler__)
+    cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall(:clang_get_cgt,Ptr{Void},
+        (Ptr{Cxx.ClangCompiler},),&C))
     dl = @cxx executionEngine->getDataLayout()
-    RequireCompleteType(@cxx d->getTypeForDecl())
+    RequireCompleteType(C,@cxx d->getTypeForDecl())
     t = @cxx cgt->ConvertRecordDeclType(d)
     @assert @cxx t->isSized()
     div((@cxx dl->getTypeSizeInBits(t)),8)
 end
-@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(["llvm","ExecutionEngine"]).ptr)) >= 152
+@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(Cxx.instance(__current_compiler__),
+    ["llvm","ExecutionEngine"]).ptr)) >= 152
 
 code_llvmf(f,t) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), f, t, false))
 function code_graph(f,args)
@@ -31,20 +35,24 @@ gt = code_graph(factorize,(typeof(rand(4,4)),))
 cxx"""
 void f() {}
 """
-clangmod = pcpp"llvm::Module"(unsafe_load(cglobal(:clang_shadow_module,Ptr{Void})))
+C = Cxx.instance(__current_compiler__)
+clangmod = pcpp"llvm::Module"(ccall(:clang_shadow_module,Ptr{Void},
+    (Ptr{Cxx.ClangCompiler},),&C))
 ptr = @cxx clangmod->getFunction(pointer("_Z1fv"))
 @assert ptr != C_NULL
 
 jns = cglobal((:julia_namespace,Cxx.libcxxffi),Ptr{Void})
-ns = Cxx.createNamespace("julia")
+ns = Cxx.createNamespace(C,"julia")
 
 # This is basically the manual expansion of the cxx_str macro
 unsafe_store!(jns,ns.ptr)
 ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
-d = Cxx.CreateVarDecl(ctx,"xvar1",Cxx.cpptype(Int64))
+d = Cxx.CreateVarDecl(C,ctx,"xvar1",Cxx.cpptype(C,Int64))
 Cxx.AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(d.ptr))
 cxxparse("""
-extern llvm::Module *clang_shadow_module;
+extern "C" {
+extern llvm::Module *clang_shadow_module(void *);
+}
 extern llvm::LLVMContext &jl_LLVMContext;
 uint64_t foo() {
     return __julia::xvar1;
@@ -52,7 +60,7 @@ uint64_t foo() {
 """)
 unsafe_store!(jns,C_NULL)
 #GV = @cxx dyn_cast{llvm::GlobalVariable}(@cxx (@cxx clang_shadow_module)->getNamedValue(pointer("_ZN5julia4var1E")))
-GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module)->getNamedValue(pointer("_ZN5julia5xvar1E"))).ptr)
+GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module(convert(Ptr{Void},pointer([C]))))->getNamedValue(pointer("_ZN5julia5xvar1E"))).ptr)
 @assert GV != C_NULL
 @cxx (@cxx GV->getType())->dump()
 @cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),uint64(0)))
