@@ -234,7 +234,7 @@ addQualifiers(clangT::pcpp"clang::Type",CVR) = addQualifiers(QualType(clangT.ptr
 
 # And finally the actual definition of cpptype
 
-cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(C,cppdecl(p)))
+cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(C,p)))
 function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
     addQualifiers(pointerTo(C,cpptype(C,T)),CVR)
 end

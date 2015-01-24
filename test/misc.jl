@@ -94,3 +94,14 @@ return incpathtest;
 """
 end
 @test foo48() == 1
+
+# Enum type translation
+cxx"""
+enum EnumTest {
+    EnumA, EnumB, EnumC
+};
+bool enumfoo(EnumTest foo) {
+    return foo == EnumB;
+}
+"""
+@assert (@cxx enumfoo(@cxx EnumB))
