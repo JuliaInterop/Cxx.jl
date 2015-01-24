@@ -67,18 +67,11 @@ let __current_compiler__ = Cxx.__default_compiler__
     }
     """
 
-    parser(C) = pcpp"clang::Parser"(ccall((:clang_parser,Cxx.libcxxffi),Ptr{Void},(Ptr{Cxx.ClangCompiler},),&C))
-    compiler(C) = pcpp"clang::CompilerInstance"(
-        ccall((:clang_compiler,Cxx.libcxxffi),Ptr{Void},(Ptr{Cxx.ClangCompiler},),&C))
-    parser(C::Cxx.CxxInstance) = parser(Cxx.instance(C))
-    compiler(C::Cxx.CxxInstance) = compiler(Cxx.instance(C))
-
-
     function isPPDirective(C,data)
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(endof(data));
-            clang::Lexer L(clang::SourceLocation(),$(compiler(C))->getLangOpts(),
+            clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
             L.LexFromRawLexer(Tok);
@@ -89,7 +82,7 @@ let __current_compiler__ = Cxx.__default_compiler__
     function isTopLevelExpression(C,data)
         x = [Cxx.instance(C)]
         return isPPDirective(C,data) || icxx"""
-            clang::Parser *P = $(parser(C));
+            clang::Parser *P = $(Cxx.parser(C));
             clang::Preprocessor *PP = &P->getPreprocessor();
             clang::Parser::TentativeParsingAction TA(*P);
             EnterSourceFile((CxxInstance*)$(convert(Ptr{Void},pointer(x))),
@@ -117,7 +110,7 @@ let __current_compiler__ = Cxx.__default_compiler__
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(endof(data));
-            clang::Lexer L(clang::SourceLocation(),$(compiler(C))->getLangOpts(),
+            clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
             std::deque<int> parenStack;
