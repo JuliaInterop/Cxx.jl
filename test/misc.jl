@@ -1,3 +1,6 @@
+using Cxx
+using Base.Test
+
 # Issue 37 - Assertion failure when calling function declared `extern "C"`
 cxx"""
 extern "C" {
@@ -105,3 +108,22 @@ bool enumfoo(EnumTest foo) {
 }
 """
 @assert (@cxx enumfoo(@cxx EnumB))
+
+# Members with non-trivial copy constructor
+cxx"""
+#include <vector>
+class memreffoo {
+public:
+    memreffoo(int val) : bar(0) {
+        bar.push_back(val);
+    };
+    std::vector<int> bar;
+};
+"""
+memreffoo = @cxxnew memreffoo(5)
+memrefbar = @cxx memreffoo->bar
+@assert isa(memrefbar,Cxx.CppValue)
+@assert (@cxx memrefbar->size()) == 1
+
+
+

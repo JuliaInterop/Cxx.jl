@@ -302,6 +302,11 @@ function createNamespace(C,name)
             (Ptr{ClangCompiler},Ptr{Uint8}),&C,bytestring(name)))
 end
 
+function PerformMoveOrCopyInitialization(C,rt,expr)
+    pcpp"clang::Expr"(ccall((:PerformMoveOrCopyInitialization,libcxxffi),Ptr{Void},
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,rt,expr))
+end
+
 AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
     ccall((:AddDeclToDeclCtx,libcxxffi),Void,(Ptr{Void},Ptr{Void}),DC,D)
 

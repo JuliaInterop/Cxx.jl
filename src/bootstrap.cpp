@@ -52,7 +52,9 @@
 
 #include "CodeGen/CodeGenModule.h"
 #include <CodeGen/CodeGenTypes.h>
+#define private public
 #include <CodeGen/CodeGenFunction.h>
+#undef private
 
 #include "dtypes.h"
 
@@ -582,6 +584,14 @@ DLLEXPORT void *build_call_to_member(C, clang::Expr *MemExprE,clang::Expr **expr
   }
 }
 
+DLLEXPORT void *PerformMoveOrCopyInitialization(C, void *rt, clang::Expr *expr)
+{
+  clang::InitializedEntity Entity = clang::InitializedEntity::InitializeTemporary(
+    clang::QualType::getFromOpaquePtr(rt));
+  return (void*)Cxx->CI->getSema().PerformMoveOrCopyInitialization(Entity, NULL,
+    clang::QualType::getFromOpaquePtr(rt), expr, true).get();
+}
+
 // For CxxREPL
 DLLEXPORT void *clang_compiler(C)
 {
@@ -706,6 +716,11 @@ DLLEXPORT void init_clang_instance(C) {
     Cxx->CI->getLangOpts().RTTI = 0;
     Cxx->CI->getLangOpts().RTTIData = 0;
     Cxx->CI->getLangOpts().ImplicitInt = 0;
+    // Exceptions
+    // Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
+    // Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
+    // Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
+
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
     Cxx->CI->getPreprocessorOpts().UsePredefines = 1;
@@ -789,6 +804,8 @@ DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
 
     BasicBlock *b0 = BasicBlock::Create(Cxx->shadow->getContext(), "top", ShadowF);
 
+    Cxx->CGF->ReturnBlock = Cxx->CGF->getJumpDestInCurrentScope("return");
+
     // setup the environment to clang's expecations
     Cxx->CGF->Builder.SetInsertPoint( b0 );
     // clang expects to alloca memory before the AllocaInsertPt
@@ -802,6 +819,8 @@ DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
     } else {
         Cxx->CGF->AllocaInsertPt = &(b0->front());
     }
+
+    Cxx->CGF->PrologueCleanupDepth = Cxx->CGF->EHStack.stable_begin();
 
     Cxx->CGF->CurFn = ShadowF;
     state->alloca_bb_ptr = alloca_bb_ptr;
@@ -819,6 +838,11 @@ DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     //assert(in_cpp == true);
     //in_cpp = false;
 
+    Cxx->CGF->ReturnValue = nullptr;
+    Cxx->CGF->Builder.ClearInsertionPoint();
+    Cxx->CGF->FinishFunction(getTrivialSourceLocation(Cxx));
+    Cxx->CGF->ReturnBlock.getBlock()->eraseFromParent();
+
     Cxx->CI->getSema().DefineUsedVTables();
     Cxx->CI->getSema().PerformPendingInstantiations(false);
     Cxx->CGM->Release();
@@ -832,9 +856,12 @@ DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     Function *F = Cxx->CGF->CurFn;
 
     // cleanup the environment
-    Cxx->CGF->AllocaInsertPt = 0; // free this ptr reference
-    if (state->alloca_bb_ptr)
-        state->alloca_bb_ptr->eraseFromParent();
+    Cxx->CGF->EHResumeBlock = nullptr;
+    Cxx->CGF->TerminateLandingPad = nullptr;
+    Cxx->CGF->TerminateHandler = nullptr;
+    Cxx->CGF->UnreachableBlock = nullptr;
+    Cxx->CGF->ExceptionSlot = nullptr;
+    Cxx->CGF->EHSelectorSlot = nullptr;
 
     //copy_into(F,cur_func);
 

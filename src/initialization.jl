@@ -60,7 +60,9 @@ function cxxinclude(C, fname; isAngled = false)
     end
     RunGlobalConstructors(C)
 end
-cxxinclude(fname; isAngled = false) = cxxinclude(instance(__default_compiler__), fname; isAngled = isAngled)
+cxxinclude(C::CxxInstance, fname; isAngled = false) =
+    cxxinclude(instance(C), fname; isAngled = isAngled)
+cxxinclude(fname; isAngled = false) = cxxinclude(__default_compiler__, fname; isAngled = isAngled)
 
 # Tell the clang preprocessor to enter a source buffer.
 # The first method (EnterBuffer) creates the buffer as an anonymous source file.
@@ -97,7 +99,8 @@ function cxxparse(C,string)
     EnterBuffer(C,string)
     ParseToEndOfFile(C) || error("Could not parse string")
 end
-cxxparse(string) = cxxparse(instance(__default_compiler__),string)
+cxxparse(C::CxxInstance,string) = cxxparse(instance(C),string)
+cxxparse(string) = cxxparse(__default_compiler__,string)
 
 function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column)
     EnterVirtualSource(C,string, VirtualFileName)
@@ -129,13 +132,15 @@ function addHeaderDir(C, dirname; kind = C_User, isFramework = false)
     ccall((:add_directory, libcxxffi), Void,
         (Ptr{ClangCompiler}, Cint, Cint, Ptr{Uint8}), &C, kind, isFramework, dirname)
 end
-addHeaderDir(dirname; kwargs...) = addHeaderDir(instance(__default_compiler__),dirname; kwargs...)
+addHeaderDir(C::CxxInstance, dirname; kwargs...) = addHeaderDir(instance(C),dirname; kwargs...)
+addHeaderDir(dirname; kwargs...) = addHeaderDir(__default_compiler__,dirname; kwargs...)
 
 # The equivalent of `#define $Name`
 function defineMacro(C,Name)
     ccall((:defineMacro, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{Uint8},), &C, Name)
 end
-defineMacro(Name) = defineMacro(instance(__default_compiler__),Name)
+defineMacro(C::CxxInstance,Name) = defineMacro(instance(C),Name)
+defineMacro(Name) = defineMacro(__default_compiler__,Name)
 
 # Setup Default Search Paths
 #

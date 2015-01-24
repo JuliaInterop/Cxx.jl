@@ -512,7 +512,7 @@ end
 
 function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     # Ask clang what the type is we're expecting
-    rt = GetExprResultType(expr)
+    rt = BuildDecltypeType(C,expr)
 
     if isFunctionType(rt)
         error("Cannot reference function by value")
@@ -532,23 +532,24 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     (pvd != nothing) && push!(argt,ct)
 
     llvmrt = julia_to_llvm(rett)
-    f = CreateFunction(C, llvmrt, map(julia_to_llvm,argt))
+    f = CreateFunction(C, needsret ? julia_to_llvm(Void) : llvmrt, map(julia_to_llvm,argt))
     state = setup_cpp_env(C, f)
     builder = irbuilder(C)
 
     args = llvmargs(C, builder, f, argt)
 
-    (pvd != nothing) && associateargs(C,builder,[ct],args[needsret ? 1:1 : 2:2],[pvd])
+    (pvd != nothing) && associateargs(C,builder,[ct],args[needsret ? (2:2) : (1:1)],[pvd])
 
     MarkDeclarationsReferencedInExpr(C, expr)
     if !needsret
         ret = EmitAnyExpr(C, expr)
     else
+        expr = PerformMoveOrCopyInitialization(C, rt, expr)
         EmitAnyExprToMem(C, expr, args[1], false)
+        ret = C_NULL
     end
 
-    createReturn(C,builder,f,ct !== nothing ? (ct,) : (),
-        ct !== nothing ? [ct] : [],llvmrt,rett,rt,ret,state)
+    createReturn(C,builder,f,argt,argt,llvmrt,rett,rt,ret,state)
 end
 
 #
