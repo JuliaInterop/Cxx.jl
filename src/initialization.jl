@@ -197,8 +197,11 @@ function ScanLibDirForGCCTriple(base,triple)
             end
             InstallPath = path * "/" * dir
             IncPath = InstallPath * isuffix * "/../include"
-            if !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
-               !isdir( IncPath * "/c++/" * dir )
+            if 
+               ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
+                  !isdir( IncPath * "/c++/" * dir ) )  &&
+               ( !isdir( IncPath * "/c++/" * dir * "/" * triple ) ||
+                  !isdir( IncPath * "/c++/" * dir ) )
                 continue
             end
             Version = CandidateVersion
@@ -249,10 +252,18 @@ function AddLinuxHeaderPaths()
 
     incpath = Path * "/../include"
 
+    incpath = Path * "/../include"
+ 
     addHeaderDir(incpath, kind = C_System)
-    addHeaderDir(incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
     addHeaderDir(incpath * "/c++/" * VersionString, kind = C_System)
-    addHeaderDir(incpath * "/" * Triple, kind = C_System)
+
+    # check which type of include dir we have
+    if isdir(incpath * "/" * Triple)
+       addHeaderDir(incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
+       addHeaderDir(incpath * "/" * Triple, kind = C_System)
+    else
+       addHeaderDir(incpath * "/c++/" * VersionString * "/" * Triple, kind = C_System)
+    end
 end
 
 @linux_only function addStdHeaders(C)
