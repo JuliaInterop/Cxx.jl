@@ -88,7 +88,7 @@ EnterVirtualSource(C,buf,file::Symbol) = EnterVirtualSource(C,buf,bytestring(fil
 # Parses everything until the end of the currently entered source file
 # Returns true if the file was successfully parsed (i.e. no error occurred)
 function ParseToEndOfFile(C)
-    hadError = ccall(:_cxxparse,Cint,(Ptr{ClangCompiler},),&C) == 0
+    hadError = ccall((:_cxxparse,libcxxffi),Cint,(Ptr{ClangCompiler},),&C) == 0
     if !hadError
         RunGlobalConstructors(C)
     end
@@ -218,7 +218,7 @@ function ScanLibDirForGCCTriple(base,triple)
     return (Version, VersionString, GccPath)
 end
 
-function AddLinuxHeaderPaths()
+function AddLinuxHeaderPaths(C)
     # Taken from Clang's ToolChains.cpp
     const X86_64LibDirs = ["/lib64", "/lib"]
     const X86_64Triples = [
@@ -259,20 +259,20 @@ function AddLinuxHeaderPaths()
 
     incpath = Path * "/../include"
  
-    addHeaderDir(incpath, kind = C_System)
-    addHeaderDir(incpath * "/c++/" * VersionString, kind = C_System)
+    addHeaderDir(C, incpath, kind = C_System)
+    addHeaderDir(C, incpath * "/c++/" * VersionString, kind = C_System)
 
     # check which type of include dir we have
     if isdir(incpath * "/" * Triple)
-       addHeaderDir(incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
-       addHeaderDir(incpath * "/" * Triple, kind = C_System)
+       addHeaderDir(C, incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
+       addHeaderDir(C, incpath * "/" * Triple, kind = C_System)
     else
-       addHeaderDir(incpath * "/c++/" * VersionString * "/" * Triple, kind = C_System)
+       addHeaderDir(C, incpath * "/c++/" * VersionString * "/" * Triple, kind = C_System)
     end
 end
 
 @linux_only function addStdHeaders(C)
-    AddLinuxHeaderPaths()
+    AddLinuxHeaderPaths(C)
     addHeaderDir(C,"/usr/include", kind = C_System);
 end
 
