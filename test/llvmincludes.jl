@@ -1,11 +1,13 @@
-function addLLVMIncludes(C)
+function addLLVMIncludes(C, clangheaders = true, juliainclude = joinpath(JULIA_HOME,"../include"),
+    llvmdir = joinpath(Cxx.depspath,"llvm-svn"), ver = v"3.7.0-svn")
 
     # LLVM Headers
 
-    addHeaderDir(C,joinpath(JULIA_HOME,"../include"))
-    addHeaderDir(C,joinpath(Cxx.depspath,"llvm-svn/tools/clang/"))
-    addHeaderDir(C,joinpath(Cxx.depspath,"llvm-svn/tools/clang/include/"))
-
+    addHeaderDir(C,juliainclude)
+    if clangheaders
+        addHeaderDir(C,joinpath(llvmdir,"tools/clang/"))
+        addHeaderDir(C,joinpath(llvmdir,"tools/clang/include/"))
+    end
 
     # Load LLVM and clang libraries
 
@@ -16,18 +18,22 @@ function addLLVMIncludes(C)
     cxxinclude(C,"llvm/IR/Module.h")
     cxxinclude(C,"llvm/IR/IRBuilder.h")
     cxxinclude(C,"llvm/IR/Constants.h")
-    cxxinclude(C,"llvm/IR/CFG.h")
+    cxxinclude(C,"llvm/IR/Value.h")
+    if ver > v"3.5"
+        cxxinclude(C,"llvm/IR/CFG.h")
+    end
     cxxinclude(C,"llvm/Support/GraphWriter.h")
     cxxinclude(C,"llvm/ExecutionEngine/ExecutionEngine.h")
-    cxxinclude(C,"lib/CodeGen/CGValue.h")
-    cxxinclude(C,"lib/CodeGen/CodeGenTypes.h")
-    cxxinclude(C,"clang/AST/DeclBase.h")
-    cxxinclude(C,"clang/AST/Type.h")
-    cxxinclude(C,"clang/Basic/SourceLocation.h")
-    cxxinclude(C,"clang/Frontend/CompilerInstance.h")
-    cxxinclude(C,"clang/AST/DeclTemplate.h")
     cxxinclude(C,"llvm/ADT/ArrayRef.h")
     cxxinclude(C,"llvm/Analysis/CallGraph.h")
-
+    if clangheaders
+        cxxinclude(C,"lib/CodeGen/CGValue.h")
+        cxxinclude(C,"lib/CodeGen/CodeGenTypes.h")
+        cxxinclude(C,"clang/AST/DeclBase.h")
+        cxxinclude(C,"clang/AST/Type.h")
+        cxxinclude(C,"clang/Basic/SourceLocation.h")
+        cxxinclude(C,"clang/Frontend/CompilerInstance.h")
+        cxxinclude(C,"clang/AST/DeclTemplate.h")
+    end
 end
 addLLVMIncludes(Cxx.__default_compiler__)
