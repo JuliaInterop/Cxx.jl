@@ -25,6 +25,7 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
     -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \
     -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDBServer -llldbPluginPlatformLinux \
     -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows -llldbPluginPlatformKalimba \
+    -llldbPluginPlatformAndroid \
     -llldbPluginPlatformMacOSX  -llldbPluginLanguageRuntimeObjCAppleObjCRuntime \
     -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote -llldbPluginMemoryHistoryASan \
     -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab -llldbPluginSymbolVendorELF -llldbSymbol -llldbUtility \
