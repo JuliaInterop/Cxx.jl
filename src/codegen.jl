@@ -664,7 +664,7 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
         #@show rt
     end
     if issret
-        llvmargt = [Ptr{Uint8},llvmargt]
+        unshift!(llvmargt,Ptr{Uint8})
     end
 
     llvmrt = julia_to_llvm(rett)
@@ -712,7 +712,7 @@ end
 # access to an alarming number of parameters. Hopefully this can be cleaned up
 # in the future
 #
-function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt)])
+function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt);])
     argt = Type[argt...]
 
     jlrt = rett
@@ -753,7 +753,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
     end
 
     if (rett != None) && rett <: CppValue
-        arguments = [:(pointer(r.data)), args2]
+        arguments = vcat([:(pointer(r.data))], args2)
         size = cxxsizeof(C,rt)
         return Expr(:block,
             :( r = ($(rett))(Array(Uint8,$size)) ),
