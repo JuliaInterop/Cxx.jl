@@ -349,7 +349,7 @@ const cFloat     = 21
 const cDouble    = 22
 
 # Decl::Kind
-const LinkageSpec = 9
+const LinkageSpec = 10
 
 
 getPointeeType(t::pcpp"clang::Type") = QualType(ccall((:getPointeeType,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
