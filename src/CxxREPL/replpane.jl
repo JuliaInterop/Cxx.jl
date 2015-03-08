@@ -157,7 +157,7 @@ let __current_compiler__ = Cxx.__default_compiler__
 
         main_mode = repl.interface.modes[1]
 
-        unshift!(repl.interface.modes,panel)
+        push!(repl.interface.modes,panel)
 
         hp = main_mode.hist
         hp.mode_mapping[:cxx] = panel
