@@ -102,9 +102,13 @@ function CreateTypeDefDecl(C,DC::pcpp"clang::DeclContext",name,T::QualType)
 end
 
 function BuildCallToMemberFunction(C, me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"})
-    pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},
+    ret = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},
         (Ptr{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Csize_t),
         &C, me.ptr,[arg.ptr for arg in args],length(args)))
+    if ret == C_NULL
+        error("Failed to call member")
+    end
+    ret
 end
 
 function BuildMemberReference(C, base, t, IsArrow, name)

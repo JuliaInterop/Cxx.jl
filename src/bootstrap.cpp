@@ -530,13 +530,11 @@ DLLEXPORT int typeconstruct(C,void *type, clang::Expr **rawexprs, size_t nexprs,
     if (!Ty->isVoidType() &&
         sema.RequireCompleteType(getTrivialSourceLocation(Cxx), Ty,
                             clang::diag::err_invalid_incomplete_type_use)) {
-        assert(false);
         return false;
     }
 
     if (sema.RequireNonAbstractType(getTrivialSourceLocation(Cxx), Ty,
                                clang::diag::err_allocation_of_abstract_type)) {
-        assert(false);
         return false;
     }
 
@@ -583,6 +581,9 @@ DLLEXPORT void *build_call_to_member(C, clang::Expr *MemExprE,clang::Expr **expr
          MemExprE->getType() == Cxx->CI->getASTContext().OverloadTy)
     return (void*)Cxx->CI->getSema().BuildCallToMemberFunction(NULL,
       MemExprE,getTrivialSourceLocation(Cxx),clang::MultiExprArg(exprs,nexprs),getTrivialSourceLocation(Cxx)).get();
+  else if(isa<clang::TypoExpr>(MemExprE)) {
+    return NULL;
+  }
   else {
     return (void*) new (&Cxx->CI->getASTContext()) clang::CXXMemberCallExpr(Cxx->CI->getASTContext(),
         MemExprE,ArrayRef<clang::Expr*>(exprs,nexprs),
