@@ -306,8 +306,13 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
         for (i,e) in enumerate(exprs)
             if isexprs[i]
                 s = gensym()
-                @assert isa(e,QuoteNode)
-                e = e.value
+                if isa(e,QuoteNode)
+                    e = e.value
+                elseif isexpr(e,:quote)
+                    e = e.args[1]
+                else
+                    error("Unrecognized expression type for quote in icxx")
+                end
                 push!(setup.args,Expr(:(=),s,Expr(:->,Expr(:tuple),e)))
                 push!(cxxstr.args,s)
             else
