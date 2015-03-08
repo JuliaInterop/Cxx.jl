@@ -42,6 +42,9 @@ LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -f
     -framework Security  -lpanel -framework CoreFoundation \
     -framework Foundation -framework Carbon -lobjc -ledit -lxml2
 endif
+ifeq ($(EXPERIMENTAL_LLDB),1)
+LLDB_LIBS +=  -llldbPluginABIMips32 -llldbPluginUnwindAssemblyMips
+endif
 ifeq ($(OS), WINNT)
 LLDB_LIBS += -llldbHostWindows -llldbPluginProcessWindows -lWs2_32
 endif
