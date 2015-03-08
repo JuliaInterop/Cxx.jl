@@ -30,7 +30,7 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
     -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote -llldbPluginMemoryHistoryASan \
     -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab -llldbPluginSymbolVendorELF -llldbSymbol -llldbUtility \
     -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyx86 -llldbPluginUtility -llldbTarget \
-    -llldbPluginInstrumentationRuntimeAddressSanitizer \
+    -llldbPluginInstrumentationRuntimeAddressSanitizer -llldbPluginPlatformAndroid \
     $(call exec,$(LLVM_CONFIG) --system-libs)
 LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginABIMacOSX_i386
 ifeq ($(OS), Darwin)
