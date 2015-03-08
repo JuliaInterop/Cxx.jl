@@ -125,5 +125,16 @@ memrefbar = @cxx memreffoo->bar
 @assert isa(memrefbar,Cxx.CppValue)
 @assert (@cxx memrefbar->size()) == 1
 
+# Anonymous structs are referenced by typedef if possible.
+cxx"""
+typedef struct {
+    int foo;
+} anonttest;
+anonttest *anonttestf()
+{
+    return new anonttest{ .foo = 0};
+}
+"""
 
+@assert typeof(@cxx anonttestf()) == pcpp"anonttest"
 

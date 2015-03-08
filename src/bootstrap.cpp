@@ -348,6 +348,13 @@ DLLEXPORT void *withRestrict(void *T)
 
 DLLEXPORT char *decl_name(clang::NamedDecl *decl)
 {
+    const clang::IdentifierInfo *II = decl->getIdentifier();
+    const clang::TagDecl *TagD;
+    if (!II && (TagD = dyn_cast<clang::TagDecl>(decl))) {
+      decl = TagD->getTypedefNameForAnonDecl();
+      if (!decl)
+        return NULL;
+    }
     std::string str = decl->getQualifiedNameAsString().data();
     char * cstr = (char*)malloc(str.length()+1);
     std::strcpy (cstr, str.c_str());

@@ -353,7 +353,7 @@ const LinkageSpec = 9
 
 
 getPointeeType(t::pcpp"clang::Type") = QualType(ccall((:getPointeeType,libcxxffi),Ptr{Void},(Ptr{Void},),t.ptr))
-canonicalType(t) = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+canonicalType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
 function toBaseType(t::pcpp"clang::Type")
     T = CppBaseType{symbol(get_name(t))}
