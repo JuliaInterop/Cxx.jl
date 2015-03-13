@@ -25,7 +25,6 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
     -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \
     -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDBServer -llldbPluginPlatformLinux \
     -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows -llldbPluginPlatformKalimba \
-    -llldbPluginPlatformAndroid \
     -llldbPluginPlatformMacOSX  -llldbPluginLanguageRuntimeObjCAppleObjCRuntime \
     -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote -llldbPluginMemoryHistoryASan \
     -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab -llldbPluginSymbolVendorELF -llldbSymbol -llldbUtility \
@@ -36,6 +35,7 @@ LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginA
 ifeq ($(OS), Darwin)
 LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols -llldbHostMacOSX \
 	-llldbHostPOSIX \
+	-llldbPluginPlatformAndroid \
     -llldbPluginDynamicLoaderMacOSX -llldbPluginDynamicLoaderDarwinKernel -llldbPluginObjectContainerUniversalMachO \
     -llldbPluginProcessDarwin  -llldbPluginProcessMachCore \
     -llldbPluginSymbolVendorMacOSX -llldbPluginSystemRuntimeMacOSX -llldbPluginObjectFileMachO \
