@@ -43,7 +43,7 @@
 # llvmcall allows the user to pass in an LLVM IR expression which
 # will then be embedded directly in the julia expressions. This
 # functionality could be considered the `inline assembly` equivalent
-# for julia. However, all optimizations are fun after `llvmcall` IR
+# for julia. However, all optimizations are run after `llvmcall` IR
 # has been inlined into the julia IR, all LLVM optimizations such
 # as constant propagation, dead code elimination, etc. are applied
 # across both sources of IR, eliminating a common inefficiency of
