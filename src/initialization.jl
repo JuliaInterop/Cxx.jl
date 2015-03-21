@@ -9,7 +9,7 @@ depspath = joinpath(basepath, "deps")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
+push!(Libdl.DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
 
 const libcxxffi =
     string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
@@ -17,7 +17,7 @@ const libcxxffi =
 # Set up Clang's global data structures
 function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
-    dlopen(libcxxffi, RTLD_GLOBAL)
+    Libdl.dlopen(libcxxffi, Libdl.RTLD_GLOBAL)
 end
 
 function setup_instance()
@@ -202,7 +202,7 @@ function ScanLibDirForGCCTriple(base,triple)
             end
             InstallPath = path * "/" * dir
             IncPath = InstallPath * isuffix * "/../include"
-            if 
+            if
                ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
                   !isdir( IncPath * "/c++/" * dir ) )  &&
                ( !isdir( IncPath * "/c++/" * dir * "/" * triple ) ||
@@ -258,7 +258,7 @@ function AddLinuxHeaderPaths(C)
     incpath = Path * "/../include"
 
     incpath = Path * "/../include"
- 
+
     addHeaderDir(C, incpath, kind = C_System)
     addHeaderDir(C, incpath * "/c++/" * VersionString, kind = C_System)
 
