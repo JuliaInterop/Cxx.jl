@@ -268,14 +268,14 @@ function _decl_name(d)
     @assert d != C_NULL
     s = ccall((:decl_name,libcxxffi),Ptr{Uint8},(Ptr{Void},),d)
     ret = bytestring(s)
-    c_free(s)
+    Libc.free(s)
     ret
 end
 
 function simple_decl_name(d)
     s = ccall((:simple_decl_name,libcxxffi),Ptr{Uint8},(Ptr{Void},),d)
     ret = bytestring(s)
-    c_free(s)
+    Libc.free(s)
     ret
 end
 
