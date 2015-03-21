@@ -9,7 +9,7 @@
 # # # Built-in clang types
 chartype(C) = QualType(pcpp"clang::Type"(ccall((:cT_cchar,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)))
 winttype(C) = QualType(pcpp"clang::Type"(ccall((:cT_wint,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)))
-cpptype(C,::Type{Uint8}) = chartype(C)
+cpptype(C,::Type{UInt8}) = chartype(C)
 
 # Mapping some basic julia bitstypes to C's intrinsic types
 # We could use Cint, etc. here, but we actually already do that
@@ -17,9 +17,9 @@ cpptype(C,::Type{Uint8}) = chartype(C)
 for (jlt, sym) in
     ((Void, :cT_void),
      (Int8, :cT_int8),
-     (Uint32, :cT_uint32),
+     (UInt32, :cT_uint32),
      (Int32, :cT_int32),
-     (Uint64, :cT_uint64),
+     (UInt64, :cT_uint64),
      (Int64, :cT_int64),
      (Bool, :cT_int1),
      (Float32, :cT_float32),
@@ -127,16 +127,16 @@ lookup_ctx(C, fname::Symbol; kwargs...) = lookup_ctx(C, string(fname); kwargs...
 # by `targs`
 function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     @assert cxxt != C_NULL
-    integralValues = zeros(Uint64,length(targs))
-    integralValuesPresent = zeros(Uint8,length(targs))
-    bitwidths = zeros(Uint32,length(targs))
+    integralValues = zeros(UInt64,length(targs))
+    integralValuesPresent = zeros(UInt8,length(targs))
+    bitwidths = zeros(UInt32,length(targs))
     ts = Array(QualType,length(targs))
     for (i,t) in enumerate(targs)
         if isa(t,Type)
             ts[i] = cpptype(C,t)
         elseif isa(t,Integer) || isa(t,CppEnum)
             ts[i] = cpptype(C,typeof(t))
-            integralValues[i] = convert(Uint64,isa(t,CppEnum) ? t.val : t)
+            integralValues[i] = convert(UInt64,isa(t,CppEnum) ? t.val : t)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
         else
@@ -144,23 +144,23 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Ptr{Uint64},Ptr{Uint8},Uint32),
+            (Ptr{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Ptr{UInt64},Ptr{UInt8},UInt32),
             &C,cxxt.ptr,[p.ptr for p in ts],integralValues,integralValuesPresent,length(ts)))
     d
 end
 
 function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     @assert cxxt != C_NULL
-    integralValues = zeros(Uint64,length(targs))
-    integralValuesPresent = zeros(Uint8,length(targs))
-    bitwidths = zeros(Uint32,length(targs))
+    integralValues = zeros(UInt64,length(targs))
+    integralValuesPresent = zeros(UInt8,length(targs))
+    bitwidths = zeros(UInt32,length(targs))
     ts = Array(QualType,length(targs))
     for (i,t) in enumerate(targs)
         if isa(t,pcpp"clang::Type") || isa(t,QualType)
             ts[i] = QualType(t)
         elseif isa(t,Integer) || isa(t,CppEnum)
             ts[i] = cpptype(C, typeof(t))
-            integralValues[i] = convert(Uint64,isa(t,CppEnum) ? t.val : t)
+            integralValues[i] = convert(UInt64,isa(t,CppEnum) ? t.val : t)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
         else
@@ -168,7 +168,7 @@ function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{Uint64},Ptr{Uint8},Uint32),&C,
+            (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{UInt64},Ptr{UInt8},UInt32),&C,
             cxxt.ptr,[p.ptr for p in ts],integralValues,integralValuesPresent,length(ts)))
     d
 end
@@ -266,14 +266,14 @@ cpptype(C,F::Type{Function}) = cpptype(C,pcpp"jl_function_t")
 
 function _decl_name(d)
     @assert d != C_NULL
-    s = ccall((:decl_name,libcxxffi),Ptr{Uint8},(Ptr{Void},),d)
+    s = ccall((:decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
     ret = bytestring(s)
     Libc.free(s)
     ret
 end
 
 function simple_decl_name(d)
-    s = ccall((:simple_decl_name,libcxxffi),Ptr{Uint8},(Ptr{Void},),d)
+    s = ccall((:simple_decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
     ret = bytestring(s)
     Libc.free(s)
     ret
@@ -413,7 +413,7 @@ function juliatype(t::QualType)
             return CppRef{jt,CVR}
         end
     elseif isCharType(t)
-        return Uint8
+        return UInt8
     elseif isEnumeralType(t)
         return CppEnum{symbol(get_name(t))}
     elseif isIntegerType(t)
@@ -421,13 +421,13 @@ function juliatype(t::QualType)
         if kind == cLong || kind == cLongLong
             return Int64
         elseif kind == cULong || kind == cULongLong
-            return Uint64
+            return UInt64
         elseif kind == cUInt
-            return Uint32
+            return UInt32
         elseif kind == cInt
             return Int32
         elseif kind == cChar_U || kind == cChar_S
-            return Uint8
+            return UInt8
         elseif kind == cSChar
             return Int8
         end

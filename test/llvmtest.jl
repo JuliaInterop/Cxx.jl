@@ -2,8 +2,9 @@ using Cxx
 
 include("llvmincludes.jl")
 
-RequireCompleteType(C,d::cpcpp"clang::Type") = ccall(:RequireCompleteType,Cint,
-    (Ptr{Cxx.ClangCompiler},Ptr{Void}),&C,d.ptr) > 0
+RequireCompleteType(C,d::cpcpp"clang::Type") =
+    ccall(:RequireCompleteType,Cint,(Ptr{Cxx.ClangCompiler},Ptr{Void}),&C,d.ptr) > 0
+
 function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     executionEngine = pcpp"llvm::ExecutionEngine"(ccall(:jl_get_llvm_ee,Ptr{Void},()))
     C = Cxx.instance(__current_compiler__)
@@ -63,12 +64,11 @@ unsafe_store!(jns,C_NULL)
 GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module(convert(Ptr{Void},pointer([C]))))->getNamedValue(pointer("_ZN5julia5xvar1E"))).ptr)
 @assert GV != C_NULL
 @cxx (@cxx GV->getType())->dump()
-@cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),uint64(0)))
+@cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),UInt64(0)))
 @cxx GV->setConstant(true)
-@assert (@cxx foo()) == uint64(0)
+@assert (@cxx foo()) === UInt64(0)
 
 # LLDB test
-
 
 addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/lldb/include"))
 
@@ -91,7 +91,7 @@ function hc(ci::rcpp"lldb_private::CommandInterpreter",cmd)
     @cxx cro->GetOutputData()
 end
 
-stdout = pcpp"FILE"(ccall(:fdopen,Ptr{Void},(Int32,Ptr{Uint8}),1,"a"))
+stdout = pcpp"FILE"(ccall(:fdopen,Ptr{Void},(Int32,Ptr{UInt8}),1,"a"))
 
 function setSTDOUT(dbg,stdout)
     @cxx dbg->SetOutputFileHandle(stdout,false)

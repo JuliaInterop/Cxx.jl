@@ -12,9 +12,9 @@ function llvmconst(val::ANY)
     if isbits(T)
         if !Base.isstructtype(T)
             if T <: FloatingPoint
-                return getConstantFloat(julia_to_llvm(T),float64(val))
+                return getConstantFloat(julia_to_llvm(T),Float64(val))
             else
-                return getConstantInt(julia_to_llvm(T),uint64(val))
+                return getConstantInt(julia_to_llvm(T),UInt64(val))
             end
         else
             vals = [getfield(val,i) for i = 1:length(T.names)]
@@ -79,7 +79,7 @@ end
 
 function ActOnStartNamespaceDef(C,name)
     pcpp"clang::Decl"(ccall((:ActOnStartNamespaceDef,libcxxffi),Ptr{Void},
-        (Ptr{ClangCompiler},Ptr{Uint8}),&C,name))
+        (Ptr{ClangCompiler},Ptr{UInt8}),&C,name))
 end
 function ActOnFinishNamespaceDef(C,D)
     ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,D)
