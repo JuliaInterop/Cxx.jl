@@ -37,7 +37,7 @@ class PrintTest {
 public:
     PrintTest() {
         abc = $:(julia_global::Int64);
-    }
+    };
     int64_t abc;
 };
 """
@@ -85,7 +85,7 @@ cxx"""
    public:
    double xxx() {
       return 5.0;
-   }
+   };
  };
 """
 
