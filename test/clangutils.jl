@@ -35,5 +35,5 @@ cc = pcpp"clang::CompilerInstance"(unsafe_load(cglobal(
     (:clang_compiler,libcxxffi),Ptr{Void})))
 
 pass_llvm_command_line(str) =
-    @cxx llvm::cl::ParseCommandLineOptions(1+length(str),pointer([pointer("julia"),[pointer(s) for s in str],convert(Ptr{Uint8},C_NULL)]))
+    @cxx llvm::cl::ParseCommandLineOptions(1+length(str),pointer([pointer("julia"),[pointer(s) for s in str],convert(Ptr{UInt8},C_NULL)]))
 pass_llvm_command_line(str::String) = pass_llvm_command_line([str])

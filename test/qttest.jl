@@ -36,7 +36,7 @@ cxxinclude("QMessageBox", isAngled=true)
 cxxinclude("QPushButton", isAngled=true)
 
 const a = "julia"
-x = Ptr{Uint8}[pointer(a),C_NULL]
+x = Ptr{UInt8}[pointer(a),C_NULL]
 # This is pretty stupid, but it seems QApplication is capturing the pointer
 # to the reference, so we can't just # stack allocate it because that won't
 # be valid for exec

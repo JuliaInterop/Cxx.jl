@@ -12,7 +12,7 @@ uint64_t foo2() {
 """
 
 x = @cxx foo2()
-@test x == uint64(1)
+@test x === UInt64(1)
 
 julia_global = 1
 
@@ -23,10 +23,10 @@ uint64_t bar() {
 """
 
 bar() = @cxx bar()
-@test bar() == uint64(1)
+@test bar() === UInt64(1)
 
 julia_global = 2
-@test bar() == uint64(2)
+@test bar() == UInt64(2)
 
 julia_global = 1.0
 @test_throws TypeError bar()
@@ -77,7 +77,7 @@ namespace foo13{
  };
 }
 """
-@assert (@cxx foo13::bar::A).val == 0
+@test (@cxx foo13::bar::A).val == 0
 
 # Issue # 14
 cxx"""
@@ -91,7 +91,7 @@ cxx"""
 
 b = @cxxnew bar14()
 
-@assert (@cxx b->xxx()) == 5.0
+@test (@cxx b->xxx()) === Cdouble(5.0)
 
 cxx"""
 double f_double(double x) {
@@ -99,12 +99,13 @@ double f_double(double x) {
 }
 """
 
-@test (@cxx f_double(3.0)) == 5.0
+@test (@cxx f_double(3.0)) === Cdouble(5.0)
 
 cxx"""
 typedef struct _foobar {
    int a;
 } foobar;
+
 void modify_a(foobar &fb) {
    fb.a = fb.a+1;
 }
@@ -112,4 +113,4 @@ void modify_a(foobar &fb) {
 
 fb = icxx"_foobar{1};"
 icxx"(void)++$fb.a;"
-@assert reinterpret(Int32, fb.data)[1] == 2
+@test reinterpret(Int32, fb.data)[1] == 2

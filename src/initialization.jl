@@ -9,7 +9,7 @@ depspath = joinpath(basepath, "deps")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-push!(DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
+push!(Libdl.DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
 
 const libcxxffi =
     string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
@@ -17,7 +17,7 @@ const libcxxffi =
 # Set up Clang's global data structures
 function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
-    dlopen(libcxxffi, RTLD_GLOBAL)
+    Libdl.dlopen(libcxxffi, Libdl.RTLD_GLOBAL)
 end
 
 function setup_instance()
@@ -54,7 +54,7 @@ end
 # which makes the intent clear and has the same directory resolution logic
 # as C++
 function cxxinclude(C, fname; isAngled = false)
-    if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{ClangCompiler}, Ptr{Uint8}, Cint),
+    if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{ClangCompiler}, Ptr{UInt8}, Cint),
         &C, fname, isAngled) == 0
         error("Could not include file $fname")
     end
@@ -72,7 +72,7 @@ cxxinclude(fname; isAngled = false) = cxxinclude(__default_compiler__, fname; is
 # buffer and hence relative includes do not work.
 function EnterBuffer(C,buf)
     ccall((:EnterSourceFile,libcxxffi),Void,
-        (Ptr{ClangCompiler},Ptr{Uint8},Csize_t),&C,buf,sizeof(buf))
+        (Ptr{ClangCompiler},Ptr{UInt8},Csize_t),&C,buf,sizeof(buf))
 end
 
 # Enter's the buffer, while pretending it's the contents of the file at path
@@ -80,7 +80,7 @@ end
 # else, `buf` will be included instead.
 function EnterVirtualSource(C,buf,file::ByteString)
     ccall((:EnterVirtualFile,libcxxffi),Void,
-        (Ptr{ClangCompiler},Ptr{Uint8},Csize_t,Ptr{Uint8},Csize_t),
+        (Ptr{ClangCompiler},Ptr{UInt8},Csize_t,Ptr{UInt8},Csize_t),
         &C,buf,sizeof(buf),file,sizeof(file))
 end
 EnterVirtualSource(C,buf,file::Symbol) = EnterVirtualSource(C,buf,bytestring(file))
@@ -130,14 +130,14 @@ const C_ExternCSystem   = 2
 # `-F` option to clang.
 function addHeaderDir(C, dirname; kind = C_User, isFramework = false)
     ccall((:add_directory, libcxxffi), Void,
-        (Ptr{ClangCompiler}, Cint, Cint, Ptr{Uint8}), &C, kind, isFramework, dirname)
+        (Ptr{ClangCompiler}, Cint, Cint, Ptr{UInt8}), &C, kind, isFramework, dirname)
 end
 addHeaderDir(C::CxxInstance, dirname; kwargs...) = addHeaderDir(instance(C),dirname; kwargs...)
 addHeaderDir(dirname; kwargs...) = addHeaderDir(__default_compiler__,dirname; kwargs...)
 
 # The equivalent of `#define $Name`
 function defineMacro(C,Name)
-    ccall((:defineMacro, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{Uint8},), &C, Name)
+    ccall((:defineMacro, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{UInt8},), &C, Name)
 end
 defineMacro(C::CxxInstance,Name) = defineMacro(instance(C),Name)
 defineMacro(Name) = defineMacro(__default_compiler__,Name)
@@ -202,7 +202,7 @@ function ScanLibDirForGCCTriple(base,triple)
             end
             InstallPath = path * "/" * dir
             IncPath = InstallPath * isuffix * "/../include"
-            if 
+            if
                ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
                   !isdir( IncPath * "/c++/" * dir ) )  &&
                ( !isdir( IncPath * "/c++/" * dir * "/" * triple ) ||
@@ -258,7 +258,7 @@ function AddLinuxHeaderPaths(C)
     incpath = Path * "/../include"
 
     incpath = Path * "/../include"
- 
+
     addHeaderDir(C, incpath, kind = C_System)
     addHeaderDir(C, incpath * "/c++/" * VersionString, kind = C_System)
 

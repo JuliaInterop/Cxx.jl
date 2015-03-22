@@ -2,8 +2,8 @@
 # into a clang AST, as well as performing the necessary work to do the
 # actual codegen.
 
-const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{Uint32},
-    Type{Uint64},Type{Float32},Type{Float64})
+const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{UInt32},
+    Type{UInt64},Type{Float32},Type{Float64})
 
 # # # Section 1: Pseudo-AST handling
 #
@@ -162,7 +162,7 @@ resolvemodifier_llvm{T}(C, builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") =
 # and extract instructions
 function resolvemodifier_llvm{base,fptr}(C, builder,
         t::Type{CppMFptr{base,fptr}}, v::pcpp"llvm::Value")
-    t = getLLVMStructType([julia_to_llvm(Uint64),julia_to_llvm(Uint64)])
+    t = getLLVMStructType([julia_to_llvm(UInt64),julia_to_llvm(UInt64)])
     undef = getUndefValue(t)
     i1 = InsertValue(builder, undef, ExtractValue(C,v,0), 0)
     return InsertValue(builder, i1, ExtractValue(C,v,1), 1)
@@ -194,7 +194,7 @@ end
 # arithmetic to get to the data:
 #
 #  +---------------+    +--------------------+
-#  |   CppValue    |    |    Array{Uint8}    |
+#  |   CppValue    |    |    Array{UInt8}    |
 #  +---------------+    +--------------------+
 #              ^                     ^
 #  +-----------|---+      +----------|----+
@@ -436,7 +436,7 @@ function check_args(argt,f)
                 !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
                 !(t <: CppDeref) && !(t <: CppAddr) && !(t <: Ptr) &&
                 !(t <: JLCppCast) &&
-                !in(t,[Bool, Uint8, Int32, Uint32, Int64, Uint64, Float32, Float64]))
+                !in(t,[Bool, UInt8, Int32, UInt32, Int64, UInt64, Float32, Float64]))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
     end
@@ -528,7 +528,7 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     end
 
     argt = Type[]
-    needsret && push!(argt,Ptr{Uint8})
+    needsret && push!(argt,Ptr{UInt8})
     (pvd != nothing) && push!(argt,ct)
 
     llvmrt = julia_to_llvm(rett)
@@ -664,7 +664,7 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
         #@show rt
     end
     if issret
-        unshift!(llvmargt,Ptr{Uint8})
+        unshift!(llvmargt,Ptr{UInt8})
     end
 
     llvmrt = julia_to_llvm(rett)
@@ -756,7 +756,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         arguments = vcat([:(pointer(r.data))], args2)
         size = cxxsizeof(C,rt)
         return Expr(:block,
-            :( r = ($(rett))(Array(Uint8,$size)) ),
+            :( r = ($(rett))(Array(UInt8,$size)) ),
             Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
             :r)
     else

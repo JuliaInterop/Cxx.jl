@@ -42,7 +42,7 @@ export @cpcpp_str, @pcpp_str, @vcpp_str, @rcpp_str
 # Represents a base C++ type
 # i.e. a type that is not a pointer, a reference or a template
 # `s` is a symbol of the types fully qualified name, e.g. `int`, `char`
-# or `foo::bar`. It is usually used directly as a type, rather than as an 
+# or `foo::bar`. It is usually used directly as a type, rather than as an
 # instance
 immutable CppBaseType{s}
 end
@@ -63,7 +63,7 @@ end
 # T is a CppBaseType or a CppTemplate
 # See note on CVR above
 immutable CppValue{T,CVR}
-    data::Vector{Uint8}
+    data::Vector{UInt8}
 end
 
 # The equivalent of a C++ reference
@@ -99,8 +99,8 @@ end
 # A pointer to a C++ member function.
 # Refer to the Itanium ABI for its meaning
 immutable CppMFptr{base, fptr}
-    ptr::Uint64
-    adj::Uint64
+    ptr::UInt64
+    adj::UInt64
 end
 
 # Represent a C/C++ Enum. `T` is a symbol, representing the fully qualified name

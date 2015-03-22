@@ -70,7 +70,7 @@ done{GT,NT}(I::EdgeIterator{GT,NT},s) =
 out_neighbors{GT,NT}(v::NT,g::LLVMGraph{GT,NT}) =
     EdgeIterator{GT,NT}(v)
 
-vertex_index(v,g) = reinterpret(Uint64, v.ptr)
+vertex_index(v,g) = reinterpret(UInt64, v.ptr)
 
 buf = IOBuffer()
 
