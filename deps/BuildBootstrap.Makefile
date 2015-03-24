@@ -15,11 +15,12 @@ CLANG_LIBS = -lclangFrontendTool -lclangBasic -lclangLex -lclangDriver -lclangFr
     -lclangStaticAnalyzerCore -lclangStaticAnalyzerFrontend -lclangTooling -lclangToolingCore \
     -lclangCodeGen -lclangARCMigrate
 
-LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore \
+LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialize \
     -llldbDataFormatters -llldbExpression -llldbHostCommon  \
     -llldbInitAndLog -llldbInterpreter  \
     -llldbPluginABISysV_x86_64 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
+    -llldbPluginEmulateInstructionMIPS64 \
     -llldbPluginEmulateInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginLanguageRuntimeCPlusPlusItaniumABI \
     -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
     -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \
