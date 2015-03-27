@@ -1,6 +1,6 @@
 # The julia-side interface to the clang wrappers defined in bootstrap.cpp
 #
-# Note thaat some of the functions declared in bootstrap.cpp are interfaced
+# Note that some of the functions declared in bootstrap.cpp are interfaced
 # with elsewhere if more appropriate for a coherent organization. This file
 # contains everything else that's just a thin wrapper of ccalls around the
 # C++ routine
