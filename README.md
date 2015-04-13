@@ -35,17 +35,6 @@ Test your build of julia with `make testall`.
 
 Optionally, also build the debug build of julia with `make debug`. If available, this will be used in the next step.
 
-##### Known workarounds
-On Linux, if the build terminates at `Linking Release+Asserts Shared Library liblldb.so` with errors starting with `undefined reference to 'sem_init'`, edit `deps/llvm-svn/build_Release+Asserts/tools/lldb/lib/Makefile` and add the line:
-```
-LLVMLibsOptions += -lpthread
-```
-
-A similar error may occur while `Linking Release+Asserts executable lldb-mi (without symbols)` starting with `undefined reference to symbol 'pthread_create@@GLIBC_2.2.5'`. The previously mentioned line may also need to be added to `deps/llvm-svn/build_Release+Asserts/tools/lldb/tools/lldb-mi/Makefile`.
-
-Manually enter the directory `deps/llvm-svn/build_Release+Asserts` and type `make`. Once this completes successfully, go back to the main julia directory and type `make` again. The julia build should complete successfully.
-
-
 #### Building Cxx
 
 Launch the julia you just built, and in the terminal type
