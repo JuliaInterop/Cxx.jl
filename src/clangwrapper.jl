@@ -168,6 +168,9 @@ CreateRetVoid(builder) =
 CreateBitCast(builder,val,ty) =
     pcpp"llvm::Value"(ccall((:CreateBitCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
 
+getConstantIntToPtr(C::pcpp"llvm::Constant", ty) =
+    pcpp"llvm::Constant"(ccall((:getConstantIntToPtr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),C,ty))
+
 function BuildCXXTypeConstructExpr(C,t::QualType, exprs::Vector{pcpp"clang::Expr"})
     p = Ptr{Void}[0]
     r = Bool(ccall((:typeconstruct,libcxxffi),Cint,

@@ -114,3 +114,6 @@ void modify_a(foobar &fb) {
 fb = icxx"_foobar{1};"
 icxx"(void)++$fb.a;"
 @test reinterpret(Int32, fb.data)[1] == 2
+
+# Splicing at global scope
+cxx"""const char *foostr = $(pointer("foo"));"""

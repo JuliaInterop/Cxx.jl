@@ -13,8 +13,13 @@ function llvmconst(val::ANY)
         if !Base.isstructtype(T)
             if T <: FloatingPoint
                 return getConstantFloat(julia_to_llvm(T),Float64(val))
-            else
+            elseif T <: Integer
                 return getConstantInt(julia_to_llvm(T),UInt64(val))
+            elseif T <: Ptr
+                int = getConstantInt(julia_to_llvm(UInt64),UInt64(val))
+                return getConstantIntToPtr(int, julia_to_llvm(T))
+            else
+                error("Creating LLVM constants for type `T` not implemented yet")
             end
         else
             vals = [getfield(val,i) for i = 1:length(T.names)]
@@ -292,9 +297,9 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
                 ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
                 unsafe_store!(jns,ns.ptr)
                 $argsetup
+                $argcleanup
                 $parsecode
                 unsafe_store!(jns,C_NULL)
-                $argcleanup
             end
         end
     else

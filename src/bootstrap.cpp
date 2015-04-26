@@ -1332,6 +1332,11 @@ DLLEXPORT void *CreateBitCast(llvm::IRBuilder<false> *builder, llvm::Value *val,
   return (void*)builder->CreateBitCast(val,type);
 }
 
+DLLEXPORT void *getConstantIntToPtr(llvm::Constant *CC, llvm::Type *type)
+{
+  return (void*)ConstantExpr::getIntToPtr(CC,type);
+}
+
 DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
 {
   llvm::ExecutionEngine *ee = (llvm::ExecutionEngine *)jl_get_llvm_ee();
