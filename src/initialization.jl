@@ -44,7 +44,7 @@ function RunGlobalConstructors(C)
     p = CollectGlobalConstructors(C).ptr
     # If p is NULL it means we have no constructors to run
     if p != C_NULL
-        eval(:(llvmcall($p,Void,())))
+        eval(:(llvmcall($p,Void,Tuple{})))
     end
 end
 

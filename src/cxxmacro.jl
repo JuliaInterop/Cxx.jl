@@ -1,6 +1,6 @@
 function cpp_ref(expr,nns,isaddrof)
     @assert isa(expr, Symbol)
-    nns = Expr(:tuple,nns.args...,quot(expr))
+    nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(expr))
     x = :(Cxx.CppNNS{$nns}())
     ret = esc(Expr(:call, :(Cxx.cxxref), :__current_compiler__, isaddrof ? :(Cxx.CppAddr($x)) : x))
 end
@@ -39,16 +39,16 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
     if !isexpr(cexpr,:call)
         error("Expected a :call not $cexpr")
     end
-    targs = ()
+    targs = Tuple{}
 
     # Turn prefix and call expression, back into a fully qualified name
     # (and optionally type arguments)
     if isexpr(cexpr.args[1],:curly)
-        nns = Expr(:tuple,nns.args...,quot(cexpr.args[1].args[1]))
+        nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1].args[1]))
         targs = map(macroexpand, copy(cexpr.args[1].args[2:end]))
     else
-        nns = Expr(:tuple,nns.args...,quot(cexpr.args[1]))
-        targs = ()
+        nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1]))
+        targs = Tuple{}
     end
 
     arguments = cexpr.args[2:end]
@@ -63,8 +63,9 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
 
     e = curly = :( Cxx.CppNNS{$nns} )
 
+    @assert isa(targs,Type)
     # Add templating
-    if targs != ()
+    if targs != Tuple{}
         e = :( Cxx.CppTemplate{$curly,$targs} )
     end
 
@@ -86,37 +87,40 @@ end
 
 function to_prefix(expr, isaddrof=false)
     if isa(expr,Symbol)
-        return (Expr(:tuple,quot(expr)), isaddrof)
+        return (Expr(:curly,Tuple,quot(expr)), isaddrof)
     elseif isa(expr, Bool)
-        return (Expr(:tuple,expr),isaddrof)
+        return (Expr(:curly,Tuple,expr),isaddrof)
     elseif isexpr(expr,:(::))
         nns1, isaddrof = to_prefix(expr.args[1],isaddrof)
         nns2, _ = to_prefix(expr.args[2],isaddrof)
-        return (Expr(:tuple,nns1.args...,nns2.args...), isaddrof)
+        return (Expr(:curly,Tuple,nns1.args[2:end]...,nns2.args[2:end]...), isaddrof)
     elseif isexpr(expr,:&)
         return to_prefix(expr.args[1],true)
     elseif isexpr(expr,:$)
         #@show expr.args[1]
-        return (Expr(:tuple,expr.args[1],),isaddrof)
+        return (Expr(:curly,Tuple,expr.args[1],),isaddrof)
     elseif isexpr(expr,:curly)
         nns, isaddrof = to_prefix(expr.args[1],isaddrof)
-        tup = Expr(:tuple)
-        #@show expr
+        tup = Expr(:curly,Tuple)
+        @show expr
         for i = 2:length(expr.args)
             nns2, isaddrof2 = to_prefix(expr.args[i],false)
             @assert !isaddrof2
-            isnns = length(nns2.args) > 1 || isa(nns2.args[1],Expr)
-            push!(tup.args, isnns ? :(CppNNS{$nns2}) : nns2.args[1])
+            @show nns2
+            isnns = length(nns2.args) > 2 || isa(nns2.args[2],Expr)
+            @show isnns
+            push!(tup.args, isnns ? :(Cxx.CppNNS{$nns2}) : nns2.args[2])
         end
-        @assert length(nns.args) == 1
-        @assert isexpr(nns.args[1],:quote)
+        # Expr(:curly,Tuple, ... )
+        @assert length(nns.args) == 2
+        @assert isexpr(nns.args[2],:quote)
 
-        return (Expr(:tuple,:(Cxx.CppTemplate{$(nns.args[1]),$tup}),),isaddrof)
+        return (Expr(:curly,Tuple,:(Cxx.CppTemplate{$(nns.args[2]),$tup}),),isaddrof)
     end
     error("Invalid NNS $expr")
 end
 
-function cpps_impl(expr,nns=Expr(:tuple),isaddrof=false,isderef=false,isnew=false)
+function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isnew=false)
     if isa(expr,Symbol)
         @assert !isnew
         return cpp_ref(expr,nns,isaddrof)
@@ -146,7 +150,7 @@ function cpps_impl(expr,nns=Expr(:tuple),isaddrof=false,isderef=false,isnew=fals
         error("Unimplemented")
     elseif isexpr(expr,:(::))
         nns2, isaddrof = to_prefix(expr.args[1])
-        return cpps_impl(expr.args[2],Expr(:tuple,nns.args...,nns2.args...),
+        return cpps_impl(expr.args[2],Expr(:curly,Tuple,nns.args[2:end]...,nns2.args[2:end]...),
             isaddrof,isderef,isnew)
     elseif isexpr(expr,:&)
         return cpps_impl(expr.args[1],nns,true,isderef,isnew)
@@ -164,5 +168,5 @@ macro cxx(expr)
 end
 
 macro cxxnew(expr)
-    cpps_impl(expr, Expr(:tuple), false, false, true)
+    cpps_impl(expr, Expr(:curly,Tuple), false, false, true)
 end

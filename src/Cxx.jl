@@ -96,7 +96,7 @@
 # Staged function are similar to macros in that they return expressions rather
 # than values. E.g.
 #
-# stagedfunction staged_t1(a,b)
+# @generated function staged_t1(a,b)
 #    if a == Int
 #        return :(a+b)
 #    else
@@ -122,7 +122,7 @@
 #
 # We can thus see how macros and staged functions fit together. First, @cxx
 # does some syntax transformation to make sure all the required information
-# is available to the staged function, e.g. 
+# is available to the staged function, e.g.
 #
 # julia> :( @cxx foo(a,b) ) |> macroexpand
 # :( cppcall( CppNNS{(:foo,)}(), a, b))
@@ -141,6 +141,7 @@
 module Cxx
 
 using Base.Meta
+using Base: svec
 
 export cast,
        @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr,

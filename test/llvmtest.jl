@@ -16,10 +16,11 @@ function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     @assert @cxx t->isSized()
     div((@cxx dl->getTypeSizeInBits(t)),8)
 end
-@assert cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(Cxx.instance(__current_compiler__),
-    ["llvm","ExecutionEngine"]).ptr)) >= 152
+size = cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(Cxx.instance(__current_compiler__),
+    ["llvm","ExecutionEngine"]).ptr))
+@assert size >= 144
 
-code_llvmf(f,t) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), f, t, false))
+code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), f, Tuple{t...}, false))
 function code_graph(f,args)
     v = @cxx std::string()
     os = @cxx llvm::raw_string_ostream(v)
@@ -67,39 +68,3 @@ GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module(convert(Ptr{Void
 @cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),UInt64(0)))
 @cxx GV->setConstant(true)
 @assert (@cxx foo()) === UInt64(0)
-
-# LLDB test
-
-addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/lldb/include"))
-
-# Because LLDB includes private headers from public ones! For shame.
-addHeaderDir(joinpath(Cxx.depspath,"llvm-svn/tools/lldb/include/lldb/Target"))
-defineMacro("LLDB_DISABLE_PYTHON") # NO!
-cxxinclude("lldb/Interpreter/CommandInterpreter.h")
-cxxinclude("lldb/Interpreter/CommandReturnObject.h")
-cxxinclude("string", isAngled = true)
-
-initd() = @cxx lldb_private::Debugger::Initialize(cast(C_NULL,vcpp"lldb_private::Debugger::LoadPluginCallbackType"))
-initd()
-
-debugger() = @cxx lldb_private::Debugger::CreateInstance()
-const dbg = @cxx (debugger())->get()
-ci(dbg::pcpp"lldb_private::Debugger") = @cxx dbg->GetCommandInterpreter()
-function hc(ci::rcpp"lldb_private::CommandInterpreter",cmd)
-    cro = @cxx lldb_private::CommandReturnObject()
-    @cxx ci->HandleCommand(pointer(cmd),0,cro)
-    @cxx cro->GetOutputData()
-end
-
-stdout = pcpp"FILE"(ccall(:fdopen,Ptr{Void},(Int32,Ptr{UInt8}),1,"a"))
-
-function setSTDOUT(dbg,stdout)
-    @cxx dbg->SetOutputFileHandle(stdout,false)
-end
-
-function setSTDERR(dbg,stdout)
-    @cxx dbg->SetErrorFileHandle(stdout,false)
-end
-
-setSTDOUT(dbg,stdout)
-setSTDERR(dbg,stdout)

@@ -127,11 +127,12 @@ lookup_ctx(C, fname::Symbol; kwargs...) = lookup_ctx(C, string(fname); kwargs...
 # by `targs`
 function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     @assert cxxt != C_NULL
-    integralValues = zeros(UInt64,length(targs))
-    integralValuesPresent = zeros(UInt8,length(targs))
-    bitwidths = zeros(UInt32,length(targs))
-    ts = Array(QualType,length(targs))
-    for (i,t) in enumerate(targs)
+    nparams = length(targs.parameters)
+    integralValues = zeros(UInt64,nparams)
+    integralValuesPresent = zeros(UInt8,nparams)
+    bitwidths = zeros(UInt32,nparams)
+    ts = Array(QualType,nparams)
+    for (i,t) in enumerate(targs.parameters)
         if isa(t,Type)
             ts[i] = cpptype(C,t)
         elseif isa(t,Integer) || isa(t,CppEnum)
@@ -301,7 +302,7 @@ const KindExpression        = 7
 const KindPack              = 8
 
 function getTemplateParameters(cxxd)
-    targt = ()
+    targt = Tuple{}
     if isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(cxxd.ptr))
         tmplt = dcastClassTemplateSpecializationDecl(pcpp"clang::Decl"(cxxd.ptr))
         targs = getTemplateArgs(tmplt)
@@ -318,7 +319,7 @@ function getTemplateParameters(cxxd)
                 error("Unhandled template argument kind ($kind)")
             end
         end
-        targt = tuple(args...)
+        targt = Tuple{args...}
     end
     targt
 end
@@ -360,7 +361,8 @@ function toBaseType(t::pcpp"clang::Type")
     rd = getAsCXXRecordDecl(t)
     if rd.ptr != C_NULL
         targs = getTemplateParameters(rd)
-        if !isempty(targs)
+        @assert isa(targs, Type)
+        if targs != Tuple{}
             T = CppTemplate{T,targs}
         end
     end
@@ -395,7 +397,7 @@ function juliatype(t::QualType)
             for i = 0:(getNumParams(t)-1)
                 push!(args,getParam(t,i))
             end
-            f = CppFunc{juliatype(rt), tuple(map(juliatype,args)...)}
+            f = CppFunc{juliatype(rt), Tuple{map(juliatype,args)...}}
             return f
         else
             error("Function has no proto type")

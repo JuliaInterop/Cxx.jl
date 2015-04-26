@@ -33,13 +33,13 @@ function ssv(C,e::ANY,ctx,varnum,thunk)
     if isa(e,Expr) || isa(e,Symbol)
         # Create a thunk that contains this expression
         linfo = thunk.code
-        (tree, ty) = Base.typeinf(linfo,(),())
+        (tree, ty) = Base.typeinf(linfo,Tuple{},svec())
         T = ty
         thunk.code.ast = tree
         # Pretend we're a specialized generic function
         # to get the good calling convention. The compiler
         # will never know :)
-        setfield!(thunk.code,6,())
+        setfield!(thunk.code,6,Tuple{})
         if isa(T,UnionType) || T.abstract
             error("Inferred Union or abstract type $T for expression $e")
         end
@@ -62,7 +62,7 @@ function ArgCleanup(C,e,sv)
     end
 end
 
-const sourcebuffers = Array((String,Symbol,Int,Int),0)
+const sourcebuffers = Array(Tuple{String,Symbol,Int,Int},0)
 
 immutable SourceBuf{id}; end
 sourceid{id}(::Type{SourceBuf{id}}) = id
@@ -103,8 +103,8 @@ SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl
 function CreateFunctionWithBody(C,body,args...; filename = symbol(""), line = 1, col = 1)
     global icxxcounter
 
-    argtypes = (Int,QualType)[]
-    typeargs = (Int,QualType)[]
+    argtypes = Tuple{Int,QualType}[]
+    typeargs = Tuple{Int,QualType}[]
     callargs = Int[]
     llvmargs = Any[]
     argidxs = Int[]
@@ -178,7 +178,7 @@ function CallDNE(C, dne, argt; kwargs...)
     EmitExpr(C,ce,C_NULL,C_NULL,argt,pvds; kwargs...)
 end
 
-stagedfunction cxxstr_impl(CT, sourcebuf, args...)
+@generated function cxxstr_impl(CT, sourcebuf, args...)
     C = instance(CT)
     id = sourceid(sourcebuf)
     buf, filename, line, col = sourcebuffers[id]

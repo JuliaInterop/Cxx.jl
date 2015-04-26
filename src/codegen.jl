@@ -189,20 +189,20 @@ function resolvemodifier_llvm{T,jlt}(C, builder,
     return CreateConstGEP1_32(builder,v,1)
 end
 
-# CppValue is perhaps the trickiest of them all, since we store the data in an
-# array. This means that the CppValue is boxed and so we need to do some pointer
-# arithmetic to get to the data:
+# Since the pointer rework, CppValue is a lot simpler than it used to by, since
+# everything points to the data directly:
 #
-#  +---------------+    +--------------------+
-#  |   CppValue    |    |    Array{UInt8}    |
-#  +---------------+    +--------------------+
-#              ^                     ^
-#  +-----------|---+      +----------|----+
-#  |     type -|   |  /---|---> type-/    |
-#  +---------------+  |   +---------------+
-#  |     data -----|--/   |     data -----|-----> The data we want
-#  +---------------+      +---------------+
-#    We start here
+#    +---------------+    +--------------------+
+#    |   CppValue    |    |    Array{UInt8}    |
+#    +---------------+    +--------------------+
+#                ^                     ^
+#    +-----------|---+      +----------|----+
+#    |     type -|   |      |     type-/    |
+#    +---------------+      +---------------+
+# /->|     data -----|----->|     data -----|-----> The data we want
+# |  +---------------+      +---------------+
+# |
+# \--We start here
 #
 
 function resolvemodifier_llvm{s,targs}(C, builder,
@@ -214,12 +214,9 @@ function resolvemodifier_llvm{s,targs}(C, builder,
         error("Value is not of pointer type")
     end
     # Get the array
-    array = CreateConstGEP1_32(builder,v,1)
     arrayp = CreateLoad(builder,
-        CreateBitCast(builder,array,getPointerTo(getType(array))))
-    # Get the data pointer
-    data = CreateConstGEP1_32(builder,arrayp,1)
-    dp = CreateBitCast(builder,data,getPointerTo(getPointerTo(toLLVM(C,ty))))
+        CreateBitCast(builder,v,getPointerTo(getType(v))))
+    dp = CreateBitCast(builder,arrayp,getPointerTo(getPointerTo(toLLVM(C,ty))))
     # A pointer to the actual data
     CreateLoad(builder,dp)
 end
@@ -233,23 +230,24 @@ end
 #
 
 function typeForNNS{nns}(C,T::Type{CppNNS{nns}})
-    if length(nns) == 1 && (nns[1] <: CppPtr || nns[1] <: CppRef)
-        return cpptype(C,nns[1])
+    nns2 = nns.parameters
+    if length(nns2) == 1 && (nns2[1] <: CppPtr || nns2[1] <: CppRef)
+        return cpptype(C,nns2[1])
     end
     typeForDecl(declfornns(C,T))
 end
 
 function declfornns{nns}(C,::Type{CppNNS{nns}},cxxscope=C_NULL)
-    @assert isa(nns,Tuple)
+    @assert nns <: Tuple
     d = tu = translation_unit(C)
-    for (i,n) in enumerate(nns)
+    for (i,n) in enumerate(nns.parameters)
         if !isa(n, Symbol)
             if n <: CppTemplate
                 d = lookup_name(C, (n.parameters[1],),C_NULL,d)
                 cxxt = cxxtmplt(d)
                 @assert cxxt != C_NULL
                 arr = Any[]
-                for arg in n.parameters[2]
+                for arg in n.parameters[2].parameters
                     if isa(arg,Type)
                         if arg <: CppNNS
                             push!(arr,typeForNNS(C,arg))
@@ -272,7 +270,7 @@ function declfornns{nns}(C,::Type{CppNNS{nns}},cxxscope=C_NULL)
                 d = getAsCXXRecordDecl(getPointeeType(t))
             end
         else
-            d = lookup_name(C, (n,), cxxscope, d, i != length(nns))
+            d = lookup_name(C, (n,), cxxscope, d, i != length(nns.parameters))
         end
         @assert d != C_NULL
     end
@@ -453,7 +451,7 @@ end
 #
 
 # Handle member references, i.e. syntax of the form `@cxx foo->bar`
-stagedfunction cxxmemref(CT::CxxInstance, expr, args...)
+@generated function cxxmemref(CT::CxxInstance, expr, args...)
     C = instance(CT)
     this = args[1]
     check_args([this], expr)
@@ -474,7 +472,7 @@ end
 # a) We can reference types (e.g. `@cxx int`)
 # b) Clang cares about how the reference was qualified, so we need to deal with
 #    cxxscopes.
-stagedfunction cxxref(CT,expr)
+@generated function cxxref(CT,expr)
     C = instance(CT)
     isaddrof = false
     if expr <: CppAddr
@@ -575,7 +573,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
 
     if thiscall # membercall
         @assert expr <: CppNNS
-        fname = expr.parameters[1][1]
+        fname = expr.parameters[1].parameters[1]
         @assert isa(fname,Symbol)
 
         me = BuildMemberReference(C,callargs[1], cpptype(C, argt[1]),
@@ -611,8 +609,8 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
             targs = getTemplateParameters(cxxd)
 
             T = CppBaseType{fname}
-            if !isempty(targs)
-                T = CppTemplate{T,tuple(targs...)}
+            if targs != Tuple{}
+                T = CppTemplate{T,targs}
             end
             rett = juliart = T = CppValue{T,NullCVR}
 
@@ -757,23 +755,23 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         size = cxxsizeof(C,rt)
         return Expr(:block,
             :( r = ($(rett))(Array(UInt8,$size)) ),
-            Expr(:call,:llvmcall,f.ptr,Void,tuple(llvmargt...),arguments...),
+            Expr(:call,:llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...),
             :r)
     else
-        return Expr(:call,:llvmcall,f.ptr,rett,tuple(argt...),args2...)
+        return Expr(:call,:llvmcall,f.ptr,rett,Tuple{argt...},args2...)
     end
 end
 
 # And finally the staged functions to drive the call logic above
-stagedfunction cppcall(CT::CxxInstance, expr, args...)
+@generated function cppcall(CT::CxxInstance, expr, args...)
     _cppcall(CT, expr, false, false, args)
 end
 
-stagedfunction cppcall_member(CT::CxxInstance, expr, args...)
+@generated function cppcall_member(CT::CxxInstance, expr, args...)
     _cppcall(CT, expr, true, false, args)
 end
 
-stagedfunction cxxnewcall(CT::CxxInstance, expr, args...)
+@generated function cxxnewcall(CT::CxxInstance, expr, args...)
     _cppcall(CT, expr, false, true, args)
 end
 
