@@ -724,6 +724,7 @@ DLLEXPORT void init_clang_instance(C) {
     Cxx->CI->getLangOpts().RTTI = 0;
     Cxx->CI->getLangOpts().RTTIData = 0;
     Cxx->CI->getLangOpts().ImplicitInt = 0;
+    Cxx->CI->getLangOpts().PICLevel = 2;
     // Exceptions
     // Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
     // Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
