@@ -209,8 +209,7 @@ function VirtualFileName(filename)
     name
 end
 
-function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,col=1;
-    compiler = :__current_compiler__)
+function process_body(str, global_scope = true, filename=symbol(""),line=1,col=1)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
@@ -268,6 +267,38 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
             localvarnum += 1
         end
     end
+    if !global_scope
+        write(sourcebuf,"\n}")
+    end
+    sourcebuf, exprs, isexprs
+end
+
+function build_icxx_expr(id, exprs, isexprs, compiler, impl_func = cxxstr_impl)
+    setup = Expr(:block)
+    cxxstr = Expr(:call,impl_func,compiler,:(Cxx.SourceBuf{$id}()))
+    for (i,e) in enumerate(exprs)
+        if isexprs[i]
+            s = gensym()
+            if isa(e,QuoteNode)
+                e = e.value
+            elseif isexpr(e,:quote)
+                e = e.args[1]
+            else
+                error("Unrecognized expression type for quote in icxx")
+            end
+            push!(setup.args,Expr(:(=),s,Expr(:->,Expr(:tuple),e)))
+            push!(cxxstr.args,s)
+        else
+            push!(cxxstr.args,e)
+        end
+    end
+    push!(setup.args,cxxstr)
+    return setup
+end
+
+function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,col=1;
+    compiler = :__current_compiler__)
+    sourcebuf, exprs, isexprs = process_body(str, global_scope, filename, line, col)
     if global_scope
         argsetup = Expr(:block)
         argcleanup = Expr(:block)
@@ -303,29 +334,9 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
             end
         end
     else
-        write(sourcebuf,"\n}")
         push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
         id = length(sourcebuffers)
-        setup = Expr(:block)
-        cxxstr = Expr(:call,cxxstr_impl,compiler,:(Cxx.SourceBuf{$id}()))
-        for (i,e) in enumerate(exprs)
-            if isexprs[i]
-                s = gensym()
-                if isa(e,QuoteNode)
-                    e = e.value
-                elseif isexpr(e,:quote)
-                    e = e.args[1]
-                else
-                    error("Unrecognized expression type for quote in icxx")
-                end
-                push!(setup.args,Expr(:(=),s,Expr(:->,Expr(:tuple),e)))
-                push!(cxxstr.args,s)
-            else
-                push!(cxxstr.args,e)
-            end
-        end
-        push!(setup.args,cxxstr)
-        return setup
+        build_icxx_expr(id, exprs, isexprs, compiler, cxxstr_impl)
     end
 end
 
