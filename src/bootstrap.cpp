@@ -202,7 +202,7 @@ DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
     llvm::IRBuilder<true> builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
 
     for (auto ctor : ctors) {
-        builder.CreateCall(ctor.Initializer);
+        builder.CreateCall(ctor.Initializer, {});
     }
 
     builder.CreateRetVoid();
@@ -726,9 +726,9 @@ DLLEXPORT void init_clang_instance(C) {
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
     // Exceptions
-    // Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
-    // Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
-    // Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
+    Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
+    Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
+    Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
@@ -1179,6 +1179,11 @@ DLLEXPORT void *createCast(C,clang::Expr *expr, clang::Type *t, int kind)
 {
   return clang::ImplicitCastExpr::Create(Cxx->CI->getASTContext(),clang::QualType(t,0),
     (clang::CastKind)kind,expr,NULL,clang::VK_RValue);
+}
+
+DLLEXPORT void *CreateBinOp(C, clang::Scope *S, int opc, clang::Expr *LHS, clang::Expr *RHS)
+{
+  return (void*)Cxx->CI->getSema().BuildBinOp(S,clang::SourceLocation(),(clang::BinaryOperatorKind)opc,LHS,RHS).get();
 }
 
 DLLEXPORT void *BuildMemberReference(C, clang::Expr *base, clang::Type *t, int IsArrow, char *name)

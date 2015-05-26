@@ -351,9 +351,48 @@ const CK_ToVoid = 23
 const CK_VectorSplat = 24
 const CK_IntegralCast = 25
 
+const BO_PtrMemD   =  0
+const BO_PtrMemI   =  1
+const BO_Mul       =  2
+const BO_Div       =  3
+const BO_Rem       =  4
+const BO_Add       =  5
+const BO_Sub       =  6
+const BO_Shl       =  7
+const BO_Shr       =  8
+const BO_LT        =  9
+const BO_GT        = 10
+const BO_LE        = 11
+const BO_GE        = 12
+const BO_EQ        = 13
+const BO_NE        = 14
+const BO_And       = 15
+const BO_Xor       = 16
+const BO_Or        = 17
+const BO_LAnd      = 18
+const BO_LOr       = 19
+const BO_Assign    = 20
+const BO_MulAssign = 21
+const BO_DivAssign = 22
+const BO_RemAssign = 23
+const BO_AddAssign = 24
+const BO_SubAssign = 25
+const BO_ShlAssign = 26
+const BO_ShrAssign = 27
+const BO_AndAssign = 28
+const BO_XorAssign = 29
+const BO_OrAssign  = 30
+const BO_Comma     = 31
+
 function createCast(C,arg,t,kind)
     pcpp"clang::Expr"(ccall((:createCast,libcxxffi),Ptr{Void},
         (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Cint),&C,arg,t,kind))
+end
+
+function CreateBinOp(C,scope,opc,lhs,rhs)
+    pcpp"clang::Expr"(ccall((:CreateBinOp,libcxxffi),Ptr{Void},
+        (Ptr{ClangCompiler},Ptr{Void},Cint,Ptr{Void},Ptr{Void}),
+        &C,scope,opc,lhs,rhs))
 end
 
 # CXX Level Casting

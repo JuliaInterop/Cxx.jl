@@ -138,3 +138,23 @@ anonttest *anonttestf()
 
 @assert typeof(@cxx anonttestf()) == pcpp"anonttest"
 
+# Operator overloading (#102)
+cxx"""
+typedef struct {
+    int x;
+} foo102;
+
+foo102 operator+ (const foo102& x, const foo102& y) {
+    return { .x = x.x + y.x };
+}
+"""
+
+x = icxx"foo102{ .x = 1 };"
+y = icxx"foo102{ .x = 2 };"
+z = @cxx x + y
+
+@assert icxx" $z.x == 3; "
+
+z = x + y
+@assert icxx" $z.x == 3; "
+

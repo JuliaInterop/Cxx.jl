@@ -270,7 +270,7 @@ function process_body(str, global_scope = true, filename=symbol(""),line=1,col=1
     if !global_scope
         write(sourcebuf,"\n}")
     end
-    sourcebuf, exprs, isexprs
+    startvarnum, sourcebuf, exprs, isexprs
 end
 
 function build_icxx_expr(id, exprs, isexprs, compiler, impl_func = cxxstr_impl)
@@ -298,7 +298,7 @@ end
 
 function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,col=1;
     compiler = :__current_compiler__)
-    sourcebuf, exprs, isexprs = process_body(str, global_scope, filename, line, col)
+    startvarnum, sourcebuf, exprs, isexprs = process_body(str, global_scope, filename, line, col)
     if global_scope
         argsetup = Expr(:block)
         argcleanup = Expr(:block)

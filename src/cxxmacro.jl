@@ -97,18 +97,14 @@ function to_prefix(expr, isaddrof=false)
     elseif isexpr(expr,:&)
         return to_prefix(expr.args[1],true)
     elseif isexpr(expr,:$)
-        #@show expr.args[1]
         return (Expr(:curly,Tuple,expr.args[1],),isaddrof)
     elseif isexpr(expr,:curly)
         nns, isaddrof = to_prefix(expr.args[1],isaddrof)
         tup = Expr(:curly,Tuple)
-        @show expr
         for i = 2:length(expr.args)
             nns2, isaddrof2 = to_prefix(expr.args[i],false)
             @assert !isaddrof2
-            @show nns2
             isnns = length(nns2.args) > 2 || isa(nns2.args[2],Expr)
-            @show isnns
             push!(tup.args, isnns ? :(Cxx.CppNNS{$nns2}) : nns2.args[2])
         end
         # Expr(:curly,Tuple, ... )

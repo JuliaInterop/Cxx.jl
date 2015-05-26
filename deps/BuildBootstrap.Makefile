@@ -21,7 +21,7 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore -llldbInitializ
     -llldbPluginABISysV_x86_64 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginABISysV_arm -llldbPluginABISysV_arm64\
     -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
-    -llldbPluginEmulateInstructionMIPS64 \
+    -llldbPluginEmulateInstructionMIPS64 -llldbPluginEmulateInstructionMIPS \
     -llldbPluginEmulateInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginLanguageRuntimeCPlusPlusItaniumABI \
     -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
     -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \

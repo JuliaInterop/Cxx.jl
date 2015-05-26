@@ -45,7 +45,7 @@ end
 done{GraphType}(I::NodeIterator{GraphType},s) =
     icxx"$s == llvm::GraphTraits<$GraphType>::nodes_end($(I.G));"
 
-vertices{GraphType,NodeType}(g::LLVMGraph{GraphType,NodeType}) =
+~{GraphType,NodeType}(g::LLVMGraph{GraphType,NodeType}) =
     NodeIterator{GraphType}(g.g)
 
 immutable EdgeIterator{GT,NT}
@@ -86,6 +86,7 @@ end
 
 gt = code_graph(factorize,(typeof(rand(4,4)),))
 lf = code_llvmf(factorize,(typeof(rand(4,4)),))
-
-to_dot(LLVMGraph(lf),buf)
-display(Graph(takebuf_string(buf)))
+g = LLVMGraph(lf)
+@code_llvm to_dot(g,buf)
+#to_dot(g,buf)
+#display(Graph(takebuf_string(buf)))

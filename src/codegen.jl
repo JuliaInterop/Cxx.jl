@@ -376,7 +376,6 @@ function buildargexprs(C, argt)
     callargs = pcpp"clang::Expr"[]
     pvds = pcpp"clang::ParmVarDecl"[]
     for i in 1:length(argt)
-        #@show argt[i]
         t = argt[i]
         st = stripmodifier(t)
         argit = cpptype(C, st)
@@ -561,6 +560,14 @@ end
 # 4) Heap allocation, e.g. @cxxnew fooclass()
 #
 
+const cxx_binops = Dict(
+    # Arithmetic operators
+    :+ => BO_Add, :- => BO_Sub, :* => BO_Mul, :/ => BO_Div, :% => BO_Rem,
+    # Logical Operators (not overloadable)
+    # :&& => BO_LAnd, :|| => BO_LOr,
+    # Bitwise Operators
+    :& => BO_And, :| => BO_Or, :^ => BO_Xor, :<< => BO_Shl, :>> => BO_Shr)
+
 function _cppcall(CT, expr, thiscall, isnew, argt)
     C = instance(CT)
     check_args(argt, expr)
@@ -588,52 +595,66 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
             expr = expr.args[1]
         end
 
-        d = declfornns(C,expr)
-        @assert d.ptr != C_NULL
-        # If this is a typedef or something we'll try to get the primary one
-        primary_decl = to_decl(primary_ctx(toctx(d)))
-        if primary_decl != C_NULL
-            d = primary_decl
+        # Check if we're calling an operator
+        op = nothing
+        if expr <: CppNNS
+            nns = expr.parameters[1]
+            if nns <: Tuple && length(nns.parameters) == 1 &&
+                isa(nns.parameters[1],Symbol)
+                op = nns.parameters[1]
+            end
         end
-        # Let's see if we're constructing something.
-        cxxd = dcastCXXRecordDecl(d)
-        fname = symbol(_decl_name(d))
-        cxxt = cxxtmplt(d)
-        if cxxd != C_NULL || cxxt != C_NULL
-            if cxxd == C_NULL
-                cxxd = specialize_template(C,cxxt,targs)
-            end
 
-            # targs may have changed because the name is canonical
-            # but the default targs may be substituted by typedefs
-            targs = getTemplateParameters(cxxd)
-
-            T = CppBaseType{fname}
-            if targs != Tuple{}
-                T = CppTemplate{T,targs}
-            end
-            rett = juliart = T = CppValue{T,NullCVR}
-
-            if isnew
-                rett = CppPtr{T,NullCVR}
-                nE = BuildCXXNewExpr(C,QualType(typeForDecl(cxxd)),callargs)
-                if nE == C_NULL
-                    error("Could not construct `new` expression")
-                end
-                MarkDeclarationsReferencedInExpr(C,nE)
-            else
-                rt = QualType(typeForDecl(cxxd))
-                ctce = BuildCXXTypeConstructExpr(C,rt,callargs)
-            end
+        if op !== nothing && in(op,keys(cxx_binops))
+            ce = CreateBinOp(C, C_NULL,cxx_binops[op],callargs...)
         else
-            myctx = getContext(d)
-            while declKind(myctx) == LinkageSpec
-                myctx = getParentContext(myctx)
+            d = declfornns(C,expr)
+            @assert d.ptr != C_NULL
+            # If this is a typedef or something we'll try to get the primary one
+            primary_decl = to_decl(primary_ctx(toctx(d)))
+            if primary_decl != C_NULL
+                d = primary_decl
             end
-            @assert myctx != C_NULL
-            dne = BuildDeclarationNameExpr(C, split(string(fname),"::")[end],myctx)
+            # Let's see if we're constructing something.
+            cxxd = dcastCXXRecordDecl(d)
+            fname = symbol(_decl_name(d))
+            cxxt = cxxtmplt(d)
+            if cxxd != C_NULL || cxxt != C_NULL
+                if cxxd == C_NULL
+                    cxxd = specialize_template(C,cxxt,targs)
+                end
 
-            ce = CreateCallExpr(C, dne,callargs)
+                # targs may have changed because the name is canonical
+                # but the default targs may be substituted by typedefs
+                targs = getTemplateParameters(cxxd)
+
+                T = CppBaseType{fname}
+                if targs != Tuple{}
+                    T = CppTemplate{T,targs}
+                end
+                rett = juliart = T = CppValue{T,NullCVR}
+
+                if isnew
+                    rett = CppPtr{T,NullCVR}
+                    nE = BuildCXXNewExpr(C,QualType(typeForDecl(cxxd)),callargs)
+                    if nE == C_NULL
+                        error("Could not construct `new` expression")
+                    end
+                    MarkDeclarationsReferencedInExpr(C,nE)
+                else
+                    rt = QualType(typeForDecl(cxxd))
+                    ctce = BuildCXXTypeConstructExpr(C,rt,callargs)
+                end
+            else
+                myctx = getContext(d)
+                while declKind(myctx) == LinkageSpec
+                    myctx = getParentContext(myctx)
+                end
+                @assert myctx != C_NULL
+                dne = BuildDeclarationNameExpr(C, split(string(fname),"::")[end],myctx)
+
+                ce = CreateCallExpr(C, dne,callargs)
+            end
         end
     end
 
@@ -659,7 +680,6 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     elseif ctce != C_NULL
         issret = true
         rt = GetExprResultType(ctce)
-        #@show rt
     end
     if issret
         unshift!(llvmargt,Ptr{UInt8})
@@ -718,7 +738,6 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         jlrt = Void
         CreateRetVoid(builder)
     else
-        #@show rett
         if rett == Void
             CreateRetVoid(builder)
         else

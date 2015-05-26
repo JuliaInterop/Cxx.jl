@@ -33,7 +33,7 @@ end
 
 macro icxxdebug_str(str,args...)
     compiler = :__current_compiler__
-    sourcebuf, exprs, isexprs = process_body(str, false, args...)
+    startvarnum, sourcebuf, exprs, isexprs = process_body(str, false, args...)
     push!(sourcebuffers,(takebuf_string(sourcebuf),args...))
     id = length(sourcebuffers)
     esc(build_icxx_expr(id, exprs, isexprs, compiler, dumpast_impl))
