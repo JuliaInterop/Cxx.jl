@@ -3,12 +3,12 @@ using Cxx
 include("llvmincludes.jl")
 
 RequireCompleteType(C,d::cpcpp"clang::Type") =
-    ccall(:RequireCompleteType,Cint,(Ptr{Cxx.ClangCompiler},Ptr{Void}),&C,d.ptr) > 0
+    ccall((:RequireCompleteType,Cxx.libcxxffi),Cint,(Ptr{Cxx.ClangCompiler},Ptr{Void}),&C,d.ptr) > 0
 
 function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
-    executionEngine = pcpp"llvm::ExecutionEngine"(ccall(:jl_get_llvm_ee,Ptr{Void},()))
+    executionEngine = pcpp"llvm::ExecutionEngine"(ccall((:jl_get_llvm_ee,Cxx.libcxxffi),Ptr{Void},()))
     C = Cxx.instance(__current_compiler__)
-    cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall(:clang_get_cgt,Ptr{Void},
+    cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall((:clang_get_cgt,Cxx.libcxxffi),Ptr{Void},
         (Ptr{Cxx.ClangCompiler},),&C))
     dl = @cxx executionEngine->getDataLayout()
     RequireCompleteType(C,@cxx d->getTypeForDecl())

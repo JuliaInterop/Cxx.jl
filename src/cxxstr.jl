@@ -38,7 +38,7 @@ function ssv(C,e::ANY,ctx,varnum,thunk)
     if isa(e,Expr) || isa(e,Symbol)
         # Create a thunk that contains this expression
         linfo = thunk.code
-        (tree, ty) = Base.typeinf(linfo,Tuple{},svec())
+        (tree, ty) = Core.Inference.typeinf(linfo,Tuple{},svec())
         T = ty
         thunk.code.ast = tree
         # Pretend we're a specialized generic function

@@ -19,6 +19,7 @@ function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
     Libdl.dlopen(libcxxffi, Libdl.RTLD_GLOBAL)
 end
+init_libcxxffi()
 
 function setup_instance()
     x = Array(ClangCompiler,1)
@@ -307,6 +308,7 @@ function initialize_instance!(C)
 end
 
 function __init__()
+    init_libcxxffi()
     C = setup_instance()
     initialize_instance!(C)
     push!(active_instances, C)

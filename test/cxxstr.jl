@@ -57,15 +57,6 @@ void printfoo() {
 }
 """
 
-
-cxx"""
-void g() {
-   void *p = 0;
-   return *p;
-}
-"""
-@cxx g()
-
 # Issue #13
 cxx"""
 namespace foo13{
