@@ -370,7 +370,7 @@ DLLEXPORT char *simple_decl_name(clang::NamedDecl *decl)
 }
 
 // For cxxstr
-void *createNamespace(C,char *name)
+DLLEXPORT void *createNamespace(C,char *name)
 {
   clang::IdentifierInfo *Id = Cxx->CI->getPreprocessor().getIdentifierInfo(name);
   return (void*)clang::NamespaceDecl::Create(
@@ -685,7 +685,7 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
 
 
 extern "C" {
-  void *julia_namespace = 0;
+ DLLEXPORT void *julia_namespace = 0;
 }
 
 class JuliaSemaSource : public clang::ExternalSemaSource
