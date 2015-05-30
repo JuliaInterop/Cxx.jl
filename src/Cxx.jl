@@ -144,7 +144,7 @@ using Base.Meta
 using Base: svec
 
 export cast,
-       @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr,
+       @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr, @cxxt_str,
        @cxx, @cxxnew,
        addHeaderDir, defineMacro, cxxinclude, cxxparse, new_clang_instance,
        C_User, C_System, C_ExternCSystem

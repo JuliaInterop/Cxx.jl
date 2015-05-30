@@ -108,3 +108,13 @@ icxx"(void)++$fb.a;"
 
 # Splicing at global scope
 cxx"""const char *foostr = $(pointer("foo"));"""
+
+#cxxt
+@test cxxt"int" == Int32
+cxx"""
+template <typename T>
+struct foo_cxxt {
+  T x;
+};
+"""
+@test cxxt"foo_cxxt<int>" == Cxx.CppValue{Cxx.CppTemplate{Cxx.CppBaseType{:foo_cxxt},Tuple{Int32}},(false,false,false)}

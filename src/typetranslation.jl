@@ -32,6 +32,10 @@ for (jlt, sym) in
 
 end
 
+# Intended for end users to extend if they wrap a C++ type in a julia type, but
+# want to have it automatically converted to a C++ compatible type
+cppconvert(x) = x
+
 # # # Mapping the C++ object hierarchy types back to clang types
 #
 # This is more complicated than simply mapping builtin types and proceeds in

@@ -289,14 +289,14 @@ function build_icxx_expr(id, exprs, isexprs, compiler, impl_func = cxxstr_impl)
             push!(setup.args,Expr(:(=),s,Expr(:->,Expr(:tuple),e)))
             push!(cxxstr.args,s)
         else
-            push!(cxxstr.args,e)
+            push!(cxxstr.args,:(Cxx.cppconvert($e)))
         end
     end
     push!(setup.args,cxxstr)
     return setup
 end
 
-function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,col=1;
+function process_cxx_string(str,global_scope = true,type_name = false,filename=symbol(""),line=1,col=1;
     compiler = :__current_compiler__)
     startvarnum, sourcebuf, exprs, isexprs = process_body(str, global_scope, filename, line, col)
     if global_scope
@@ -315,12 +315,13 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
             startvarnum += 1
             push!(argcleanup.args,:(Cxx.ArgCleanup($instance,$s,$sv)))
         end
-        parsecode = filename == "" ? :( cxxparse($instance,$(takebuf_string(sourcebuf))) ) :
+        parsecode = filename == "" ? :( cxxparse($instance,$(takebuf_string(sourcebuf)),$type_name) ) :
             :( Cxx.ParseVirtual($instance, $(takebuf_string(sourcebuf)),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( line ),
-                $( col )) )
+                $( col ),
+                $(type_name)) )
         return quote
             let
                 jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
@@ -329,8 +330,9 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
                 unsafe_store!(jns,ns.ptr)
                 $argsetup
                 $argcleanup
-                $parsecode
+                x = $parsecode
                 unsafe_store!(jns,C_NULL)
+                x
             end
         end
     else
@@ -341,17 +343,21 @@ function process_cxx_string(str,global_scope = true,filename=symbol(""),line=1,c
 end
 
 macro cxx_str(str,args...)
-    esc(process_cxx_string(str,true,args...))
+    esc(process_cxx_string(str,true,false,args...))
+end
+
+macro cxxt_str(str,args...)
+    esc(process_cxx_string(str,true,true,args...))
 end
 
 macro icxx_str(str,args...)
-    esc(process_cxx_string(str,false,args...))
+    esc(process_cxx_string(str,false,false,args...))
 end
 
 macro icxx_mstr(str,args...)
-    esc(process_cxx_string(str,false,args...))
+    esc(process_cxx_string(str,false,false,args...))
 end
 
 macro cxx_mstr(str,args...)
-    esc(process_cxx_string(str,true,args...))
+    esc(process_cxx_string(str,true,false,args...))
 end

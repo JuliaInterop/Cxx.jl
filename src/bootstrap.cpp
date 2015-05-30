@@ -158,6 +158,14 @@ DLLEXPORT int _cxxparse(C)
     return 1;
 }
 
+DLLEXPORT void *ParseTypeName(C)
+{
+    if (Cxx->Parser->getPreprocessor().isIncrementalProcessingEnabled() &&
+      Cxx->Parser->getCurToken().is(clang::tok::eof))
+      Cxx->Parser->ConsumeToken();
+    return (void*)Cxx->Parser->ParseTypeName().get().getAsOpaquePtr();
+}
+
 DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
 {
     const clang::DirectoryLookup *CurDir;
