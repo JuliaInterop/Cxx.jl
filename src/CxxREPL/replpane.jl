@@ -151,7 +151,7 @@ let __current_compiler__ = Cxx.__default_compiler__
         repl = Base.active_repl
 
         panel.on_done = REPL.respond(repl,panel) do line
-            Cxx.process_cxx_string(string(line,"\n;"), isTopLevelExpression(C,line), :REPL, 1, 1;
+            Cxx.process_cxx_string(string(line,"\n;"), isTopLevelExpression(C,line), false, :REPL, 1, 1;
                 compiler = C)
         end
 
