@@ -957,6 +957,12 @@ DLLEXPORT void *CreateTypeDefDecl(C, clang::DeclContext *DC, char *name, void *t
 DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, size_t npvds)
 {
     FD->setParams(ArrayRef<clang::ParmVarDecl*>(PVDs,npvds));
+    clang::TypeSourceInfo *TInfo = FD->getTypeSourceInfo();
+    if (clang::FunctionProtoTypeLoc Proto =
+          TInfo->getTypeLoc().IgnoreParens().getAs<clang::FunctionProtoTypeLoc>()) {
+      for (size_t i = 0; i < npvds; ++i)
+      Proto.setParam(i, PVDs[i]);
+    }
 }
 
 DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
@@ -1511,7 +1517,7 @@ DLLEXPORT void *getLLVMStructType(llvm::Type **ts, size_t nts)
 DLLEXPORT void MarkDeclarationsReferencedInExpr(C,clang::Expr *e)
 {
   clang::Sema &sema = Cxx->CI->getSema();
-  sema.MarkDeclarationsReferencedInExpr(e,true);
+  sema.MarkDeclarationsReferencedInExpr(e, true);
 }
 
 DLLEXPORT void *getConstantFloat(llvm::Type *llvmt, double x)
@@ -1558,6 +1564,154 @@ DLLEXPORT int RequireCompleteType(C,clang::Type *t)
 {
   clang::Sema &sema = Cxx->CI->getSema();
   return sema.RequireCompleteType(getTrivialSourceLocation(Cxx),clang::QualType(t,0),0);
+}
+
+DLLEXPORT void *CreateTemplatedFunction(C, char *Name, clang::TemplateParameterList** args, size_t nargs)
+{
+  clang::DeclSpec DS(Cxx->Parser->getAttrFactory());
+  clang::Declarator D(DS, clang::Declarator::PrototypeContext);
+  clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
+  D.getName().setIdentifier(PP.getIdentifierInfo(Name),clang::SourceLocation());
+  clang::Sema &sema = Cxx->CI->getSema();
+  return sema.ActOnTemplateDeclarator(nullptr,clang::MultiTemplateParamsArg(args,nargs),D);
+}
+
+DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
+{
+  clang::Sema &sema = Cxx->CI->getSema();
+  clang::ParsedType DefaultArg;
+  clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
+  clang::Scope S(nullptr,clang::Scope::TemplateParamScope,Cxx->CI->getDiagnostics());
+  void *ret = (void*)sema.ActOnTypeParameter(&S, false, clang::SourceLocation(),
+                                    clang::SourceLocation(), PP.getIdentifierInfo(Name), clang::SourceLocation(), 0, Position,
+                                    clang::SourceLocation(), DefaultArg);
+  sema.ActOnPopScope(clang::SourceLocation(),&S);
+  return ret;
+}
+
+DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t ND)
+{
+  return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(), clang::SourceLocation(), D, ND, clang::SourceLocation());
+}
+
+DLLEXPORT void *CreateFunctionTemplateDecl(C, clang::DeclContext *DC, clang::TemplateParameterList *Params, clang::FunctionDecl *FD)
+{
+  clang::FunctionTemplateDecl *FTD = clang::FunctionTemplateDecl::Create(
+      Cxx->CI->getASTContext(), DC, clang::SourceLocation(),
+      FD->getNameInfo().getName(), Params, FD);
+  FD->setDescribedFunctionTemplate(FTD);
+  return (void*)FTD;
+}
+
+DLLEXPORT void *newFDVector() { return (void*)new std::vector<clang::FunctionDecl*>; }
+DLLEXPORT void deleteFDVector(void *v) { delete ((std::vector<clang::FunctionDecl*>*) v); }
+DLLEXPORT void copyFDVector(void *to, std::vector<clang::FunctionDecl*> *from)
+{
+  memcpy(to, from->data(), sizeof(clang::FunctionDecl*)*from->size());
+}
+DLLEXPORT size_t getFDVectorSize(std::vector<clang::FunctionDecl*> *v) {return v->size(); }
+
+DLLEXPORT void getSpecializations(clang::FunctionTemplateDecl *FTD, std::vector<clang::FunctionDecl*> *specs) {
+  for (auto it : FTD->specializations())
+    specs->push_back(it);
+}
+
+DLLEXPORT const char *getMangledFunctionName(C,clang::FunctionDecl *D)
+{
+  return Cxx->CGM->getMangledName(clang::GlobalDecl(D)).data();
+}
+
+DLLEXPORT const void *getTemplateSpecializationArgs(clang::FunctionDecl *FD)
+{
+  return (const void*)FD->getTemplateSpecializationArgs();
+}
+
+DLLEXPORT void *getLambdaCallOperator(clang::CXXRecordDecl *R)
+{
+  return R->getLambdaCallOperator();
+}
+
+/// From SemaOverload.cpp
+/// A convenience routine for creating a decayed reference to a function.
+static clang::ExprResult
+CreateFunctionRefExpr(clang::Sema &S, clang::FunctionDecl *Fn, clang::NamedDecl *FoundDecl,
+                      bool HadMultipleCandidates,
+                      clang::SourceLocation Loc = clang::SourceLocation(),
+                      const clang::DeclarationNameLoc &LocInfo = clang::DeclarationNameLoc()){
+  if (S.DiagnoseUseOfDecl(FoundDecl, Loc))
+    return clang::ExprError();
+  // If FoundDecl is different from Fn (such as if one is a template
+  // and the other a specialization), make sure DiagnoseUseOfDecl is
+  // called on both.
+  // FIXME: This would be more comprehensively addressed by modifying
+  // DiagnoseUseOfDecl to accept both the FoundDecl and the decl
+  // being used.
+  if (FoundDecl != Fn && S.DiagnoseUseOfDecl(Fn, Loc))
+    return clang::ExprError();
+  clang::DeclRefExpr *DRE = new (S.Context) clang::DeclRefExpr(Fn, false, Fn->getType(),
+                                                 clang::VK_LValue, Loc, LocInfo);
+  if (HadMultipleCandidates)
+    DRE->setHadMultipleCandidates(true);
+
+  S.MarkDeclRefReferenced(DRE);
+
+  clang::ExprResult E = DRE;
+  E = S.DefaultFunctionArrayConversion(E.get());
+  if (E.isInvalid())
+    return clang::ExprError();
+  return E;
+}
+
+
+DLLEXPORT void *CreateCxxOperatorCallCall(C, clang::FunctionDecl *FD, clang::Expr* Arg)
+{
+  return (void *) new (Cxx->CI->getASTContext()) clang::CXXOperatorCallExpr(Cxx->CI->getASTContext(),clang::OO_Call,
+    CreateFunctionRefExpr(Cxx->CI->getSema(),FD,FD,false).get(), ArrayRef<clang::Expr*>(Arg),FD->getReturnType(),
+    clang::VK_RValue,clang::SourceLocation(),false);
+}
+
+DLLEXPORT void *CreateCStyleCast(C, clang::Expr *E, clang::Type *T)
+{
+  clang::QualType QT(T,0);
+  return (void*)clang::CStyleCastExpr::Create (Cxx->CI->getASTContext(), QT, clang::VK_RValue, clang::CK_BitCast,
+    E, nullptr, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(QT), clang::SourceLocation(), clang::SourceLocation());
+}
+
+DLLEXPORT void *CreateReturnStmt(C, clang::Expr *E)
+{
+  return (void*)new (Cxx->CI->getASTContext()) clang::ReturnStmt(clang::SourceLocation(),E,nullptr);
+}
+
+DLLEXPORT void *CreateFunctionRefExprFD(C, clang::FunctionDecl *FD)
+{
+  return (void*)CreateFunctionRefExpr(Cxx->CI->getSema(),FD,FD,false).get();
+}
+
+DLLEXPORT void SetFDBody(clang::FunctionDecl *FD, clang::Stmt *body)
+{
+  FD->setBody(body);
+}
+
+DLLEXPORT void *CreateLinkageSpec(C, clang::DeclContext *DC, unsigned kind)
+{
+  return (void *)(clang::DeclContext *)clang::LinkageSpecDecl::Create(Cxx->CI->getASTContext(), DC,
+    clang::SourceLocation(), clang::SourceLocation(), (clang::LinkageSpecDecl::LanguageIDs) kind,
+    true);
+}
+
+DLLEXPORT const char *getLLVMValueName(llvm::Value *V)
+{
+  return V->getName().data();
+}
+
+DLLEXPORT void *getParmVarDecl(clang::FunctionDecl *FD, unsigned i)
+{
+  return (void *)FD->getParamDecl(i);
+}
+
+DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
+{
+  D->markUsed(Cxx->CI->getASTContext());
 }
 
 }

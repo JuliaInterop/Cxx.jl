@@ -14,6 +14,8 @@ immutable QualType
     ptr::Ptr{Void}
 end
 
+Base.convert(::Type{QualType},p::pcpp"clang::Type") = QualType(p.ptr)
+
 # Construct a QualType from a Type* pointer. This works, because the unused
 # bits, when set to 0, indicate that none of the qualifier are set.
 QualType(p::pcpp"clang::Type") = QualType(p.ptr)
@@ -216,7 +218,7 @@ function CreateAddrOfExpr(C,e::pcpp"clang::Expr")
     pcpp"clang::Expr"(ccall((:createAddrOfExpr,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,e.ptr))
 end
 
-function MarkDeclarationsReferencedInExpr(C,e::pcpp"clang::Expr")
+function MarkDeclarationsReferencedInExpr(C,e)
     ccall((:MarkDeclarationsReferencedInExpr,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,e)
 end
 getType(v::pcpp"llvm::Value") = pcpp"llvm::Type"(ccall((:getValueType,libcxxffi),Ptr{Void},(Ptr{Void},),v))
@@ -428,6 +430,8 @@ for (r,s) in ((pcpp"clang::CXXRecordDecl",:getPointeeCXXRecordDecl),
                   @eval ($s)(t::pcpp"clang::Type") = ($(quot(r)))(ccall(($(quot(s)),libcxxffi),Ptr{Void},(Ptr{Void},),t))
 end
 
+getAsCXXRecordDecl(t::QualType) = getAsCXXRecordDecl(extractTypePtr(t))
+
 # Access to clang decls
 
 primary_ctx(p::pcpp"clang::DeclContext") =
@@ -445,3 +449,71 @@ to_decl(p::pcpp"clang::DeclContext") =
     pcpp"clang::Decl"(p == C_NULL ? C_NULL : ccall((:to_decl,libcxxffi),Ptr{Void},(Ptr{Void},),p))
 
 isaNamespaceDecl(d::pcpp"clang::CXXRecordDecl") = false
+
+ActOnTypeParameter(C, Name, pos) =
+    pcpp"clang::Decl"(ccall((:ActOnTypeParameter,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Uint8},Cuint),&C,Name,pos))
+
+CreateTemplateParameterList(C, decls) =
+    pcpp"clang::TemplateParameterList"(ccall((:CreateTemplateParameterList,libcxxffi),
+        Ptr{Void},(Ptr{ClangCompiler},Ptr{Ptr{Void}},Csize_t),&C,decls,length(decls)))
+
+CreateFunctionTemplateDecl(C, DC, Params, FD) =
+    pcpp"clang::FunctionTemplateDecl"(ccall((:CreateFunctionTemplateDecl,libcxxffi),
+        Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{Void}), &C, DC, Params, FD))
+
+function getSpecializations(FTD)
+    v = ccall((:newFDVector,libcxxffi),Ptr{Void},())
+    ccall((:getSpecializations,libcxxffi),Void,(Ptr{Void},Ptr{Void}),FTD,v)
+    ret = Array(pcpp"clang::FunctionDecl",ccall((:getFDVectorSize,libcxxffi),Csize_t,(Ptr{Void},),v))
+    ccall((:copyFDVector,libcxxffi),Void,(Ptr{Void},Ptr{Void}),ret,v);
+    ccall((:deleteFDVector,libcxxffi),Void,(Ptr{Void},),v)
+    ret
+end
+
+function getMangledFunctionName(C, FD)
+    bytestring(ccall((:getMangledFunctionName,libcxxffi),Ptr{Uint8},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+end
+
+function templateParameters(FD)
+    pcpp"clang::TemplateArgumentList"(ccall((:getTemplateSpecializationArgs,libcxxffi),Ptr{Void},(Ptr{Void},),FD))
+end
+
+function getLambdaCallOperator(R::pcpp"clang::CXXRecordDecl")
+    pcpp"clang::CXXMethodDecl"(ccall((:getLambdaCallOperator,libcxxffi),Ptr{Void},(Ptr{Void},),R))
+end
+
+function CreateCxxOperatorCallCall(C,meth,this)
+    @assert meth != C_NULL
+    pcpp"clang::CXXOperatorCall"(ccall((:CreateCxxOperatorCallCall,libcxxffi),Ptr{Void},
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,meth,this))
+end
+
+function CreateCStyleCast(C,E,T)
+    pcpp"clang::Expr"(ccall((:CreateCStyleCast,libcxxffi),Ptr{Void},
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,E,T))
+end
+
+function CreateReturnStmt(C, E)
+    pcpp"clang::Stmt"(ccall((:CreateReturnStmt,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,E))
+end
+
+function SetFDBody(FD,body)
+    ccall((:SetFDBody,libcxxffi),Void,(Ptr{Void},Ptr{Void}),FD,body)
+end
+
+function CreateFunctionRefExpr(C,FD)
+    pcpp"clang::Expr"(ccall((:CreateFunctionRefExprFD,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+end
+
+LANG_C   = 0x2
+LANG_CXX = 0x4
+
+function CreateLinkageSpec(C,DC::pcpp"clang::DeclContext",kind)
+    pcpp"clang::DeclContext"(ccall((:CreateLinkageSpec,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Cuint),&C,DC,kind))
+end
+
+getName(x::pcpp"llvm::Function") = bytestring(ccall((:getLLVMValueName,libcxxffi),Ptr{UInt8},(Ptr{Void},),x))
+
+getParmVarDecl(x::pcpp"clang::FunctionDecl",i) = pcpp"clang::ParmVarDecl"(ccall((:getParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Cuint),x,i))
+
+SetDeclUsed(C,FD) = ccall((:SetDeclUsed,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,FD)

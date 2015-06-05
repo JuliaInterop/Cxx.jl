@@ -118,3 +118,18 @@ struct foo_cxxt {
 };
 """
 @test cxxt"foo_cxxt<int>" == Cxx.CppValue{Cxx.CppTemplate{Cxx.CppBaseType{:foo_cxxt},Tuple{Int32}},(false,false,false)}
+
+
+# #103
+
+test103 = Int32[]
+cxx"""
+void foo103() {
+int x = 5;
+$:(push!(test103::Vector{Int32},icxx"return x;"); nothing);
+}
+"""
+@cxx foo103()
+@test test103 == [5]
+@cxx foo103()
+@test test103 == [5,5]

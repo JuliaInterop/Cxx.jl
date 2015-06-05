@@ -730,7 +730,7 @@ end
 # access to an alarming number of parameters. Hopefully this can be cleaned up
 # in the future
 #
-function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt);])
+function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidxs = [1:length(argt);], symargs = nothing)
     argt = Type[argt...]
 
     jlrt = rett
@@ -759,13 +759,18 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
 
     cleanup_cpp_env(C,state)
 
-    args2 = Expr[]
+    args2 = Any[]
     for (j,i) = enumerate(argidxs)
+        if symargs === nothing
+            arg = :(args[$i])
+        else
+            arg = symargs[i]
+        end
         if argt[j] <: JLCppCast
-            push!(args2,:(args[$i].data))
+            push!(args2,:($arg.data))
             argt[j] = JLCppCast.parameters[1]
         else
-            push!(args2,:(args[$i]))
+            push!(args2,arg)
         end
     end
 
@@ -774,10 +779,10 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         size = cxxsizeof(C,rt)
         return Expr(:block,
             :( r = ($(rett))(Array(UInt8,$size)) ),
-            Expr(:call,:llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...),
+            Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...),
             :r)
     else
-        return Expr(:call,:llvmcall,f.ptr,rett,Tuple{argt...},args2...)
+        return Expr(:call,Core.Intrinsics.llvmcall,f.ptr,rett,Tuple{argt...},args2...)
     end
 end
 
