@@ -133,3 +133,16 @@ $:(push!(test103::Vector{Int32},icxx"return x;"); nothing);
 @test test103 == [5]
 @cxx foo103()
 @test test103 == [5,5]
+
+#The same thing with two arguments
+test2_103 = Array(Tuple{Int32,Int32},0)
+cxx"""
+void foo2_103() {
+int x = 5;
+int y = 6;
+$:(push!(test2_103,(icxx"return x;",icxx"return y;")); nothing);
+}
+"""
+@cxx foo2_103()
+@test test2_103 == [(5,6)]
+

@@ -960,8 +960,10 @@ DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, s
     clang::TypeSourceInfo *TInfo = FD->getTypeSourceInfo();
     if (clang::FunctionProtoTypeLoc Proto =
           TInfo->getTypeLoc().IgnoreParens().getAs<clang::FunctionProtoTypeLoc>()) {
-      for (size_t i = 0; i < npvds; ++i)
-      Proto.setParam(i, PVDs[i]);
+      for (size_t i = 0; i < npvds; ++i) {
+        Proto.setParam(i, PVDs[i]);
+        PVDs[i]->setScopeInfo(0,i);
+      }
     }
 }
 

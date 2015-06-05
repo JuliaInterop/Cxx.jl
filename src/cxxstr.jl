@@ -68,7 +68,7 @@ end
 # where foo_back is the one that will evntually be instantiated
 #
 function CreateTemplatedLambdaCall(C,DC,callnum,nargs)
-    TPs = [ ActOnTypeParameter(C,string("param",i),0) for i = 1:nargs ]
+    TPs = [ ActOnTypeParameter(C,string("param",i),i-1) for i = 1:nargs ]
     Params = CreateTemplateParameterList(C,TPs)
     argts = QualType[ typeForDecl(T) for T in TPs ]
     FD = CreateFunctionDecl(C, DC, string("call",callnum) ,makeFunctionType(C,cpptype(C,Void),argts))
@@ -138,16 +138,17 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         # Perform type inference
         linfo = F.code
-        ST = Tuple{[Ptr{Int32} for _ in 1:nargs]...}
+        ST = Tuple{[Ptr{Void} for _ in 1:nargs]...}
         (tree, ty) = Core.Inference.typeinf(linfo,ST,svec())
         T = ty
         F.code.ast = tree
+
         # Pretend we're a specialized generic function
         # to get the good calling convention. The compiler
         # will never know :)
         setfield!(F.code,6,ST)
         if isa(T,UnionType) || T.abstract
-            error("Inferred Union or abstract type $T for expression $NewFunctionBody")
+            error("Inferred Union or abstract type $T for expression $F")
         end
         if T !== Nothing
             error("Currently only `Nothing` is supported for nested expressions")
@@ -476,7 +477,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 syms = tuple([gensym() for _ in 1:length(icxx)]...)
                 push!(postparse.args,quote
                     Cxx.InstantiateSpecializations($instance,ctx,$s,
-                        $(Expr(:->,length(syms) == 1 ? syms[1] : syms,expr.args[1])),$syms,$icxx)
+                        $(Expr(:->,length(syms) == 1 ? syms[1] : Expr(:tuple,syms...),expr.args[1])),$syms,$icxx)
                 end)
             end
             startvarnum += 1
