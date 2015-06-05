@@ -171,8 +171,6 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         # Now that the specialization has a body, emit it
         EmitTopLevelDecl(C, x)
-
-        println("done")
     end
 end
 
