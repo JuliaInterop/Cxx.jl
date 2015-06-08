@@ -2,8 +2,10 @@
 # into a clang AST, as well as performing the necessary work to do the
 # actual codegen.
 
-const CxxBuiltinTypes = Union(Type{Bool},Type{Int64},Type{Int32},Type{UInt32},
-    Type{UInt64},Type{Float32},Type{Float64})
+const CxxBuiltinTypes = Union(Type{Bool},
+    Type{UInt8},  Type{Int8},    Type{UInt16}, Type{Int16},
+    Type{Int32},  Type{UInt32},  Type{Int64},  Type{UInt64},
+    Type{Float32}, Type{Float64})
 
 # # # Section 1: Pseudo-AST handling
 #

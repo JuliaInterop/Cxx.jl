@@ -162,3 +162,7 @@ z = x + y
 cxx""" enum { kFalse118 = 0, kTrue118 = 1 }; """
 @assert icxx" kTrue118; " == 1
 
+# UInt8 builtin (#119)
+cxx""" void foo119(char value) {} """
+@cxx foo119(UInt8(0))
+
