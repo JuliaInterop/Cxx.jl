@@ -158,3 +158,7 @@ z = @cxx x + y
 z = x + y
 @assert icxx" $z.x == 3; "
 
+# Anonymous enums (#118)
+cxx""" enum { kFalse118 = 0, kTrue118 = 1 }; """
+@assert icxx" kTrue118; " == 1
+

@@ -269,9 +269,13 @@ cpptype(C,F::Type{Function}) = cpptype(C,pcpp"jl_function_t")
 # hierarchy
 #
 
-function _decl_name(d)
+function __decl_name(d)
     @assert d != C_NULL
-    s = ccall((:decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
+    ccall((:decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
+end
+
+function _decl_name(d)
+    s = __decl_name(d)
     ret = bytestring(s)
     Libc.free(s)
     ret
@@ -285,15 +289,27 @@ function simple_decl_name(d)
 end
 
 get_pointee_name(t) = _decl_name(getPointeeCXXRecordDecl(t))
-function get_name(t)
+
+function _get_name(t)
     d = getAsCXXRecordDecl(t)
     if d != C_NULL
-        return _decl_name(d)
+        s = __decl_name(d)
+    else
+        d = isIncompleteType(t)
+        @assert d != C_NULL
+        s = __decl_name(d)
     end
-    d = isIncompleteType(t)
-    @assert d != C_NULL
-    return _decl_name(d)
+    s
 end
+
+function get_name(t)
+    s = _get_name(t)
+    ret = bytestring(s)
+    Libc.free(s)
+    ret
+end
+
+isAnonymous(t) = (s = _get_name(t); ret = (s == C_NULL); !ret && Libc.free(s); ret)
 
 const KindNull              = 0
 const KindType              = 1
@@ -422,7 +438,11 @@ function juliatype(t::QualType)
     elseif isCharType(t)
         return UInt8
     elseif isEnumeralType(t)
-        return CppEnum{symbol(get_name(t))}
+        if isAnonymous(t)
+            return Int32
+        else
+            return CppEnum{symbol(get_name(t))}
+        end
     elseif isIntegerType(t)
         kind = builtinKind(t)
         if kind == cLong || kind == cLongLong
