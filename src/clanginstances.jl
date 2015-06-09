@@ -6,6 +6,7 @@ immutable ClangCompiler
     CGM::pcpp"clang::CodeGenModule"
     CGF::pcpp"clang::CodeGenFunction"
     Parser::pcpp"clang::Parser"
+    JCodeGen::pcpp"JuliaCodeGenerator"
 end
 
 active_instances = ClangCompiler[]

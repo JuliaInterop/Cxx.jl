@@ -208,10 +208,10 @@ function ActOnFinishNamespaceDef(C,D)
 end
 
 function EmitTopLevelDecl(C, D::pcpp"clang::Decl")
-    if isDeclInvalid(D)
-        error("Tried to emit invalid decl")
+    HadErrors = ccall((:EmitTopLevelDecl,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void}),&C,D)
+    if HadErrors
+        error("Tried to Emit Invalid Decl")
     end
-    ccall((:EmitTopLevelDecl,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,D)
 end
 EmitTopLevelDecl(C,D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(C,pcpp"clang::Decl"(D.ptr))
 

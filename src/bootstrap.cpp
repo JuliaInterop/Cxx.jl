@@ -26,6 +26,7 @@
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtVisitor.h"
+#include "clang/AST/DeclVisitor.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Analysis/DomainSpecific/CocoaConventions.h"
@@ -69,6 +70,7 @@ extern llvm::LLVMContext &jl_LLVMContext;
 
 static DataLayout *TD;
 
+class JuliaCodeGenerator;
 
 struct CxxInstance {
   llvm::Module *shadow;
@@ -76,6 +78,7 @@ struct CxxInstance {
   clang::CodeGen::CodeGenModule *CGM;
   clang::CodeGen::CodeGenFunction *CGF;
   clang::Parser *Parser;
+  JuliaCodeGenerator *JCodeGen;
 };
 #define C CxxInstance *Cxx
 
@@ -641,10 +644,105 @@ typedef struct cppcall_state {
 
 }
 
+class ValidatingASTVisitor : public clang::DeclVisitor<ValidatingASTVisitor>,
+                             public clang::StmtVisitor<ValidatingASTVisitor>
+{
+private:
+  bool FoundInvalid;
+  clang::Decl *CurrentDecl;
+
+public:
+  ValidatingASTVisitor() : FoundInvalid(false), CurrentDecl(0) {}
+  operator bool() { return FoundInvalid; }
+  void reset() { FoundInvalid = false; }
+
+  typedef ValidatingASTVisitor ImplClass;
+  typedef ValidatingASTVisitor Base;
+  typedef clang::DeclVisitor<ImplClass> BaseDeclVisitor;
+  typedef clang::StmtVisitor<ImplClass> BaseStmtVisitor;
+
+  using BaseStmtVisitor::Visit;
+
+
+  //===--------------------------------------------------------------------===//
+  // DeclVisitor
+  //===--------------------------------------------------------------------===//
+
+  void Visit(clang::Decl *D) {
+    clang::Decl *PrevDecl = CurrentDecl;
+    CurrentDecl = D;
+    BaseDeclVisitor::Visit(D);
+    CurrentDecl = PrevDecl;
+  }
+
+  void VisitFunctionDecl(clang::FunctionDecl *D) {
+    BaseDeclVisitor::VisitFunctionDecl(D);
+    if (D->doesThisDeclarationHaveABody())
+      Visit(D->getBody());
+  }
+
+  void VisitObjCMethodDecl(clang::ObjCMethodDecl *D) {
+    BaseDeclVisitor::VisitObjCMethodDecl(D);
+    if (D->getBody())
+      Visit(D->getBody());
+  }
+
+  void VisitBlockDecl(clang::BlockDecl *D) {
+    BaseDeclVisitor::VisitBlockDecl(D);
+    Visit(D->getBody());
+  }
+
+  void VisitVarDecl(clang::VarDecl *D) {
+    BaseDeclVisitor::VisitVarDecl(D);
+    if (clang::Expr *Init = D->getInit())
+      Visit(Init);
+  }
+
+  void VisitDecl(clang::Decl *D) {
+    if (D->isInvalidDecl())
+      FoundInvalid = true;
+
+    if (isa<clang::FunctionDecl>(D) || isa<clang::ObjCMethodDecl>(D) || isa<clang::BlockDecl>(D))
+      return;
+
+    if (clang::DeclContext *DC = dyn_cast<clang::DeclContext>(D))
+      static_cast<ImplClass*>(this)->VisitDeclContext(DC);
+  }
+
+  void VisitDeclContext(clang::DeclContext *DC) {
+    for (clang::DeclContext::decl_iterator
+           I = DC->decls_begin(), E = DC->decls_end(); I != E; ++I)
+      Visit(*I);
+  }
+
+  //===--------------------------------------------------------------------===//
+  // StmtVisitor
+  //===--------------------------------------------------------------------===//
+
+  void VisitDeclStmt(clang::DeclStmt *Node) {
+    for (clang::DeclStmt::decl_iterator
+           I = Node->decl_begin(), E = Node->decl_end(); I != E; ++I)
+      Visit(*I);
+  }
+
+  void VisitBlockExpr(clang::BlockExpr *Node) {
+    // The BlockDecl is also visited by 'VisitDeclContext()'.  No need to visit it twice.
+  }
+
+  void VisitStmt(clang::Stmt *Node) {
+    for (clang::Stmt::child_range I = Node->children(); I; ++I)
+      if (*I)
+        Visit(*I);
+  }
+
+};
+
+
 class JuliaCodeGenerator : public clang::ASTConsumer {
   public:
     JuliaCodeGenerator(C) : Cxx(*Cxx) {}
     CxxInstance Cxx;
+    ValidatingASTVisitor Visitor;
 
     virtual ~JuliaCodeGenerator() {}
 
@@ -652,12 +750,20 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
       Cxx.CGM->HandleCXXStaticMemberVarInstantiation(VD);
     }
 
+    bool EmitTopLevelDecl(clang::Decl *D)
+    {
+      Visitor.Visit(D);
+      bool HadErrors = (bool)Visitor;
+      if (!HadErrors)
+        Cxx.CGM->EmitTopLevelDecl(D);
+      Visitor.reset();
+      return HadErrors;
+    }
+
     virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG) {
       // Make sure to emit all elements of a Decl.
-      for (clang::DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I) {
-        if (!(*I)->isInvalidDecl())
-          Cxx.CGM->EmitTopLevelDecl(*I);
-      }
+      for (clang::DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I)
+        EmitTopLevelDecl(*I);
       return true;
     }
 
@@ -770,7 +876,8 @@ DLLEXPORT void init_clang_instance(C) {
 
     // Cxx isn't fully initialized yet, but that's fine since JuliaCodeGenerator does
     // not need the parser
-    Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(new JuliaCodeGenerator(Cxx)));
+    Cxx->JCodeGen = new JuliaCodeGenerator(Cxx);
+    Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
 
     Cxx->CI->createSema(clang::TU_Prefix,NULL);
     Cxx->CI->getSema().addExternalSource(new JuliaSemaSource());
@@ -845,9 +952,9 @@ DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
     return state;
 }
 
-DLLEXPORT void EmitTopLevelDecl(C, clang::Decl *D)
+DLLEXPORT bool EmitTopLevelDecl(C, clang::Decl *D)
 {
-    Cxx->CGM->EmitTopLevelDecl(D);
+    return Cxx->JCodeGen->EmitTopLevelDecl(D);
 }
 
 DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
