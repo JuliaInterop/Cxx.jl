@@ -161,3 +161,15 @@ include("utils.jl")
 include("autowrap.jl")
 
 end
+
+# C++ standard library helpers
+module CxxStd
+
+    using Cxx
+    include("std.jl")
+
+end
+
+if isdefined(Base, :active_repl)
+   include(Pkg.dir("Cxx","src","CxxREPL","replpane.jl"))
+end

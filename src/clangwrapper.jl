@@ -52,7 +52,7 @@ tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(p.ptr)
 # For typetranslation.jl
 BuildNNS(C,cxxscope,part) = ccall((:BuildNNS,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8}),&C,cxxscope,part)
 
-function _lookup_name(C,fname, ctx::pcpp"clang::DeclContext")
+function _lookup_name(C,fname::String, ctx::pcpp"clang::DeclContext")
     @assert ctx != C_NULL
     pcpp"clang::Decl"(
         ccall((:lookup_name,libcxxffi),Ptr{Void},
@@ -305,7 +305,7 @@ getCalleeReturnType(t::pcpp"clang::CallExpr") = QualType(ccall((:getCalleeReturn
 
 isIncompleteType(t::pcpp"clang::Type") = pcpp"clang::NamedDecl"(ccall((:isIncompleteType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
-function createNamespace(C,name)
+function createNamespace(C,name::String)
     pcpp"clang::NamespaceDecl"(
         ccall((:createNamespace,libcxxffi),Ptr{Void},
             (Ptr{ClangCompiler},Ptr{UInt8}),&C,bytestring(name)))

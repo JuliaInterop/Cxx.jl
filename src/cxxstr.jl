@@ -222,7 +222,7 @@ SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl
 # Create a clang FunctionDecl with the given body and
 # and the given types for embedded __juliavars
 #
-function CreateFunctionWithBody(C,body,args...; filename = symbol(""), line = 1, col = 1)
+function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), line::Int = 1, col::Int = 1)
     global icxxcounter
 
     argtypes = Tuple{Int,QualType}[]
@@ -284,7 +284,10 @@ function CreateFunctionWithBody(C,body,args...; filename = symbol(""), line = 1,
         ParseFunctionStatementBody(C,FD)
         ActOnFinishNamespaceDef(C,ND)
     catch e
-        @show e
+        # Make sure to note that an exception occured, in case
+        # it gets swallowed by the staged function
+        println("Caught exception")
+        rethrow(e)
     end
 
     #dump(FD)
