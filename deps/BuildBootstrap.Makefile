@@ -21,15 +21,18 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore -llldbInitializ
     -llldbPluginABISysV_x86_64 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginABISysV_arm -llldbPluginABISysV_arm64\
     -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
+    -llldbPluginDynamicLoaderMacOSX \
     -llldbPluginEmulateInstructionMIPS64 -llldbPluginEmulateInstructionMIPS \
     -llldbPluginEmulateInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginLanguageRuntimeCPlusPlusItaniumABI \
     -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
+    -llldbPluginObjectContainerUniversalMachO \
     -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \
     -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDBServer -llldbPluginPlatformLinux \
     -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows -llldbPluginPlatformKalimba \
     -llldbPluginPlatformMacOSX  -llldbPluginLanguageRuntimeObjCAppleObjCRuntime \
     -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote -llldbPluginMemoryHistoryASan \
     -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab -llldbPluginSymbolVendorELF -llldbSymbol -llldbUtility \
+    -llldbPluginSystemRuntimeMacOSX \
     -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyx86 -llldbPluginUtility -llldbTarget \
     -llldbPluginInstrumentationRuntimeAddressSanitizer -llldbPluginPlatformAndroid \
     -llldbPluginLanguageRuntimeRenderScriptRuntime \
@@ -39,10 +42,10 @@ ifeq ($(OS), Darwin)
 LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols -llldbHostMacOSX \
 	-llldbHostPOSIX \
 	-llldbPluginPlatformAndroid \
-    -llldbPluginDynamicLoaderMacOSX -llldbPluginDynamicLoaderDarwinKernel -llldbPluginObjectContainerUniversalMachO \
+    -llldbPluginDynamicLoaderDarwinKernel \
     -llldbPluginProcessDarwin  -llldbPluginProcessMachCore \
-    -llldbPluginSymbolVendorMacOSX -llldbPluginSystemRuntimeMacOSX -llldbPluginObjectFileMachO \
-    -framework Security  -lpanel -framework CoreFoundation \
+    -llldbPluginSymbolVendorMacOSX  -llldbPluginObjectFileMachO \
+    -framework Security -lpanel -framework CoreFoundation \
     -framework Foundation -framework Carbon -lobjc -ledit -lxml2
 endif
 ifeq ($(EXPERIMENTAL_LLDB),1)
