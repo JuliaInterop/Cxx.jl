@@ -454,6 +454,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
         argcleanup = Expr(:block)
         postparse = Expr(:block)
         instance = :( Cxx.instance($compiler) )
+        ctx = gensym()
         for i in 1:length(exprs)
             expr = exprs[i]
             icxx = icxxs[i]
@@ -463,7 +464,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 push!(argsetup.args,quote
                     ($s, $sv) =
                         let e = $expr
-                            Cxx.ssv($instance,e,ctx,$startvarnum,eval(:( ()->($e) )))
+                            Cxx.ssv($instance,e,$ctx,$startvarnum,eval(:( ()->($e) )))
                         end
                     end)
                 push!(argcleanup.args,:(Cxx.ArgCleanup($instance,$s,$sv)))
@@ -475,11 +476,11 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 # more (i.e. a julia expression within a C++ expression within a julia expression
                 # within a C++ expression)
                 push!(argsetup.args,quote
-                    $s = Cxx.CreateTemplatedLambdaCall($instance,ctx,$startvarnum,$(length(icxx)))
+                    $s = Cxx.CreateTemplatedLambdaCall($instance,$ctx,$startvarnum,$(length(icxx)))
                 end)
                 syms = tuple([gensym() for _ in 1:length(icxx)]...)
                 push!(postparse.args,quote
-                    Cxx.InstantiateSpecializations($instance,ctx,$s,
+                    Cxx.InstantiateSpecializations($instance,$ctx,$s,
                         $(Expr(:->,length(syms) == 1 ? syms[1] : Expr(:tuple,syms...),expr.args[1])),$syms,$icxx)
                 end)
             end
@@ -497,7 +498,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
             let
                 jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
                 ns = Cxx.createNamespace($instance,"julia")
-                ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
+                $ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
                 unsafe_store!(jns,ns.ptr)
                 $argsetup
                 $argcleanup
