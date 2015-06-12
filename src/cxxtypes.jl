@@ -108,6 +108,8 @@ end
 immutable CppEnum{T}
     val::Int32
 end
+==(p1::CppEnum,p2::Integer) = p1.val == p2
+==(p1::Integer,p2::CppEnum) = p1 == p2.val
 
 # Convenience string literals for the above - part of the user facing
 # functionality. Due to the complexity of the representation hierarchy,
