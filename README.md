@@ -64,9 +64,8 @@ julia_function (args) icxx""" *code here*  """ end
 
 ### The C++ REPL
 
-This package contains an experimental C++ REPL feature. To use it,
-`include(Pkg.dir("Cxx","src","CxxREPL","replpane.jl"))`, which
-will add a new pane to your REPL that is accessible by pressing the
+This package contains an experimental C++ REPL feature. Using the package
+will automatically add a new pane to your REPL that is accessible by pressing the
 `<` key.
 
 ### **Using Cxx.jl:** 
