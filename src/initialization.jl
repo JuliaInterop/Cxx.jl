@@ -23,7 +23,7 @@ init_libcxxffi()
 
 function setup_instance()
     x = Array(ClangCompiler,1)
-    ccall((:init_clang_instance,libcxxffi),Void,(Ptr{Void},),x)
+    ccall((:init_clang_instance,libcxxffi),Void,(Ptr{Void},Ptr{UInt8}),x,C_NULL)
     x[1]
 end
 

@@ -822,7 +822,7 @@ public:
 extern "C" {
 
 
-DLLEXPORT void init_clang_instance(C) {
+DLLEXPORT void init_clang_instance(C, const char *Triple) {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     Cxx->CI = new clang::CompilerInstance;
     Cxx->CI->getDiagnosticOpts().ShowColors = 1;
@@ -853,7 +853,16 @@ DLLEXPORT void init_clang_instance(C) {
     Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
     Cxx->CI->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
-    Cxx->CI->getTargetOpts().Triple = llvm::Triple::normalize(llvm::sys::getProcessTriple());
+    Cxx->CI->getTargetOpts().Triple = Triple == NULL ? llvm::Triple::normalize(llvm::sys::getProcessTriple()) : Triple;
+    Cxx->CI->getTargetOpts().CPU = llvm::sys::getHostCPUName ();
+    StringMap< bool > ActiveFeatures;
+    std::vector< std::string > Features;
+    if (llvm::sys::getHostCPUFeatures(ActiveFeatures)) {
+      for (auto &F : ActiveFeatures)
+        Features.push_back(std::string(F.second ? "+" : "-") +
+                                              std::string(F.first()));
+      Cxx->CI->getTargetOpts().Features = Features;
+    }
     Cxx->CI->setTarget(clang::TargetInfo::CreateTargetInfo(
       Cxx->CI->getDiagnostics(),
       std::make_shared<clang::TargetOptions>(Cxx->CI->getTargetOpts())));
