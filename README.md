@@ -173,4 +173,21 @@ CppEnum{symbol("Klassy::Foo")}(0)
 julia> @cxx Klassy::exec(@cxx(Klassy::Baz))
 CppEnum{symbol("Klassy::Foo")}(1)
 ```
+#### Example 7: C++ Hello World class
+```
+julia> using Cxx
+julia> cxx"""#include <iostream>
+       class Hello
+       { 
+           public:
+               void hello_world(const char *now){
+                   std::string snow = now;
+                   std::cout << "Hello World! Now is " << snow << std::endl;
+               }
+        };"""
+julia> hello_class = @cxxnew Hello()
+julia> tstamp = string(Dates.now())
+julia> @cxx hello_class -> hello_world(pointer(tstamp))
+Hello World! Now is 2015-06-19T11:20:31
 
+```
