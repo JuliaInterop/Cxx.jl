@@ -239,7 +239,7 @@ float* ArrayMaker::fillArr() {
 
 Compiling into shared library
 ```
->> g++ -shared -fPIC ArrayMaker.h -o libArrayMaker.so
+>> g++ -shared -fPIC ArrayMaker.cpp -o libArrayMaker.so
 ```
 
 Using in Julia
