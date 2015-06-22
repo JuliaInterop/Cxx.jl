@@ -191,3 +191,82 @@ julia> @cxx hello_class -> hello_world(pointer(tstamp))
 Hello World! Now is 2015-06-19T11:20:31
 
 ```
+
+#### Example 8: Using C++ with shared libraries
+
+ArrayMaker.h
+```c++
+#ifndef ARRAYMAKER_H
+#define ARRAYMAKER_H
+
+class ArrayMaker
+{
+    private:
+        int iNumber;
+        float fNumber;
+        float* fArr;
+    public:
+        ArrayMaker(int, float);
+        float* fillArr();
+};
+
+#endif
+```
+
+ArrayMaker.cpp
+```c++
+#include "ArrayMaker.h"
+#include <iostream>
+
+using namespace std;
+
+ArrayMaker::ArrayMaker(int iNum, float fNum) {
+    cout << "Got arguments: " << iNum << ", and " << fNum << endl;
+    iNumber = iNum;
+    fNumber = fNum;
+    fArr = new float[iNumber];
+}
+
+float* ArrayMaker::fillArr() {
+    cout << "Filling the array" << endl;
+    for (int i=0; i < iNumber; i++) {
+        fArr[i] = fNumber;
+        fNumber *= 2;
+    } 
+    return fArr;
+}
+```
+
+Compiling into shared library
+```
+>> g++ -shared -fPIC ArrayMaker.cpp -o libArrayMaker.so
+```
+
+Using in Julia
+```julia
+
+julia> using Cxx
+
+# Importing shared library and header file
+julia> const path_to_lib = pwd()
+julia> addHeaderDir(path_to_lib, kind=C_System)
+julia> Libdl.dlopen(path_to_lib * "/libArrayMaker.so", Libdl.RTLD_GLOBAL)
+Ptr{Void} @0x000000000728e6d0
+julia> cxxinclude("ArrayMaker.h")
+
+# Creating class object
+julia> maker = @cxxnew ArrayMaker(5, 2.0)
+Got arguments: 5, and 2
+Cxx.CppPtr{Cxx.CppValue{Cxx.CppBaseType{:ArrayMaker},(false,false,false)},(false,false,false)}(Ptr{Void} @0x00000000060ab570)
+
+julia> arr = @cxx maker->fillArr()
+Filling the array
+
+julia> pointer_to_array(arr, 5)
+5-element Array{Float32,1}:
+  2.0
+  4.0
+  8.0
+ 16.0
+ 32.0
+```
