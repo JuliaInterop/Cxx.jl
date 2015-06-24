@@ -171,6 +171,7 @@ module CxxStd
 
 end
 
+include(Pkg.dir("Cxx","src","CxxREPL","replpane.jl"))
 if isdefined(Base, :active_repl)
-   include(Pkg.dir("Cxx","src","CxxREPL","replpane.jl"))
+   CxxREPL.RunCxxREPL(Cxx.__current_compiler__)
 end

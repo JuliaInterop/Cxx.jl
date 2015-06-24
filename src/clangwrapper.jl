@@ -5,16 +5,8 @@
 # contains everything else that's just a thin wrapper of ccalls around the
 # C++ routine
 
-
-# Clang's QualType. A QualType is a pointer to a clang class object that
-# contains the information about the actual type, as well as storing the CVR
-# qualifiers in the unused bits of the pointer. Here we just treat QualType
-# as an opaque struct with one pointer-sized member.
-immutable QualType
-    ptr::Ptr{Void}
-end
-
 Base.convert(::Type{QualType},p::pcpp"clang::Type") = QualType(p.ptr)
+cppconvert(T::QualType) = vcpp"clang::QualType"{sizeof(Ptr{Void})}(tuple(reinterpret(UInt8, [T.ptr])...))
 
 # Construct a QualType from a Type* pointer. This works, because the unused
 # bits, when set to 0, indicate that none of the qualifier are set.
@@ -143,17 +135,28 @@ getTemplateArgs(tmplt::pcpp"clang::ClassTemplateSpecializationDecl") =
 getTargsSize(targs) =
  ccall((:getTargsSize,libcxxffi),Csize_t,(Ptr{Void},),targs)
 
+getTargType(targ) = QualType(ccall((:getTargType,libcxxffi),Ptr{Void},(Ptr{Void},),targ))
+
 getTargTypeAtIdx(targs, i) =
     QualType(ccall((:getTargTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
 
 getTargKindAtIdx(targs, i) =
-    ccall((:getTargKindAtIdx,libcxxffi),Cint,(Ptr{Void},Csize_t),targs,i)
+    ccall((:getTargKindAtIdx,libcxxffi), Cint, (Ptr{Void}, Csize_t), targs, i)
+
+getTargKind(targ) =
+    ccall((:getTargKind,libcxxffi),Cint,(Ptr{Void},),targ)
 
 getTargAsIntegralAtIdx(targs, i) =
     ccall((:getTargAsIntegralAtIdx,libcxxffi),Int64,(Ptr{Void},Csize_t),targs,i)
 
 getTargIntegralTypeAtIdx(targs, i) =
     QualType(ccall((:getTargIntegralTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
+
+getTargPackAtIdxSize(targs, i) =
+    ccall((:getTargPackAtIdxSize, libcxxffi), Csize_t, (Ptr{Void}, Csize_t), targs, i)
+
+getTargPackAtIdxTargAtIdx(targs, i, j) =
+    pcpp"clang::TemplateArgument"(ccall((:getTargPackAtIdxTargAtIdx, libcxxffi), Ptr{Void}, (Ptr{Void}, Csize_t, Csize_t), targs, i, j))
 
 getUndefValue(t::pcpp"llvm::Type") =
     pcpp"llvm::Value"(ccall((:getUndefValue,libcxxffi),Ptr{Void},(Ptr{Void},),t))
@@ -478,14 +481,17 @@ function templateParameters(FD)
     pcpp"clang::TemplateArgumentList"(ccall((:getTemplateSpecializationArgs,libcxxffi),Ptr{Void},(Ptr{Void},),FD))
 end
 
+getTargsPointer(ctargs) = Ptr{vcpp"clang::TemplateArgument"}(ccall((:getTargsPointer,libcxxffi),Ptr{Void},(Ptr{Void},),ctargs))
+getTargsSize(ctargs) = ccall((:getTargsSize,libcxxffi),Csize_t,(Ptr{Void},),ctargs)
+
 function getLambdaCallOperator(R::pcpp"clang::CXXRecordDecl")
     pcpp"clang::CXXMethodDecl"(ccall((:getLambdaCallOperator,libcxxffi),Ptr{Void},(Ptr{Void},),R))
 end
 
-function CreateCxxOperatorCallCall(C,meth,this)
+function CreateCxxOperatorCallCall(C,meth,args)
     @assert meth != C_NULL
     pcpp"clang::CXXOperatorCall"(ccall((:CreateCxxOperatorCallCall,libcxxffi),Ptr{Void},
-        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,meth,this))
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Csize_t),&C,meth,args,endof(args)))
 end
 
 function CreateCStyleCast(C,E,T)
@@ -529,3 +535,21 @@ getFunction(C, name) =
     pcpp"llvm::Function"(ccall((:getFunction, libcxxffi), Ptr{Void}, (Ptr{ClangCompiler}, Ptr{UInt8}, Csize_t), &C, name, endof(name)))
 
 getTypeName(C, T) = ccall((:getTypeName, libcxxffi), Any, (Ptr{ClangCompiler}, Ptr{Void}), &C, T)
+
+GetAddrOfFunction(C, FD) = pcpp"llvm::Constant"(ccall((:GetAddrOfFunction,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+
+RegisterType(C, RD, ST) = ccall((:RegisterType,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}), &C, RD, ST)
+
+getPointerElementType(T::pcpp"llvm::Type") = pcpp"llvm::Type"(ccall((:getPointerElementType,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+
+hasFDBody(FD::pcpp"clang::FunctionDecl") = ccall((:hasFDBody,libcxxffi),Cint,(Ptr{Void},),FD) != 0
+
+getOrCreateTemplateSpecialization(C,FTD,T) =
+    pcpp"clang::FunctionDecl"(ccall((:getOrCreateTemplateSpecialization,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,FTD,T))
+
+CreateIntegerLiteral(C, val::UInt64, T) =
+    pcpp"clang::IntegerLiteral"(ccall((:CreateIntegerLiteral, libcxxffi), Ptr{Void}, (Ptr{ClangCompiler}, UInt64, Ptr{Void}), &C, val, T))
+
+ActOnFinishFunctionBody(C, FD, Stmt) =
+    ccall((:ActOnFinishFunctionBody,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),
+        &C, FD, Stmt)

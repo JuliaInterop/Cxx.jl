@@ -8,6 +8,7 @@ dump(t::pcpp"clang::Type") = ccall((:typedump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Value") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Function") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Type") = ccall((:llvmtdump,libcxxffi),Void,(Ptr{Void},),t)
+dump(t::QualType) = dump(extractTypePtr(t))
 
 parser(C) = pcpp"clang::Parser"(
     ccall((:clang_parser,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
@@ -35,7 +36,10 @@ end
 macro icxxdebug_str(str,args...)
     compiler = :__current_compiler__
     startvarnum, sourcebuf, exprs, isexprs = process_body(str, false, args...)
+    if isempty(args)
+        args = (symbol(""),1,1)
+    end
     push!(sourcebuffers,(takebuf_string(sourcebuf),args...))
     id = length(sourcebuffers)
-    esc(build_icxx_expr(id, exprs, isexprs, compiler, dumpast_impl))
+    esc(build_icxx_expr(id, exprs, isexprs, Any[], compiler, dumpast_impl))
 end

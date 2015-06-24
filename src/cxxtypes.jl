@@ -1,3 +1,11 @@
+# Clang's QualType. A QualType is a pointer to a clang class object that
+# contains the information about the actual type, as well as storing the CVR
+# qualifiers in the unused bits of the pointer. Here we just treat QualType
+# as an opaque struct with one pointer-sized member.
+immutable QualType
+    ptr::Ptr{Void}
+end
+
 # # # Representing C++ values
 #
 # Since we can't always keep C++ values in C++ land and to make C++ values
@@ -116,6 +124,23 @@ immutable CppEnum{T}
 end
 ==(p1::CppEnum,p2::Integer) = p1.val == p2
 ==(p1::Integer,p2::CppEnum) = p1 == p2.val
+
+# Representa a C++ Lambda. Since they are not nameable, we need to number them
+# and record the corresponding type
+immutable CppLambda{num}
+    captureData::Ptr{Void}
+end
+
+const lambdaTypes = Vector{QualType}()
+const lambdaIndxes = Dict{QualType,Int}()
+function lambdaForType(T)
+    if !haskey(lambdaIndxes, T)
+        push!(lambdaTypes,T)
+        lambdaIndxes[T] = length(lambdaTypes)
+    end
+    CppLambda{lambdaIndxes[T]}
+end
+typeForLambda{N}(::Type{CppLambda{N}}) = lambdaTypes[N]
 
 # Convenience string literals for the above - part of the user facing
 # functionality. Due to the complexity of the representation hierarchy,

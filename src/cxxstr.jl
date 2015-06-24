@@ -26,7 +26,7 @@ function llvmconst(val::ANY)
             return getConstantStruct(julia_to_llvm(T),vals)
         end
     end
-    error("Cannot turn this julia value into a constant")
+    error("Cannot turn this julia value (of type `$T`) into a constant")
 end
 
 function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant")
@@ -34,8 +34,8 @@ function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constan
 end
 
 function ssv(C,e::ANY,ctx,varnum,thunk)
-    T = typeof(e)
     if isa(e,Expr) || isa(e,Symbol)
+        T = typeof(e)
         # Create a thunk that contains this expression
         linfo = thunk.code
         (tree, ty) = Core.Inference.typeinf(linfo,Tuple{},svec())
@@ -45,12 +45,17 @@ function ssv(C,e::ANY,ctx,varnum,thunk)
         # to get the good calling convention. The compiler
         # will never know :)
         setfield!(thunk.code,6,Tuple{})
+        if T === Union{}
+            T = Nothing
+        end
         if isa(T,UnionType) || T.abstract
             error("Inferred Union or abstract type $T for expression $e")
         end
         sv = CreateFunctionDecl(C,ctx,string("call",varnum),makeFunctionType(C,cpptype(C,T),QualType[]))
         e = thunk
     else
+        e = cppconvert(e)
+        T = typeof(e)
         name = string("var",varnum)
         sv = CreateVarDecl(C,ctx,name,cpptype(C,T))
     end
@@ -91,6 +96,69 @@ function substitute_symbols!(e::Expr,substs)
     e
 end
 
+function InstantiateLambdaTypeForType(C, FD, julia_type)
+    hasFDBody(FD) && return
+    Lit = CreateIntegerLiteral(C, convert(UInt, pointer_from_objref(julia_type)), cpptype(C, UInt))
+    jl_value_t = QualType(typeForDecl(lookup_name(C,["jl_value_t"])))
+    Casted = createCast(C, Lit, pointerTo(C,jl_value_t), CK_IntegralToPointer)
+    RetStmt = CreateReturnStmt(C, Casted)
+    ActOnStartOfFunction(C, FD, true)
+    ActOnFinishFunctionBody(C, FD, RetStmt)
+end
+
+function createLambdaTypeSpecialization(C, lambda_typeD, T)
+    haskey(lambdaIndxes, T) && return
+    julia_type = lambdaForType(T)
+    spec = specialize_template_clang(C, pcpp"clang::ClassTemplateDecl"(lambda_typeD.ptr), [T])
+    d = pcpp"clang::Decl"(spec.ptr)
+    result = pcpp"clang::VarDecl"(_lookup_name(C, "type", toctx(d)).ptr)
+    SetDeclInitializer(C, result, llvmconst(pointer_from_objref(julia_type)))
+end
+
+function InstantiateLambdaType(C)
+    D = lookup_name(C,["jl_calln"])
+    lambda_typeD = lookup_name(C,["lambda_type"])
+    sps = getSpecializations(D)
+    for x in sps
+        hasFDBody(x) && continue
+        targs = templateParameters(x)
+        args = Any[]
+        for i = 0:(getTargsSize(targs)-1)
+            kind = getTargKindAtIdx(targs,i)
+            if kind == KindType
+                T = getTargTypeAtIdx(targs,i)
+                createLambdaTypeSpecialization(C, lambda_typeD, T)
+            elseif kind == KindPack
+                for j = 0:(getTargPackAtIdxSize(targs,i)-1)
+                    targ = getTargPackAtIdxTargAtIdx(targs,i,j)
+                    @assert getTargKind(targ) == KindType
+                    T = getTargType(targ)
+                    createLambdaTypeSpecialization(C, lambda_typeD, T)
+                end
+            else
+                error("Unhandled template argument kind for lambda_type ($kind)")
+            end
+        end
+    end
+end
+
+function CreateLambdaCallExpr(C, T, argt = [])
+    meth = getLambdaCallOperator(getAsCXXRecordDecl(T))
+
+    callargs, cpvds = buildargexprs(C,argt)
+    PVoid = cpptype(C,Ptr{Void})
+    pvd = CreateParmVarDecl(C, PVoid)
+    pvds = [pvd]
+    append!(pvds, cpvds)
+
+    Tptr = pointerTo(C,T)
+    Closure = CreateCStyleCast(C,createCast(C,CreateDeclRefExpr(C,pvd),PVoid,CK_LValueToRValue),Tptr)
+    ce = CreateCallExpr(C,createDerefExpr(C,Closure),callargs)
+
+    rt = GetExprResultType(ce)
+    ce, rt, pvds
+end
+
 function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
     sps = getSpecializations(D)
     for x in sps
@@ -103,20 +171,11 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         for i = 1:nargs
             T = getTargTypeAtIdx(TP,i-1)
-            Tptr = pointerTo(C,T)
 
             # Step 1: Find the this lambda's call operator and wrap it using
             # the generic machinery
-            meth = getLambdaCallOperator(getAsCXXRecordDecl(T))
-
-            pvd = CreateParmVarDecl(C, PVoid)
+            ce, rt, pvds = CreateLambdaCallExpr(C, T)
             push!(tpvds, getParmVarDecl(x,i-1))
-            pvds = [pvd]
-
-            Closure = CreateCStyleCast(C,createCast(C,CreateDeclRefExpr(C,pvd),PVoid,CK_LValueToRValue),Tptr)
-            ce = CreateCxxOperatorCallCall(C,meth,createDerefExpr(C,Closure))
-
-            rt = GetExprResultType(ce)
 
             body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void}],pvds; symargs = (:($(syms[i])),))
             push!(bodies,body)
@@ -147,6 +206,9 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
         # to get the good calling convention. The compiler
         # will never know :)
         setfield!(F.code,6,ST)
+        if T === Union{}
+            T = Nothing
+        end
         if isa(T,UnionType) || T.abstract
             error("Inferred Union or abstract type $T for expression $F")
         end
@@ -191,12 +253,15 @@ sourceid{id}(::Type{SourceBuf{id}}) = id
 
 icxxcounter = 0
 
-function ActOnStartOfFunction(C,D)
+function ActOnStartOfFunction(C,D,ScopeIsNull = false)
     pcpp"clang::Decl"(ccall((:ActOnStartOfFunction,libcxxffi),
-        Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,D))
+        Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Bool),&C,D,ScopeIsNull))
 end
 function ParseFunctionStatementBody(C,D)
-    ccall((:ParseFunctionStatementBody,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,D)
+    if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void}),&C,D) == 0
+        dump(D)
+        error("A failure occured while parsing the function body")
+    end
 end
 
 function ActOnStartNamespaceDef(C,name)
@@ -242,7 +307,6 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         else
             # This is temporary until we can find a better solution
             if arg <: Function
-                body = replace(body,"__juliavar$i","jl_call0(__juliavar$i)")
                 push!(callargs,i)
                 T = cpptype(C,pcpp"jl_function_t")
             else
@@ -310,6 +374,10 @@ end
 
     FD, llvmargs, argidxs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
 
+#    @show "test"
+#    dump(FD)
+    InstantiateLambdaType(C)
+
     dne = CreateDeclRefExpr(C,FD)
     argt = tuple(llvmargs...)
     CallDNE(C,dne,argt; argidxs = argidxs)
@@ -329,11 +397,45 @@ function VirtualFileName(filename)
     name
 end
 
+function find_expr(sourcebuf,str,pos = 1)
+    idx = search(str,'$',pos)
+    if idx == 0
+        write(sourcebuf,str[pos:end])
+        return nothing, false, endof(str)+1
+    end
+    if idx != 1 && str[idx-1] == '\\'
+        write(sourcebuf,str[pos:(idx-2)])
+        write(sourcebuf,'$')
+        pos = idx + 1
+        return nothing, false, pos
+    end
+    write(sourcebuf,str[pos:(idx-1)])
+    # Parse the first expression after `$`
+    expr,pos = parse(str, idx + 1; greedy=false)
+    isexpr = (str[idx+1] == ':')
+    expr, isexpr, pos
+end
+
+function collect_exprs(str)
+    sourcebuf = IOBuffer()
+    pos = 1
+    i = 0
+    exprs = Any[]
+    while pos <= endof(str)
+        expr, isexpr, pos = find_expr(sourcebuf,str,pos)
+        expr == nothing && continue
+        write(sourcebuf,string("__lambdaarg",i))
+        push!(exprs, (expr, isexpr))
+    end
+    exprs, takebuf_string(sourcebuf)
+end
+
 collect_icxx(s,icxxs) = s
 function collect_icxx(e::Expr,icxxs)
     if isexpr(e,:macrocall) && e.args[1] == symbol("@icxx_str")
         x = gensym()
-        push!(icxxs, (x,e))
+        exprs, str = collect_exprs(e.args[2])
+        push!(icxxs, (x,str,exprs))
         return x
     else
         for i in 1:length(e.args)
@@ -380,40 +482,41 @@ function process_body(str, global_scope = true, filename=symbol(""),line=1,col=1
     global varnum
     startvarnum = varnum
     localvarnum = 1
-    while true
-        idx = search(str,'$',pos)
-        if idx == 0
-            write(sourcebuf,str[pos:end])
-            break
-        end
-        if idx != 1 && str[idx-1] == '\\'
-            write(sourcebuf,str[pos:(idx-2)])
-            write(sourcebuf,'$')
-            pos = idx + 1
-            continue
-        end
-        write(sourcebuf,str[pos:(idx-1)])
-        # Parse the first expression after `$`
-        expr,pos = parse(str, idx + 1; greedy=false)
+    while pos <= endof(str)
+        expr, isexpr, pos = find_expr(sourcebuf, str, pos)
+        expr == nothing && continue
         push!(exprs,expr)
-        isexpr = (str[idx+1] == ':')
         push!(isexprs,isexpr)
         this_icxxs = Any[]
         if isexpr
             collect_icxx(expr,this_icxxs)
         end
         push!(icxxs, this_icxxs)
+        cxxargs = join([begin
+            string("[&](",
+                join(["auto __lambdaarg$i" for i = 0:(length(exprs)-1)],','),
+                "){ $(str) }")
+        end for (x,str,exprs) in this_icxxs]
+        ,',')
         if global_scope
-            cxxargs = join([begin
-                "[&](){ $(e.args[2]) }"
-            end for (x,e) in this_icxxs]
-            ,",")
             write(sourcebuf,
                 isexpr ? string("__julia::call",varnum,"(",cxxargs,")") :
                          string("__julia::var",varnum))
             varnum += 1
         else
+            if isexpr
+                if isempty(this_icxxs)
+                    write(sourcebuf, "jl_apply0(")
+                else
+                    write(sourcebuf, "jl_calln(")
+                end
+            end
             write(sourcebuf, string("__juliavar",localvarnum))
+            if isexpr
+                !isempty(this_icxxs) && write(sourcebuf,',')
+                write(sourcebuf,cxxargs)
+                write(sourcebuf, ')')
+            end
             localvarnum += 1
         end
     end
@@ -423,7 +526,15 @@ function process_body(str, global_scope = true, filename=symbol(""),line=1,col=1
     startvarnum, sourcebuf, exprs, isexprs, icxxs
 end
 
-function build_icxx_expr(id, exprs, isexprs, compiler, impl_func = cxxstr_impl)
+@generated function lambdacall(CT, l, args...)
+    C = instance(CT)
+    T = typeForLambda(l)
+    ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
+    EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
+        symargs = (:(l.captureData),[:(args[$i]) for i = 1:length(args)]...))
+end
+
+function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)
     setup = Expr(:block)
     cxxstr = Expr(:call,impl_func,compiler,:(Cxx.SourceBuf{$id}()))
     for (i,e) in enumerate(exprs)
@@ -436,7 +547,17 @@ function build_icxx_expr(id, exprs, isexprs, compiler, impl_func = cxxstr_impl)
             else
                 error("Unrecognized expression type for quote in icxx")
             end
-            push!(setup.args,Expr(:(=),s,Expr(:->,Expr(:tuple),e)))
+            largs = Expr(:tuple)
+            if !isempty(icxxs[i])
+                substs = Dict{Symbol,Any}()
+                for (j,(s,_,ixexprs)) in enumerate(icxxs[i])
+                    arg = gensym()
+                    push!(largs.args, arg)
+                    substs[s] = Expr(:call,Cxx.lambdacall,compiler,arg,[x[1] for x in ixexprs]...)
+                end
+                substitute_symbols!(e,substs)
+            end
+            push!(setup.args,Expr(:(=),s,Expr(:->,largs,e)))
             push!(cxxstr.args,s)
         else
             push!(cxxstr.args,:(Cxx.cppconvert($e)))
@@ -511,7 +632,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
     else
         push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
         id = length(sourcebuffers)
-        build_icxx_expr(id, exprs, isexprs, compiler, cxxstr_impl)
+        build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
     end
 end
 

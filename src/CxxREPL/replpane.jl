@@ -1,51 +1,52 @@
-import Base: LineEdit, REPL
-using Cxx
+module CxxREPL
+    import Base: LineEdit, REPL
+    using Cxx
 
-# Some of this code is derived from cling.
-# Copyright (c) 2007-2014 by the Authors.
-# All rights reserved.
-#
-# LLVM/Clang/Cling LICENSE text.
-# Permission is hereby granted, free of charge, to any person obtaining a copy of
-# this software and associated documentation files (the "Software"), to deal with
-# the Software without restriction, including without limitation the rights to
-# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-# of the Software, and to permit persons to whom the Software is furnished to do
-# so, subject to the following conditions:
-#
-#     * Redistributions of source code must retain the above copyright notice,
-#       this list of conditions and the following disclaimers.
-#
-#     * Redistributions in binary form must reproduce the above copyright notice,
-#       this list of conditions and the following disclaimers in the
-#       documentation and/or other materials provided with the distribution.
-#
-#     * Neither the names of the LLVM Team, University of Illinois at
-#       Urbana-Champaign, nor the names of its contributors may be used to
-#       endorse or promote products derived from this Software without specific
-#       prior written permission.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-# CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE
-# SOFTWARE.
-#
-# Cxx.jl itself is provided under the MIT licenses (see the LIECENSE file for details)
-#
+    # Some of this code is derived from cling.
+    # Copyright (c) 2007-2014 by the Authors.
+    # All rights reserved.
+    #
+    # LLVM/Clang/Cling LICENSE text.
+    # Permission is hereby granted, free of charge, to any person obtaining a copy of
+    # this software and associated documentation files (the "Software"), to deal with
+    # the Software without restriction, including without limitation the rights to
+    # use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+    # of the Software, and to permit persons to whom the Software is furnished to do
+    # so, subject to the following conditions:
+    #
+    #     * Redistributions of source code must retain the above copyright notice,
+    #       this list of conditions and the following disclaimers.
+    #
+    #     * Redistributions in binary form must reproduce the above copyright notice,
+    #       this list of conditions and the following disclaimers in the
+    #       documentation and/or other materials provided with the distribution.
+    #
+    #     * Neither the names of the LLVM Team, University of Illinois at
+    #       Urbana-Champaign, nor the names of its contributors may be used to
+    #       endorse or promote products derived from this Software without specific
+    #       prior written permission.
+    #
+    # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+    # FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+    # CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS WITH THE
+    # SOFTWARE.
+    #
+    # Cxx.jl itself is provided under the MIT licenses (see the LIECENSE file for details)
+    #
 
-#
-# The Cxx REPL implmenetation can theoretically make use of two separate compiler instances.
-# The first (which uses the Cxx default instance) is used to interface with Clang itself. The
-# second (potentially different) instance is the one actually parsing and compiling the C++
-# code.
-#
+    #
+    # The Cxx REPL implmenetation can theoretically make use of two separate compiler instances.
+    # The first (which uses the Cxx default instance) is used to interface with Clang itself. The
+    # second (potentially different) instance is the one actually parsing and compiling the C++
+    # code.
+    #
 
-let __current_compiler__ = Cxx.__default_compiler__
+    const __current_compiler__ = Cxx.__default_compiler__
 
-# Load Clang Headers
+    # Load Clang Headers
 
     addHeaderDir(joinpath(JULIA_HOME,"../include"))
 
@@ -139,10 +140,18 @@ let __current_compiler__ = Cxx.__default_compiler__
     end
 
     global RunCxxREPL
-    function RunCxxREPL(C)
+
+    function createDefaultDone(C)
+        function(line)
+            Cxx.process_cxx_string(string(line,"\n;"), isTopLevelExpression(C,line), false, :REPL, 1, 1;
+    compiler = C)
+        end
+    end
+
+    function RunCxxREPL(C; prompt = "C++ > ", name = :cxx, key = '<', onDoneCreator = createDefaultDone)
 
         # Setup cxx panel
-        panel = LineEdit.Prompt("C++ > ";
+        panel = LineEdit.Prompt(prompt;
             # Copy colors from the prompt object
             prompt_prefix="\e[38;5;166m",
             prompt_suffix=Base.text_colors[:white],
@@ -150,17 +159,14 @@ let __current_compiler__ = Cxx.__default_compiler__
 
         repl = Base.active_repl
 
-        panel.on_done = REPL.respond(repl,panel) do line
-            Cxx.process_cxx_string(string(line,"\n;"), isTopLevelExpression(C,line), false, :REPL, 1, 1;
-                compiler = C)
-        end
+        panel.on_done = REPL.respond(onDoneCreator(C),repl,panel)
 
         main_mode = repl.interface.modes[1]
 
         push!(repl.interface.modes,panel)
 
         hp = main_mode.hist
-        hp.mode_mapping[:cxx] = panel
+        hp.mode_mapping[name] = panel
         panel.hist = hp
 
         const cxx_keymap = Dict{Any,Any}(
@@ -171,7 +177,7 @@ let __current_compiler__ = Cxx.__default_compiler__
                         LineEdit.state(s, panel).input_buffer = buf
                     end
                 else
-                    LineEdit.edit_insert(s,'<')
+                    LineEdit.edit_insert(s,key)
                 end
             end
         )
@@ -185,6 +191,4 @@ let __current_compiler__ = Cxx.__default_compiler__
         main_mode.keymap_dict = LineEdit.keymap_merge(main_mode.keymap_dict, cxx_keymap);
         nothing
     end
-
 end
-RunCxxREPL(__current_compiler__)

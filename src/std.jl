@@ -1,6 +1,9 @@
 import Base: bytestring
 
-cxxparse("#include <string>")
+cxxparse("""
+#include <string>
+#include <vector>
+""")
 
 const StdString = cxxt"std::string"
 

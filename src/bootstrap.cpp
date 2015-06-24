@@ -397,8 +397,13 @@ DLLEXPORT void SetDeclInitializer(C, clang::VarDecl *D, llvm::Constant *CI)
     if (!isa<llvm::GlobalVariable>(Const))
       jl_error("Clang did not create a global variable for the given VarDecl");
     llvm::GlobalVariable *GV = cast<llvm::GlobalVariable>(Const);
-    GV->setInitializer(CI);
+    GV->setInitializer(ConstantExpr::getBitCast(CI, GV->getType()->getElementType()));
     GV->setConstant(true);
+}
+
+DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
+{
+  return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
 
 DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F)
@@ -433,13 +438,14 @@ DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *
   }
 }
 
-DLLEXPORT void *ActOnStartOfFunction(C, clang::Decl *D)
+DLLEXPORT void *ActOnStartOfFunction(C, clang::FunctionDecl *D, bool ScopeIsNull = false)
 {
   clang::Sema &sema = Cxx->CI->getSema();
-  return (void*)sema.ActOnStartOfFunctionDef(Cxx->Parser->getCurScope(), D);
+  //ContextRAII SavedContext(sema, DC);
+  return (void*)sema.ActOnStartOfFunctionDef(ScopeIsNull ? nullptr : Cxx->Parser->getCurScope(), D);
 }
 
-DLLEXPORT void ParseFunctionStatementBody(C, clang::Decl *D)
+DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
 {
   clang::Parser::ParseScope BodyScope(Cxx->Parser, clang::Scope::FnScope|clang::Scope::DeclScope);
   Cxx->Parser->ConsumeToken();
@@ -458,10 +464,9 @@ DLLEXPORT void ParseFunctionStatementBody(C, clang::Decl *D)
   // list and put it into a CompoundStmt for safe keeping.
   clang::StmtResult FnBody(Cxx->Parser->ParseCompoundStatementBody(true));
 
-  // If the function body could not be parsed, make a bogus compoundstmt.
+  // If the function body could not be parsed, return an error
   if (FnBody.isInvalid()) {
-    clang::Sema::CompoundScopeRAII CompoundScope(sema);
-    FnBody = sema.ActOnCompoundStmt(LBraceLoc, LBraceLoc, None, false);
+    return false;
   }
 
   clang::CompoundStmt *Body = cast<clang::CompoundStmt>(FnBody.get());
@@ -478,6 +483,7 @@ DLLEXPORT void ParseFunctionStatementBody(C, clang::Decl *D)
 
   BodyScope.Exit();
   sema.ActOnFinishFunctionBody(D, Body);
+  return true;
 }
 
 DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
@@ -835,7 +841,6 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->getLangOpts().RTTIData = 1;
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
-    // Exceptions
     Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
     Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
     Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
@@ -1006,7 +1011,8 @@ DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     cur_module = state->module;
     cur_func = state->func;
     Cxx->CGF->CurFn = state->CurFn;
-    Cxx->CGF->Builder.SetInsertPoint(state->block,state->point);
+    if (state->block != nullptr)
+      Cxx->CGF->Builder.SetInsertPoint(state->block,state->point);
     Cxx->CGF->AllocaInsertPt = state->prev_alloca_bb_ptr;
     delete state;
 }
@@ -1251,6 +1257,11 @@ DLLEXPORT size_t getTargsSize(clang::TemplateArgumentList *targs)
     return targs->size();
 }
 
+DLLEXPORT void *getTargsPointer(clang::TemplateArgumentList *targs)
+{
+    return (void*)targs->data();
+}
+
 DLLEXPORT void *getTargType(clang::TemplateArgument *targ)
 {
     return (void*)targ->getAsType().getAsOpaquePtr();
@@ -1261,19 +1272,49 @@ DLLEXPORT void *getTargTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
     return getTargType(const_cast<clang::TemplateArgument*>(&targs->get(i)));
 }
 
+DLLEXPORT void *getTargIntegralType(const clang::TemplateArgument *targ)
+{
+    return targ->getIntegralType().getAsOpaquePtr();
+}
+
 DLLEXPORT void *getTargIntegralTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
-    return targs->get(i).getIntegralType().getAsOpaquePtr();
+    return getTargIntegralType(&targs->get(i));
+}
+
+DLLEXPORT int getTargKind(const clang::TemplateArgument *targ)
+{
+    return targ->getKind();
 }
 
 DLLEXPORT int getTargKindAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
-    return targs->get(i).getKind();
+    return getTargKind(&targs->get(i));
+}
+
+DLLEXPORT size_t getTargPackAtIdxSize(clang::TemplateArgumentList *targs, size_t i)
+{
+    return targs->get(i).getPackAsArray().size();
+}
+
+DLLEXPORT void *getTargPackAtIdxTargAtIdx(clang::TemplateArgumentList *targs, size_t i, size_t j)
+{
+    return (void*)&targs->get(i).getPackAsArray()[j];
 }
 
 DLLEXPORT int64_t getTargAsIntegralAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return targs->get(i).getAsIntegral().getSExtValue();
+}
+
+void *getTargPackBegin(clang::TemplateArgument *targ)
+{
+    return (void*)targ->pack_begin();
+}
+
+size_t getTargPackSize(clang::TemplateArgument *targ)
+{
+    return targ->pack_size();
 }
 
 DLLEXPORT void *getPointeeType(clang::Type *t)
@@ -1779,14 +1820,6 @@ CreateFunctionRefExpr(clang::Sema &S, clang::FunctionDecl *Fn, clang::NamedDecl 
   return E;
 }
 
-
-DLLEXPORT void *CreateCxxOperatorCallCall(C, clang::FunctionDecl *FD, clang::Expr* Arg)
-{
-  return (void *) new (Cxx->CI->getASTContext()) clang::CXXOperatorCallExpr(Cxx->CI->getASTContext(),clang::OO_Call,
-    CreateFunctionRefExpr(Cxx->CI->getSema(),FD,FD,false).get(), ArrayRef<clang::Expr*>(Arg),FD->getReturnType(),
-    clang::VK_RValue,clang::SourceLocation(),false);
-}
-
 DLLEXPORT void *CreateCStyleCast(C, clang::Expr *E, clang::Type *T)
 {
   clang::QualType QT(T,0);
@@ -1807,6 +1840,11 @@ DLLEXPORT void *CreateFunctionRefExprFD(C, clang::FunctionDecl *FD)
 DLLEXPORT void SetFDBody(clang::FunctionDecl *FD, clang::Stmt *body)
 {
   FD->setBody(body);
+}
+
+DLLEXPORT void ActOnFinishFunctionBody(C,clang::FunctionDecl *FD, clang::Stmt *Body)
+{
+  Cxx->CI->getSema().ActOnFinishFunctionBody(FD,Body,true);
 }
 
 DLLEXPORT void *CreateLinkageSpec(C, clang::DeclContext *DC, unsigned kind)
@@ -1831,6 +1869,11 @@ DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
   D->markUsed(Cxx->CI->getASTContext());
 }
 
+DLLEXPORT void *getPointerElementType(llvm::Type *T)
+{
+  return (void*)T->getPointerElementType ();
+}
+
 DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
 {
   Cxx->CGF->destroyCXXObject(*Cxx->CGF, x, clang::QualType(T,0));
@@ -1849,6 +1892,32 @@ DLLEXPORT void setPersonality(llvm::Function *F, llvm::Function *PersonalityF)
 DLLEXPORT void *getFunction(C, char *name, size_t length)
 {
   return Cxx->shadow->getFunction(llvm::StringRef(name,length));
+}
+
+DLLEXPORT int hasFDBody(clang::FunctionDecl *FD)
+{
+  return FD->hasBody();
+}
+
+DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl *FTD, void *T)
+{
+  clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
+  clang::TemplateArgumentListInfo TALI;
+  clang::sema::TemplateDeductionInfo Info(clang::SourceLocation{});
+  clang::FunctionDecl *FD;
+  clang::TemplateArgumentLoc TAL(
+      clang::TemplateArgument{QT},
+      Cxx->CI->getASTContext().getTrivialTypeSourceInfo(QT));
+  TALI.addArgument(TAL);
+  Cxx->CI->getSema().DeduceTemplateArguments(FTD, &TALI, FD, Info, false);
+  return FD;
+}
+
+DLLEXPORT void *CreateIntegerLiteral(C, uint64_t val, void *T)
+{
+  clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
+  return (void*)clang::IntegerLiteral::Create(Cxx->CI->getASTContext(),
+    llvm::APInt(8*sizeof(uint64_t),val), QT, clang::SourceLocation());
 }
 
 extern void *jl_pchar_to_string(const char *str, size_t len);
@@ -1878,6 +1947,61 @@ _Unwind_Reason_Code __cxxjl_personality_v0
     return _URC_HANDLER_FOUND;
 
   (*process_cxx_exception)(exceptionClass,unwind_exception);
+}
+
+} // extern "C"
+
+/*
+ * Yes, yes, I know. Once Cxx settles down, I'll try to get this into clang.
+ * Until then, yay templates
+ */
+
+template <class Tag>
+struct stowed
+{
+     static typename Tag::type value;
+}; 
+template <class Tag> 
+typename Tag::type stowed<Tag>::value;
+
+template <class Tag, typename Tag::type x>
+struct stow_private
+{
+     stow_private() { stowed<Tag>::value = x; }
+     static stow_private instance;
+};
+template <class Tag, typename Tag::type x> 
+stow_private<Tag,x> stow_private<Tag,x>::instance;
+ 
+
+typedef llvm::DenseMap<const clang::Type*, llvm::StructType *> TMap;
+typedef llvm::DenseMap<const clang::Type*, clang::CodeGen::CGRecordLayout *> CGRMap;
+
+extern "C" {
+
+// A tag type for A::x.  Each distinct private member you need to
+// access should have its own tag.  Each tag should contain a
+// nested ::type that is the corresponding pointer-to-member type.
+struct CodeGenTypes_RecordDeclTypes { typedef TMap (clang::CodeGen::CodeGenTypes::*type); };
+struct CodeGenTypes_CGRecordLayouts { typedef CGRMap (clang::CodeGen::CodeGenTypes::*type); };
+template class stow_private<CodeGenTypes_RecordDeclTypes,&clang::CodeGen::CodeGenTypes::RecordDeclTypes>;
+template class stow_private<CodeGenTypes_CGRecordLayouts,&clang::CodeGen::CodeGenTypes::CGRecordLayouts>;
+
+void RegisterType(C, clang::TagDecl *D, llvm::StructType *ST)
+{
+  clang::RecordDecl *RD;
+  if(isa<clang::TypedefNameDecl>(D))
+  {
+    RD = dyn_cast<clang::RecordDecl>(
+      dyn_cast<clang::TypedefNameDecl>(D)->getUnderlyingType()->getAsTagDecl());
+  } else {
+    RD = cast<clang::RecordDecl>(D);
+  }
+  const clang::Type *Key = Cxx->CI->getASTContext().getTagDeclType(RD).getCanonicalType().getTypePtr();
+  (Cxx->CGM->getTypes().*stowed<CodeGenTypes_RecordDeclTypes>::value)[Key] = ST;
+  llvm::StructType *FakeST = llvm::StructType::create(jl_LLVMContext);
+  (Cxx->CGM->getTypes().*stowed<CodeGenTypes_CGRecordLayouts>::value)[Key] =
+    Cxx->CGM->getTypes().ComputeRecordLayout(RD,FakeST);
 }
 
 }
