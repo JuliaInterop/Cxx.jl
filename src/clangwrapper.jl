@@ -529,3 +529,9 @@ getFunction(C, name) =
     pcpp"llvm::Function"(ccall((:getFunction, libcxxffi), Ptr{Void}, (Ptr{ClangCompiler}, Ptr{UInt8}, Csize_t), &C, name, endof(name)))
 
 getTypeName(C, T) = ccall((:getTypeName, libcxxffi), Any, (Ptr{ClangCompiler}, Ptr{Void}), &C, T)
+
+GetAddrOfFunction(C, FD) = pcpp"llvm::Constant"(ccall((:GetAddrOfFunction,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+
+RegisterType(C, RD, ST) = ccall((:RegisterType,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}), &C, RD, ST)
+
+getPointerElementType(T::pcpp"llvm::Type") = pcpp"llvm::Type"(ccall((:getPointerElementType,libcxxffi),Ptr{Void},(Ptr{Void},),T))

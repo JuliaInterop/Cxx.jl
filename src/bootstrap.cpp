@@ -401,6 +401,11 @@ DLLEXPORT void SetDeclInitializer(C, clang::VarDecl *D, llvm::Constant *CI)
     GV->setConstant(true);
 }
 
+DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
+{
+  return (void*)Cxx->CGM->GetAddrOfFunction(D);
+}
+
 DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F)
 {
   llvm::Constant *Const = Cxx->CGM->GetAddrOfFunction(D);
@@ -836,9 +841,9 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
     // Exceptions
-    Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
-    Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
-    Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
+    // Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
+    // Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
+    // Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
@@ -1829,6 +1834,11 @@ DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
   D->markUsed(Cxx->CI->getASTContext());
 }
 
+DLLEXPORT void *getPointerElementType(llvm::Type *T)
+{
+  return (void*)T->getPointerElementType ();
+}
+
 DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
 {
   Cxx->CGF->destroyCXXObject(*Cxx->CGF, x, clang::QualType(T,0));
@@ -1876,6 +1886,61 @@ _Unwind_Reason_Code __cxxjl_personality_v0
     return _URC_HANDLER_FOUND;
 
   (*process_cxx_exception)(exceptionClass,unwind_exception);
+}
+
+} // extern "C"
+
+/*
+ * Yes, yes, I know. Once Cxx settles down, I'll try to get this into clang.
+ * Until then, yay templates
+ */
+
+template <class Tag>
+struct stowed
+{
+     static typename Tag::type value;
+}; 
+template <class Tag> 
+typename Tag::type stowed<Tag>::value;
+
+template <class Tag, typename Tag::type x>
+struct stow_private
+{
+     stow_private() { stowed<Tag>::value = x; }
+     static stow_private instance;
+};
+template <class Tag, typename Tag::type x> 
+stow_private<Tag,x> stow_private<Tag,x>::instance;
+ 
+
+typedef llvm::DenseMap<const clang::Type*, llvm::StructType *> TMap;
+typedef llvm::DenseMap<const clang::Type*, clang::CodeGen::CGRecordLayout *> CGRMap;
+
+extern "C" {
+
+// A tag type for A::x.  Each distinct private member you need to
+// access should have its own tag.  Each tag should contain a
+// nested ::type that is the corresponding pointer-to-member type.
+struct CodeGenTypes_RecordDeclTypes { typedef TMap (clang::CodeGen::CodeGenTypes::*type); };
+struct CodeGenTypes_CGRecordLayouts { typedef CGRMap (clang::CodeGen::CodeGenTypes::*type); };
+template class stow_private<CodeGenTypes_RecordDeclTypes,&clang::CodeGen::CodeGenTypes::RecordDeclTypes>;
+template class stow_private<CodeGenTypes_CGRecordLayouts,&clang::CodeGen::CodeGenTypes::CGRecordLayouts>;
+
+void RegisterType(C, clang::TagDecl *D, llvm::StructType *ST)
+{
+  clang::RecordDecl *RD;
+  if(isa<clang::TypedefNameDecl>(D))
+  {
+    RD = dyn_cast<clang::RecordDecl>(
+      dyn_cast<clang::TypedefNameDecl>(D)->getUnderlyingType()->getAsTagDecl());
+  } else {
+    RD = cast<clang::RecordDecl>(D);
+  }
+  const clang::Type *Key = Cxx->CI->getASTContext().getTagDeclType(RD).getCanonicalType().getTypePtr();
+  (Cxx->CGM->getTypes().*stowed<CodeGenTypes_RecordDeclTypes>::value)[Key] = ST;
+  llvm::StructType *FakeST = llvm::StructType::create(jl_LLVMContext);
+  (Cxx->CGM->getTypes().*stowed<CodeGenTypes_CGRecordLayouts>::value)[Key] =
+    Cxx->CGM->getTypes().ComputeRecordLayout(RD,FakeST);
 }
 
 }

@@ -311,20 +311,8 @@ function initialize_instance!(C)
         addStdHeaders(C)
     end
     addClangHeaders(C)
-    # __dso_handle is usually added by the linker when not present. However, since
-    # we're not passing through a linker, we need to add it ourselves.
-    cxxparse(C,"""
-    extern "C" {
-        void __dso_handle() {}
-        struct jl_value_t;
-        struct jl_function_t;
-        extern jl_value_t *jl_call0(jl_function_t *);
-        extern int __cxxjl_personality_v0();
-    }
-    void *__hack() {
-        return (void*)&__cxxjl_personality_v0;
-    }
-    """)
+    cxxinclude(C,Pkg.dir("Cxx","src","boot.h"))
+    RegisterType(C,lookup_name(C,["jl_value_t"]),getPointerElementType(julia_to_llvm(Any)))
 end
 
 # As an optimzation, create a generic function per compiler instance,

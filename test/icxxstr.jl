@@ -56,3 +56,17 @@ function inlineexpr()
     @assert b[1] == 5
 end
 inlineexpr()
+
+# #103 for icxx
+function inlineicxx()
+    icxx"""
+        std::vector<uint64_t> ints;
+        for (int i = 0; i < 10; ++i)
+            $:(
+                r = 10*icxx"return i;" + rand(1:10);
+                icxx"ints.push_back($r);";
+                nothing
+            );
+        ints;
+    """
+end

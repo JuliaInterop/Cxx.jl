@@ -35,6 +35,9 @@ end
 macro icxxdebug_str(str,args...)
     compiler = :__current_compiler__
     startvarnum, sourcebuf, exprs, isexprs = process_body(str, false, args...)
+    if isempty(args)
+        args = (symbol(""),1,1)
+    end
     push!(sourcebuffers,(takebuf_string(sourcebuf),args...))
     id = length(sourcebuffers)
     esc(build_icxx_expr(id, exprs, isexprs, compiler, dumpast_impl))
