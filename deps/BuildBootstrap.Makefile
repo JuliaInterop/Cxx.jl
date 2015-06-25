@@ -19,7 +19,7 @@ LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore -llldbInitializ
     -llldbDataFormatters -llldbExpression -llldbHostCommon  \
     -llldbInitAndLog -llldbInterpreter  \
     -llldbPluginABISysV_x86_64 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
-    -llldbPluginABISysV_arm -llldbPluginABISysV_arm64\
+    -llldbPluginABISysV_arm -llldbPluginABISysV_arm64 -llldbPluginABISysV_mips -llldbPluginABISysV_mips64 \
     -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
     -llldbPluginDynamicLoaderMacOSX \
     -llldbPluginEmulateInstructionMIPS64 -llldbPluginEmulateInstructionMIPS \
