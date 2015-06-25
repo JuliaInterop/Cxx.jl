@@ -170,3 +170,6 @@ cxx""" void foo119(char value) {} """
 cxx""" enum myCoolEnum { OneValue = 1 }; """
 @assert icxx" OneValue; " == 1
 
+# Converting julia data
+buf = IOBuffer()
+@assert pointer_from_objref(buf) == icxx"""(void*)$(jpcpp"jl_value_t"(buf))"""

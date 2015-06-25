@@ -246,6 +246,7 @@ end
 function cpptype{T,CVR}(C,p::Type{CppValue{T,CVR}})
     addQualifiers(typeForDecl(cppdecl(C,T)),CVR)
 end
+cpptype{s}(C,p::Type{CppBaseType{s}}) = QualType(typeForDecl(cppdecl(C,p)))
 function cpptype{T,CVR}(C,p::Type{CppRef{T,CVR}})
     referenceTo(C,addQualifiers(typeForDecl(cppdecl(C,T)),CVR))
 end
@@ -404,7 +405,13 @@ function juliatype(t::QualType)
         if tt <: CppFunc
             return CppFptr{tt}
         elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
-            return CppPtr{tt,CVR}
+            T = CppPtr{tt,CVR}
+            # As a special case, if we're returning a jl_value_t *, interpret it
+            # as a julia type.
+            if T == pcpp"jl_value_t"
+                return Any
+            end
+            return T
         else
             return Ptr{tt}
         end

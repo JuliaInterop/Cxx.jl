@@ -48,15 +48,17 @@ immutable CppExpr{T,targs}; end
 # type
 immutable JLCppCast{T,JLT}
     data::JLT
-    function call{T,JLT}(::Type{JLCppCast{T}},data::JLT)
-        JLT.mutable ||
-            error("Can only pass pointers to mutable values. " *
-                  "To pass immutables, use an array instead.")
-        new{T,JLT}(data)
+end
+@generated function call{T,JLT}(::Type{JLCppCast{T}},data::JLT)
+    JLT.mutable ||
+        error("Can only pass pointers to mutable values. " *
+              "To pass immutables, use an array instead.")
+    quote
+        JLCppCast{T,JLT}(data)
     end
 end
 
-cpptype{T,jlt}(p::Type{JLCppCast{T,jlt}}) = pointerTo(C,cpptype(C,T))
+cpptype{T,jlt}(C,p::Type{JLCppCast{T,jlt}}) = pointerTo(C,cpptype(C,T))
 
 macro jpcpp_str(s,args...)
     JLCppCast{CppBaseType{symbol(s)}}
@@ -181,14 +183,12 @@ end
 #  |     ...       |    # memory layout
 #  +---------------+
 #
-# An LLVM value acts like a value to the first address of the object, i.e. the
-# type pointer. Thus to get to the data, all we have to do is skip the type
-# pointer.
+# As of julia 0.4, jl_value_t pointers generally point to the data directly,
+# so we can just pass the pointer through.
 #
 function resolvemodifier_llvm{T,jlt}(C, builder,
         t::Type{JLCppCast{T,jlt}}, v::pcpp"llvm::Value")
-    # Skip the type pointer to get to the actual data
-    return CreateConstGEP1_32(builder,v,1)
+    return v
 end
 
 # Since the pointer rework, CppValue is a lot simpler than it used to by, since
@@ -754,6 +754,8 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
                         ExtractValue(C,ret,0),getStructElementType(llvmrt,0)),0)
                 ret = InsertValue(builder,i1,CreateBitCast(builder,
                         ExtractValue(C,ret,1),getStructElementType(llvmrt,1)),1)
+            elseif rett == Any
+                ret = CreateBitCast(builder,ret,julia_to_llvm(Any))
             end
             CreateRet(builder,ret)
         end
@@ -770,7 +772,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         end
         if argt[j] <: JLCppCast
             push!(args2,:($arg.data))
-            argt[j] = JLCppCast.parameters[1]
+            argt[j] = CppPtr{argt[i].parameters[1]}
         else
             push!(args2,arg)
         end
