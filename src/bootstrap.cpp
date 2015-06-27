@@ -853,6 +853,7 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
     Cxx->CI->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
+    Cxx->CI->getCodeGenOpts().StackRealignment = 1;
     Cxx->CI->getTargetOpts().Triple = Triple == NULL ? llvm::Triple::normalize(llvm::sys::getProcessTriple()) : Triple;
     Cxx->CI->getTargetOpts().CPU = llvm::sys::getHostCPUName ();
     StringMap< bool > ActiveFeatures;
