@@ -137,4 +137,4 @@ macro vcpp_str(s,args...)
     simpleCppValue(s)
 end
 
-pcpp{T,CVR}(x::Type{CppValue{T,CVR}}) = CppPtr{x}
+pcpp{T,CVR}(x::Type{CppValue{T,CVR}}) = CppPtr{x,NullCVR}
