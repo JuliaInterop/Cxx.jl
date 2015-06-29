@@ -151,7 +151,7 @@ function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isne
     elseif isexpr(expr,:&)
         return cpps_impl(expr.args[1],nns,true,isderef,isnew)
     elseif isexpr(expr,:call)
-        if expr.args[1] == :*
+        if expr.args[1] == :* && length(expr.args) == 2
             return cpps_impl(expr.args[2],nns,isaddrof,true,isnew)
         end
         return build_cpp_call(expr,nothing,nns,isnew)
