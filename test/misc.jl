@@ -141,7 +141,6 @@ anonttest *anonttestf()
 }
 """
 
-@show typeof(@cxx anonttestf())
 @assert typeof(@cxx anonttestf()) == pcpp"anonttest"
 
 # Operator overloading (#102)

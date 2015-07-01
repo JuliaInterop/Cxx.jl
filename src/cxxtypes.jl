@@ -140,7 +140,7 @@ macro rcpp_str(s,args...)
 end
 
 macro vcpp_str(s,args...)
-    simpleCppValue(s)
+    CppValue{simpleCppValue(s)}
 end
 
 pcpp{T,N}(x::Type{CppValue{T,N}}) = CppPtr{T,NullCVR}

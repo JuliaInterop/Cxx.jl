@@ -779,7 +779,6 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
                 Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...))
         T = cpptype(C, rett)
         D = getAsCXXRecordDecl(T)
-        @show D != C_NULL && !hasTrivialDestructor(D)
         if D != C_NULL && !hasTrivialDestructor(D)
             # Need to call the destructor
             push!(B.args,:( finalizer(r, $(get_destruct_for_instance(C))) ))
