@@ -104,7 +104,7 @@ void modify_a(foobar &fb) {
 
 fb = icxx"_foobar{1};"
 icxx"(void)++$fb.a;"
-@test reinterpret(Int32, fb.data)[1] == 2
+@test reinterpret(Int32, [fb.data...])[1] == 2
 
 # Splicing at global scope
 cxx"""const char *foostr = $(pointer("foo"));"""
@@ -117,7 +117,7 @@ struct foo_cxxt {
   T x;
 };
 """
-@test cxxt"foo_cxxt<int>" == Cxx.CppValue{Cxx.CppTemplate{Cxx.CppBaseType{:foo_cxxt},Tuple{Int32}},(false,false,false)}
+@test cxxt"foo_cxxt<int>" <: Cxx.CppValue{Cxx.CxxQualType{Cxx.CppTemplate{Cxx.CppBaseType{:foo_cxxt},Tuple{Int32}},(false,false,false)}}
 
 
 # #103

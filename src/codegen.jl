@@ -90,7 +90,8 @@ CppAddr{T}(val::T) = CppAddr{T}(val)
 
 stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
 stripmodifier{T,CVR}(p::Union(Type{CppPtr{T,CVR}},
-    Type{CppRef{T,CVR}}, Type{CppValue{T,CVR}})) = p
+    Type{CppRef{T,CVR}})) = p
+stripmodifier{T <: CppValue}(p::Type{T}) = p
 stripmodifier{s}(p::Type{CppEnum{s}}) = p
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier(p::CxxBuiltinTypes) = p
@@ -98,8 +99,8 @@ stripmodifier(p::Type{Function}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = p
 stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
 
-resolvemodifier{T,CVR}(C,p::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}},
-    Type{CppValue{T,CVR}}), e::pcpp"clang::Expr") = e
+resolvemodifier{T,CVR}(C,p::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}), e::pcpp"clang::Expr") = e
+resolvemodifier{T <: CppValue}(C, p::Type{T}, e::pcpp"clang::Expr") = e
 resolvemodifier(C,p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
 resolvemodifier{T}(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
 resolvemodifier{s}(C,p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
@@ -191,36 +192,28 @@ function resolvemodifier_llvm{T,jlt}(C, builder,
     return v
 end
 
-# Since the pointer rework, CppValue is a lot simpler than it used to by, since
-# everything points to the data directly:
+# This used to be a lot more complicated before the pointer and tuple reworks
+# Luckily for us, not it's just:
 #
-#    +---------------+    +--------------------+
-#    |   CppValue    |    |    Array{UInt8}    |
-#    +---------------+    +--------------------+
-#                ^                     ^
-#    +-----------|---+      +----------|----+
-#    |     type -|   |      |     type-/    |
-#    +---------------+      +---------------+
-# /->|     data -----|----->|     data -----|-----> The data we want
-# |  +---------------+      +---------------+
+#    +-----------------+
+#    |   CppValue      |
+#    +-----------------+
+# /--|-NTuple{N,UInt8}-|----------> The data we want
+# |  |       ...       |
+# |  +-----------------+
 # |
 # \--We start here
 #
 
-function resolvemodifier_llvm{s,targs}(C, builder,
-        t::Type{CppValue{s,targs}}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm{T <: CppValue}(C, builder,
+        t::Type{T}, v::pcpp"llvm::Value")
     @assert v != C_NULL
     ty = cpptype(C, t)
     if !isPointerType(getType(v))
         dump(v)
         error("Value is not of pointer type")
     end
-    # Get the array
-    arrayp = CreateLoad(builder,
-        CreateBitCast(builder,v,getPointerTo(getType(v))))
-    dp = CreateBitCast(builder,arrayp,getPointerTo(getPointerTo(toLLVM(C,ty))))
-    # A pointer to the actual data
-    CreateLoad(builder,dp)
+    return CreateBitCast(builder,v,getPointerTo(getPointerTo(toLLVM(C,ty))))
 end
 
 # Turning a CppNNS back into a Decl
@@ -374,7 +367,7 @@ function llvmargs(C, builder, f, argt)
     args
 end
 
-function buildargexprs(C, argt)
+function buildargexprs(C, argt; derefval = true)
     callargs = pcpp"clang::Expr"[]
     pvds = pcpp"clang::ParmVarDecl"[]
     for i in 1:length(argt)
@@ -385,7 +378,7 @@ function buildargexprs(C, argt)
         argpvd = CreateParmVarDecl(C, argit)
         push!(pvds, argpvd)
         expr = CreateDeclRefExpr(C, argpvd)
-        st <: CppValue && (expr = createDerefExpr(C, expr))
+        derefval && st <: CppValue && (expr = createDerefExpr(C, expr))
         expr = resolvemodifier(C, t, expr)
         push!(callargs,expr)
     end
@@ -527,7 +520,7 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     end
 
     argt = Type[]
-    needsret && push!(argt,Ptr{UInt8})
+    needsret && push!(argt, rett)
     (pvd != nothing) && push!(argt,ct)
 
     llvmrt = julia_to_llvm(rett)
@@ -634,7 +627,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
                 if targs != Tuple{}
                     T = CppTemplate{T,targs}
                 end
-                rett = juliart = T = CppValue{T,NullCVR}
+                rett = juliart = T = CppValue{CxxQualType{T,NullCVR}}
 
                 if isnew
                     rett = CppPtr{T,NullCVR}
@@ -683,12 +676,12 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
         issret = true
         rt = GetExprResultType(ctce)
     end
+
     if issret
-        unshift!(llvmargt,Ptr{UInt8})
+        unshift!(llvmargt,rett)
     end
 
     llvmrt = julia_to_llvm(rett)
-
     # Let's create an LLVM function
     f = CreateFunction(C, issret ? julia_to_llvm(Void) : llvmrt,
         map(julia_to_llvm,llvmargt))
@@ -779,12 +772,20 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
     end
 
     if (rett != None) && rett <: CppValue
-        arguments = vcat([:(pointer(r.data))], args2)
+        arguments = vcat([:r], args2)
         size = cxxsizeof(C,rt)
-        return Expr(:block,
-            :( r = ($(rett))(Array(UInt8,$size)) ),
-            Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...),
-            :r)
+        B = Expr(:block,
+            :( r = ($(rett){$(Int(size))})() ),
+                Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...))
+        T = cpptype(C, rett)
+        D = getAsCXXRecordDecl(T)
+        @show D != C_NULL && !hasTrivialDestructor(D)
+        if D != C_NULL && !hasTrivialDestructor(D)
+            # Need to call the destructor
+            push!(B.args,:( finalizer(r, $(get_destruct_for_instance(C))) ))
+        end
+        push!(B.args,:r)
+        return B
     else
         return Expr(:call,Core.Intrinsics.llvmcall,f.ptr,rett,Tuple{argt...},args2...)
     end
@@ -803,3 +804,19 @@ end
     _cppcall(CT, expr, false, true, args)
 end
 
+# Memory management
+@generated function destruct(CT::CxxInstance, x)
+    check_args([x],:destruct)
+    C = instance(CT)
+    f = CreateFunction(C, julia_to_llvm(Void), [julia_to_llvm(x)])
+    state = setup_cpp_env(C,f)
+    builder = irbuilder(C)
+    args = llvmargs(C, builder, f, [x])
+    T = cpptype(C, x)
+    D = getAsCXXRecordDecl(T)
+    (D == C_NULL || hasTrivialDestructor(D)) && error("Destruct called on object with trivial destructor")
+    emitDestroyCXXObject(C, args[1], T)
+    CreateRetVoid(builder)
+    cleanup_cpp_env(C, state)
+    return Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{x},:x)
+end

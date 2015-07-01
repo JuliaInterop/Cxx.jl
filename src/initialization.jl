@@ -323,6 +323,15 @@ function initialize_instance!(C)
     """)
 end
 
+# As an optimzation, create a generic function per compiler instance,
+# to avoid having to create closures at the call site
+function create_destruct_gf(C)
+    function destruct_C(x)
+        destruct(C,x)
+    end
+    destruct_C
+end
+
 function __init__()
     init_libcxxffi()
     C = setup_instance()

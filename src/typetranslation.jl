@@ -202,7 +202,7 @@ end
 # For getting the decl ignore the CVR qualifiers, pointer qualification, etc.
 # and just do the lookup on the base decl
 function cppdecl{T,CVR}(C,::Union(
-    Type{CppPtr{T,CVR}}, Type{CppValue{T,CVR}}, Type{CppRef{T,CVR}}))
+    Type{CppPtr{T,CVR}}, Type{CxxQualType{T,CVR}}, Type{CppRef{T,CVR}}))
     cppdecl(C,T)
 end
 
@@ -243,9 +243,11 @@ cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(C,p)))
 function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
     addQualifiers(pointerTo(C,cpptype(C,T)),CVR)
 end
-function cpptype{T,CVR}(C,p::Type{CppValue{T,CVR}})
+function cpptype{T,CVR}(C,p::Type{CxxQualType{T,CVR}})
     addQualifiers(typeForDecl(cppdecl(C,T)),CVR)
 end
+cpptype{T,N}(C,p::Type{CppValue{T,N}}) = cpptype(C,T)
+cpptype{T}(C,p::Type{CppValue{T}}) = cpptype(C,T)
 cpptype{s}(C,p::Type{CppBaseType{s}}) = QualType(typeForDecl(cppdecl(C,p)))
 function cpptype{T,CVR}(C,p::Type{CppRef{T,CVR}})
     referenceTo(C,addQualifiers(typeForDecl(cppdecl(C,T)),CVR))
@@ -331,7 +333,11 @@ function getTemplateParameters(cxxd)
         for i = 0:(getTargsSize(targs)-1)
             kind = getTargKindAtIdx(targs,i)
             if kind == KindType
-                push!(args,juliatype(getTargTypeAtIdx(targs,i)))
+                T = juliatype(getTargTypeAtIdx(targs,i))
+                if T <: CppValue
+                    T = T.parameters[1]
+                end
+                push!(args,T)
             elseif kind == KindIntegral
                 val = getTargAsIntegralAtIdx(targs,i)
                 t = getTargIntegralTypeAtIdx(targs,i)
@@ -405,6 +411,9 @@ function juliatype(t::QualType)
         if tt <: CppFunc
             return CppFptr{tt}
         elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
+            if tt <: CppValue
+                tt = tt.parameters[1]
+            end
             T = CppPtr{tt,CVR}
             # As a special case, if we're returning a jl_value_t *, interpret it
             # as a julia type.
@@ -478,7 +487,7 @@ function juliatype(t::QualType)
         end
         error("Unrecognized floating point type")
     else
-        return CppValue{toBaseType(t),CVR}
+        return CppValue{CxxQualType{toBaseType(t),CVR}}
     end
     return Ptr{Void}
 end

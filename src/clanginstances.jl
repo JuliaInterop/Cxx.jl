@@ -10,6 +10,17 @@ immutable ClangCompiler
 end
 
 active_instances = ClangCompiler[]
+destructs = Dict{ClangCompiler,Function}()
+
+function get_destruct_for_instance(C)
+    if !haskey(destructs, C)
+        idx = findfirst(active_instances, C)
+        destructs[C] = function destruct_C(x)
+            destruct(CxxInstance{idx}(), x)
+        end
+    end
+    destructs[C]
+end
 
 
 immutable CxxInstance{n}; end

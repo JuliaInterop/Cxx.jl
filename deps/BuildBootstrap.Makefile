@@ -18,7 +18,7 @@ CLANG_LIBS = -lclangFrontendTool -lclangBasic -lclangLex -lclangDriver -lclangFr
 LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialize \
     -llldbDataFormatters -llldbExpression -llldbHostCommon  \
     -llldbInitAndLog -llldbInterpreter  \
-    -llldbPluginABISysV_x86_64 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
+    -llldbPluginABISysV_x86_64 -llldbPluginABISysV_i386 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginABISysV_arm -llldbPluginABISysV_arm64 -llldbPluginABISysV_mips -llldbPluginABISysV_mips64 \
     -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
     -llldbPluginDynamicLoaderMacOSX \

@@ -85,18 +85,23 @@ public:
 @test isa((@cxx &baz{false}::bar),Cxx.CppMFptr)
 
 # Includes relative to the source directory (#48)
-cxx"""
-#include "./incpathtest.inc"
-"""
-@test (@cxx incpathtest) == 1
-
-function foo48()
-icxx"""
-#include "./incpathtest.inc"
-return incpathtest;
-"""
+macro test48_str(x,args...)
+    return length(args) > 0
 end
-@test foo48() == 1
+if test48" "
+    cxx"""
+    #include "./incpathtest.inc"
+    """
+    @test (@cxx incpathtest) == 1
+
+    function foo48()
+    icxx"""
+    #include "./incpathtest.inc"
+    return incpathtest;
+    """
+    end
+    @test foo48() == 1
+end
 
 # Enum type translation
 cxx"""
@@ -136,6 +141,7 @@ anonttest *anonttestf()
 }
 """
 
+@show typeof(@cxx anonttestf())
 @assert typeof(@cxx anonttestf()) == pcpp"anonttest"
 
 # Operator overloading (#102)
@@ -172,4 +178,17 @@ cxx""" enum myCoolEnum { OneValue = 1 }; """
 
 # Converting julia data
 buf = IOBuffer()
-@assert pointer_from_objref(buf) == icxx"""(void*)$(jpcpp"jl_value_t"(buf))"""
+@assert pointer_from_objref(buf) == icxx"""(void*)$(jpcpp"jl_value_t"(buf));"""
+
+# Memory management
+cxx"""
+static int testDestructCounter = 0;
+struct testDestruct {
+    int x;
+    testDestruct(int x) : x(x) {};
+    ~testDestruct() { testDestructCounter += x; };
+};
+"""
+X = icxx"return testDestruct{10};"
+finalize(X)
+@test icxx"testDestructCounter;" == 10

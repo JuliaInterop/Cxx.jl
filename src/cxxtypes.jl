@@ -52,6 +52,10 @@ end
 immutable CppTemplate{T,targs}
 end
 
+# A base type with extra CVR qualifications
+immutable CxxQualType{T,CVR}
+end
+
 # The equivalent of a C++ on-stack value.
 # The representation of this is important and subject to change.
 # The current implementation is inefficient, because it puts the object on the
@@ -62,8 +66,10 @@ end
 #
 # T is a CppBaseType or a CppTemplate
 # See note on CVR above
-immutable CppValue{T,CVR}
-    data::Vector{UInt8}
+type CppValue{T,N}
+    data::NTuple{N,UInt8}
+    CppValue(data::NTuple{N,UInt8}) = new(data)
+    CppValue() = new()
 end
 
 # The equivalent of a C++ reference
@@ -119,14 +125,14 @@ end
 
 const NullCVR = (false,false,false)
 simpleCppType(s) = CppBaseType{symbol(s)}
-simpleCppValue(s) = CppValue{simpleCppType(s),NullCVR}
+simpleCppValue(s) = CxxQualType{simpleCppType(s),NullCVR}
 
 macro pcpp_str(s,args...)
     CppPtr{simpleCppValue(s),NullCVR}
 end
 
 macro cpcpp_str(s,args...)
-    CppPtr{CppValue{simpleCppType(s),(true,false,false)},NullCVR}
+    CppPtr{CxxQualType{simpleCppType(s),(true,false,false)},NullCVR}
 end
 
 macro rcpp_str(s,args...)
@@ -137,4 +143,5 @@ macro vcpp_str(s,args...)
     simpleCppValue(s)
 end
 
-pcpp{T,CVR}(x::Type{CppValue{T,CVR}}) = CppPtr{x,NullCVR}
+pcpp{T,N}(x::Type{CppValue{T,N}}) = CppPtr{T,NullCVR}
+pcpp{T}(x::Type{CppValue{T}}) = CppPtr{T,NullCVR}

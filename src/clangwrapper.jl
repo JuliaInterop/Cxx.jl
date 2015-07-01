@@ -516,4 +516,8 @@ getName(x::pcpp"llvm::Function") = bytestring(ccall((:getLLVMValueName,libcxxffi
 
 getParmVarDecl(x::pcpp"clang::FunctionDecl",i) = pcpp"clang::ParmVarDecl"(ccall((:getParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Cuint),x,i))
 
-SetDeclUsed(C,FD) = ccall((:SetDeclUsed,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,FD)
+SetDeclUsed(C,FD) = ccall((:SetDeclUsed, libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,FD)
+
+emitDestroyCXXObject(C, x, T) = ccall((:emitDestroyCXXObject, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,x,T)
+
+hasTrivialDestructor(D::pcpp"clang::CXXRecordDecl") = ccall((:hasTrivialDestructor, libcxxffi), Bool, (Ptr{Void},), D)

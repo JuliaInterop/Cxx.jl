@@ -1828,4 +1828,14 @@ DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
   D->markUsed(Cxx->CI->getASTContext());
 }
 
+DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
+{
+  Cxx->CGF->destroyCXXObject(*Cxx->CGF, x, clang::QualType(T,0));
+}
+
+DLLEXPORT bool hasTrivialDestructor(clang::CXXRecordDecl *RD)
+{
+  return RD->hasTrivialDestructor();
+}
+
 }
