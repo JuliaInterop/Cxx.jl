@@ -319,24 +319,25 @@ function initialize_instance!(C)
         struct jl_value_t;
         struct jl_function_t;
         extern jl_value_t *jl_call0(jl_function_t *);
+        extern int __cxxjl_personality_v0();
+    }
+    void *__hack() {
+        return (void*)&__cxxjl_personality_v0;
     }
     """)
 end
 
 # As an optimzation, create a generic function per compiler instance,
 # to avoid having to create closures at the call site
-function create_destruct_gf(C)
-    function destruct_C(x)
-        destruct(C,x)
-    end
-    destruct_C
-end
 
 function __init__()
     init_libcxxffi()
     C = setup_instance()
     initialize_instance!(C)
     push!(active_instances, C)
+    # Setup exception translation callback
+    callback = cglobal((:process_cxx_exception,libcxxffi),Ptr{Void})
+    unsafe_store!(callback, cfunction(process_cxx_exception,Void,Tuple{UInt64,Ptr{Void}}))
 end
 
 function new_clang_instance()

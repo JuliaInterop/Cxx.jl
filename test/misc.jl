@@ -179,6 +179,40 @@ cxx""" enum myCoolEnum { OneValue = 1 }; """
 buf = IOBuffer()
 @assert pointer_from_objref(buf) == icxx"""(void*)$(jpcpp"jl_value_t"(buf));"""
 
+# Exception handling
+try
+    icxx" throw 20; "
+    @assert false
+catch e
+    buf = IOBuffer();
+    showerror(buf,e)
+    @assert takebuf_string(buf) == "20"
+end
+
+cxx"""
+class test_exception : public std::exception
+{
+public:
+    int x;
+    test_exception(int x) : x(x) {};
+};
+"""
+
+import Base: showerror
+@exception function showerror(io::IO, e::rcpp"test_exception")
+    print(io, icxx"$e.x;")
+end
+
+try
+    icxx" throw test_exception(5); "
+    @assert false
+catch e
+    buf = IOBuffer();
+    showerror(buf,e)
+    @assert takebuf_string(buf) == "5"
+end
+
+
 # Memory management
 cxx"""
 static int testDestructCounter = 0;

@@ -56,6 +56,7 @@
 #define private public
 #include <CodeGen/CodeGenFunction.h>
 #undef private
+#include "CodeGen/CGCXXABI.h"
 
 #include "dtypes.h"
 
@@ -830,8 +831,8 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->getLangOpts().Bool = 1;
     Cxx->CI->getLangOpts().WChar = 1;
     Cxx->CI->getLangOpts().C99 = 1;
-    Cxx->CI->getLangOpts().RTTI = 0;
-    Cxx->CI->getLangOpts().RTTIData = 0;
+    Cxx->CI->getLangOpts().RTTI = 1;
+    Cxx->CI->getLangOpts().RTTIData = 1;
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
     // Exceptions
@@ -1836,6 +1837,45 @@ DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
 DLLEXPORT bool hasTrivialDestructor(clang::CXXRecordDecl *RD)
 {
   return RD->hasTrivialDestructor();
+}
+
+DLLEXPORT void setPersonality(llvm::Function *F, llvm::Function *PersonalityF)
+{
+  F->setPersonalityFn(PersonalityF);
+}
+
+DLLEXPORT void *getFunction(C, char *name, size_t length)
+{
+  return Cxx->shadow->getFunction(llvm::StringRef(name,length));
+}
+
+extern void *jl_pchar_to_string(const char *str, size_t len);
+DLLEXPORT void *getTypeName(C, void *Ty)
+{
+  SmallString<256> OutName;
+  llvm::raw_svector_ostream Out(OutName);
+  Cxx->CGM->getCXXABI().
+    getMangleContext().mangleCXXRTTIName(clang::QualType::getFromOpaquePtr(Ty), Out);
+  Out.flush();
+  StringRef Name = OutName.str();
+  StringRef ActualName = Name.substr(4);
+  return jl_pchar_to_string(ActualName.data(), ActualName.size());
+}
+
+// Exception handling
+extern void jl_error(const char *str);
+
+#include "unwind.h"
+void __attribute__((noreturn)) (*process_cxx_exception)(uint64_t exceptionClass, _Unwind_Exception* unwind_exception);
+_Unwind_Reason_Code __cxxjl_personality_v0
+                    (int version, _Unwind_Action actions, uint64_t exceptionClass,
+                     _Unwind_Exception* unwind_exception, _Unwind_Context* context)
+{
+  // Catch all exceptions
+  if (actions & _UA_SEARCH_PHASE)
+    return _URC_HANDLER_FOUND;
+
+  (*process_cxx_exception)(exceptionClass,unwind_exception);
 }
 
 }

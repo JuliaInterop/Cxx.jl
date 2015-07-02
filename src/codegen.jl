@@ -524,7 +524,7 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     (pvd != nothing) && push!(argt,ct)
 
     llvmrt = julia_to_llvm(rett)
-    f = CreateFunction(C, needsret ? julia_to_llvm(Void) : llvmrt, map(julia_to_llvm,argt))
+    f = CreateFunctionWithPersonality(C, needsret ? julia_to_llvm(Void) : llvmrt, map(julia_to_llvm,argt))
     state = setup_cpp_env(C, f)
     builder = irbuilder(C)
 
@@ -656,6 +656,14 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
     EmitExpr(C,ce,nE,ctce, argt, pvds, rett)
 end
 
+function CreateFunctionWithPersonality(C, args...)
+    f = CreateFunction(C, args...)
+    PersonalityF = getFunction(C, "__cxxjl_personality_v0")
+    @assert PersonalityF != C_NULL
+    setPersonality(f, PersonalityF)
+    f
+end
+
 # Emits either a CallExpr, a NewExpr, or a CxxConstructExpr, depending on which
 # one is non-NULL
 function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
@@ -683,7 +691,7 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
 
     llvmrt = julia_to_llvm(rett)
     # Let's create an LLVM function
-    f = CreateFunction(C, issret ? julia_to_llvm(Void) : llvmrt,
+    f = CreateFunctionWithPersonality(C, issret ? julia_to_llvm(Void) : llvmrt,
         map(julia_to_llvm,llvmargt))
 
     # Clang's code emitter needs some extra information about the function, so let's
@@ -807,7 +815,7 @@ end
 @generated function destruct(CT::CxxInstance, x)
     check_args([x],:destruct)
     C = instance(CT)
-    f = CreateFunction(C, julia_to_llvm(Void), [julia_to_llvm(x)])
+    f = CreateFunctionWithPersonality(C, julia_to_llvm(Void), [julia_to_llvm(x)])
     state = setup_cpp_env(C,f)
     builder = irbuilder(C)
     args = llvmargs(C, builder, f, [x])

@@ -17,6 +17,8 @@ cpptype(C,::Type{UInt8}) = chartype(C)
 for (jlt, sym) in
     ((Void, :cT_void),
      (Int8, :cT_int8),
+     (Int16, :cT_int16),
+     (UInt16, :cT_uint16),
      (UInt32, :cT_uint32),
      (Int32, :cT_int32),
      (UInt64, :cT_uint64),
