@@ -872,6 +872,8 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     TD = new DataLayout(tin.getTargetDescription());
     Cxx->CGM = new clang::CodeGen::CodeGenModule(
         Cxx->CI->getASTContext(),
+        Cxx->CI->getHeaderSearchOpts(),
+        Cxx->CI->getPreprocessorOpts(),
         Cxx->CI->getCodeGenOpts(),
         *Cxx->shadow,
         *TD,
