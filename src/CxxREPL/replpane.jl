@@ -165,11 +165,11 @@ let __current_compiler__ = Cxx.__default_compiler__
 
         const cxx_keymap = Dict{Any,Any}(
             '<' => function (s,args...)
-                if isempty(s)
-                    if !haskey(s.mode_state,panel)
-                        s.mode_state[panel] = LineEdit.init_state(repl.t,panel)
+                if isempty(s) || position(LineEdit.buffer(s)) == 0
+                    buf = copy(LineEdit.buffer(s))
+                    LineEdit.transition(s, panel) do
+                        LineEdit.state(s, panel).input_buffer = buf
                     end
-                    LineEdit.transition(s,panel)
                 else
                     LineEdit.edit_insert(s,'<')
                 end
