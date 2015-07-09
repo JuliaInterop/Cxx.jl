@@ -131,14 +131,28 @@ InsertValue(builder, into::pcpp"llvm::Value", v::pcpp"llvm::Value", idx) =
 
 getTemplateArgs(tmplt::pcpp"clang::ClassTemplateSpecializationDecl") =
     rcpp"clang::TemplateArgumentList"(ccall((:getTemplateArgs,libcxxffi),Ptr{Void},(Ptr{Void},),tmplt))
+getTemplateArgs(tmplt::pcpp"clang::TemplateSpecializationType") = tmplt
 
-getTargsSize(targs) =
+getTargsSize(targs::rcpp"clang::TemplateArgumentList") =
  ccall((:getTargsSize,libcxxffi),Csize_t,(Ptr{Void},),targs)
+
+getTargsSize(targs::pcpp"clang::TemplateSpecializationType") =
+    ccall((:getTSTTargsSize,libcxxffi),Csize_t,(Ptr{Void},),targs)
+
+getNumParameters(targs::pcpp"clang::TemplateDecl") =
+    ccall((:getTDNumParameters,libcxxffi),Csize_t,(Ptr{Void},),targs)
 
 getTargType(targ) = QualType(ccall((:getTargType,libcxxffi),Ptr{Void},(Ptr{Void},),targ))
 
-getTargTypeAtIdx(targs, i) =
+getTargTypeAtIdx(targs::Union(rcpp"clang::TemplateArgumentList",
+                              pcpp"clang::TemplateArgumentList"), i) =
     QualType(ccall((:getTargTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
+
+getTargTypeAtIdx(targs::pcpp"clang::TemplateSpecializationType", i) =
+    QualType(ccall((:getTSTTargTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
+
+getTargKindAtIdx(targs::pcpp"clang::TemplateSpecializationType", i) =
+    ccall((:getTSTTargKindAtIdx,libcxxffi), Cint, (Ptr{Void},Csize_t), targs, i)
 
 getTargKindAtIdx(targs, i) =
     ccall((:getTargKindAtIdx,libcxxffi), Cint, (Ptr{Void}, Csize_t), targs, i)
@@ -146,7 +160,7 @@ getTargKindAtIdx(targs, i) =
 getTargKind(targ) =
     ccall((:getTargKind,libcxxffi),Cint,(Ptr{Void},),targ)
 
-getTargAsIntegralAtIdx(targs, i) =
+getTargAsIntegralAtIdx(targs::rcpp"clang::TemplateArgumentList", i) =
     ccall((:getTargAsIntegralAtIdx,libcxxffi),Int64,(Ptr{Void},Csize_t),targs,i)
 
 getTargIntegralTypeAtIdx(targs, i) =
@@ -422,7 +436,9 @@ end
 
 for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isCharType, :isIntegerType, :isFunctionPointerType, :isMemberFunctionPointerType,
-    :isFunctionType, :isFunctionProtoType, :isEnumeralType, :isFloatingType)
+    :isFunctionType, :isFunctionProtoType, :isEnumeralType, :isFloatingType,
+    :isElaboratedType, :isTemplateSpecializationType, :isDependentType,
+    :isTemplateTypeParmType)
 
     @eval ($s)(t::QualType) = ($s)(extractTypePtr(t))
     @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
@@ -434,6 +450,8 @@ for (r,s) in ((pcpp"clang::CXXRecordDecl",:getPointeeCXXRecordDecl),
 end
 
 getAsCXXRecordDecl(t::QualType) = getAsCXXRecordDecl(extractTypePtr(t))
+getAsCXXRecordDecl(d::pcpp"clang::TemplateDecl") = getAsCXXRecordDecl(getTemplatedDecl(d))
+getAsCXXRecordDecl(d::pcpp"clang::NamedDecl") = dcastCXXRecordDecl(pcpp"clang::Decl"(d.ptr))
 
 # Access to clang decls
 
@@ -553,3 +571,19 @@ CreateIntegerLiteral(C, val::UInt64, T) =
 ActOnFinishFunctionBody(C, FD, Stmt) =
     ccall((:ActOnFinishFunctionBody,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),
         &C, FD, Stmt)
+
+EnterParserScope(C) = ccall((:EnterParserScope,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
+ExitParserScope(C) = ccall((:ExitParserScope,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
+ActOnTypeParameterParserScope(C, Name, pos) =
+    pcpp"clang::Decl"(ccall((:ActOnTypeParameterParserScope,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Uint8},Cint),&C,Name,pos))
+
+getUnderlyingTemplateDecl(TST) =
+    pcpp"clang::TemplateDecl"(ccall((:getUnderlyingTemplateDecl,libcxxffi),Ptr{Void},(Ptr{Void},),TST))
+
+desugar(T::pcpp"clang::ElaboratedType") = QualType(ccall((:desugarElaboratedType,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+
+getTTPTIndex(T::pcpp"clang::TemplateTypeParmType") = ccall((:getTTPTIndex, libcxxffi), Cuint, (Ptr{Void},), T)
+
+getTparam(T::pcpp"clang::TemplateDecl", i) = pcpp"clang::NamedDecl"(ccall((:getTDParamAtIdx, libcxxffi), Ptr{Void}, (Ptr{Void}, Cint), T, i))
+
+getTemplatedDecl(T::pcpp"clang::TemplateDecl") = pcpp"clang::NamedDecl"(ccall((:getTemplatedDecl, libcxxffi), Ptr{Void}, (Ptr{Void},), T))

@@ -225,3 +225,8 @@ struct testDestruct {
 X = icxx"return testDestruct{10};"
 finalize(X)
 @test icxx"testDestructCounter;" == 10
+
+# Template dispatch
+foo{T}(x::cxxt"std::vector<$T>") = icxx"$x.size();"
+@test foo(icxx"std::vector<uint64_t>{0};") == 1
+@test foo(icxx"std::vector<uint64_t>{};") == 0

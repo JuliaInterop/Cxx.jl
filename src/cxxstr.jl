@@ -33,7 +33,7 @@ function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constan
     ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,decl,val)
 end
 
-function ssv(C,e::ANY,ctx,varnum,thunk)
+function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs)
     if isa(e,Expr) || isa(e,Symbol)
         T = typeof(e)
         # Create a thunk that contains this expression
@@ -53,6 +53,17 @@ function ssv(C,e::ANY,ctx,varnum,thunk)
         end
         sv = CreateFunctionDecl(C,ctx,string("call",varnum),makeFunctionType(C,cpptype(C,T),QualType[]))
         e = thunk
+    elseif isa(e,Type)
+        QT = cpptype(C,e)
+        name = string("var",varnum)
+        sv = CreateTypeDefDecl(C,ctx,name,QT)
+    elseif isa(e,TypeVar)
+        str = takebuf_string(sourcebuf)
+        name = string("var",varnum)
+        write(sourcebuf, replace(str, string("__julia::var",varnum), name))
+        sv = ActOnTypeParameterParserScope(C,name,varnum)
+        typeargs[varnum] = e
+        return e, sv
     else
         e = cppconvert(e)
         T = typeof(e)
@@ -241,7 +252,7 @@ function ArgCleanup(C,e,sv)
     if isa(sv,pcpp"clang::FunctionDecl")
         f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool), e, C_NULL, false))
         ReplaceFunctionForDecl(C,sv,f)
-    else
+    elseif !isa(e,Type) && !isa(e,TypeVar)
         SetDeclInitializer(C,sv,llvmconst(e))
     end
 end
@@ -576,6 +587,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
         postparse = Expr(:block)
         instance = :( Cxx.instance($compiler) )
         ctx = gensym()
+        typeargs = gensym()
         for i in 1:length(exprs)
             expr = exprs[i]
             icxx = icxxs[i]
@@ -585,7 +597,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 push!(argsetup.args,quote
                     ($s, $sv) =
                         let e = $expr
-                            Cxx.ssv($instance,e,$ctx,$startvarnum,eval(:( ()->($e) )))
+                            Cxx.ssv($instance,e,$ctx,$startvarnum,eval(:( ()->($e) )),$sourcebuf,$typeargs)
                         end
                     end)
                 push!(argcleanup.args,:(Cxx.ArgCleanup($instance,$s,$sv)))
@@ -607,13 +619,13 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
             end
             startvarnum += 1
         end
-        parsecode = filename == "" ? :( cxxparse($instance,$(takebuf_string(sourcebuf)),$type_name) ) :
-            :( Cxx.ParseVirtual($instance, $(takebuf_string(sourcebuf)),
+        parsecode = filename == "" ? :( cxxparse($instance,takebuf_string($sourcebuf),$type_name) ) :
+            :( Cxx.ParseVirtual($instance, takebuf_string($sourcebuf),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( line ),
                 $( col ),
-                $(type_name)) )
+                $(type_name) ) )
         x = gensym()
         return quote
             let
@@ -621,10 +633,16 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 ns = Cxx.createNamespace($instance,"julia")
                 $ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
                 unsafe_store!(jns,ns.ptr)
+                $typeargs = Dict{Int64,TypeVar}()
+                $type_name && Cxx.EnterParserScope($instance)
                 $argsetup
                 $argcleanup
                 $x = $parsecode
                 $postparse
+                $type_name && Cxx.ExitParserScope($instance)
+                if $type_name
+                    $x = Cxx.juliatype($x, $typeargs)
+                end
                 unsafe_store!(jns,C_NULL)
                 $x
             end

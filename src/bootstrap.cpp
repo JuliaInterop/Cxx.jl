@@ -157,12 +157,13 @@ DLLEXPORT int _cxxparse(C)
     return 1;
 }
 
-DLLEXPORT void *ParseTypeName(C)
+DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
 {
-    if (Cxx->Parser->getPreprocessor().isIncrementalProcessingEnabled() &&
-      Cxx->Parser->getCurToken().is(clang::tok::eof))
-      Cxx->Parser->ConsumeToken();
-    return (void*)Cxx->Parser->ParseTypeName().get().getAsOpaquePtr();
+  if (Cxx->Parser->getPreprocessor().isIncrementalProcessingEnabled() &&
+    Cxx->Parser->getCurToken().is(clang::tok::eof))
+    Cxx->Parser->ConsumeToken();
+  return (void*)Cxx->Parser->ParseTypeName(nullptr, ParseAlias ?
+      clang::Declarator::AliasTemplateContext : clang::Declarator::TypeNameContext).get().getAsOpaquePtr();
 }
 
 DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
@@ -1257,19 +1258,39 @@ DLLEXPORT size_t getTargsSize(clang::TemplateArgumentList *targs)
     return targs->size();
 }
 
+DLLEXPORT size_t getTSTTargsSize(clang::TemplateSpecializationType *TST)
+{
+    return TST->getNumArgs();
+}
+
+DLLEXPORT size_t getTDNumParameters(clang::TemplateDecl *TD)
+{
+    return TD->getTemplateParameters()->size();
+}
+
 DLLEXPORT void *getTargsPointer(clang::TemplateArgumentList *targs)
 {
     return (void*)targs->data();
 }
 
-DLLEXPORT void *getTargType(clang::TemplateArgument *targ)
+DLLEXPORT void *getTargType(const clang::TemplateArgument *targ)
 {
     return (void*)targ->getAsType().getAsOpaquePtr();
 }
 
+DLLEXPORT void *getTDParamAtIdx(clang::TemplateDecl *TD, int i)
+{
+    return (void*)TD->getTemplateParameters()->getParam(i);
+}
+
 DLLEXPORT void *getTargTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
-    return getTargType(const_cast<clang::TemplateArgument*>(&targs->get(i)));
+    return getTargType(&targs->get(i));
+}
+
+DLLEXPORT void *getTSTTargTypeAtIdx(clang::TemplateSpecializationType *targs, size_t i)
+{
+    return getTargType(&targs->getArg(i));
 }
 
 DLLEXPORT void *getTargIntegralType(const clang::TemplateArgument *targ)
@@ -1290,6 +1311,11 @@ DLLEXPORT int getTargKind(const clang::TemplateArgument *targ)
 DLLEXPORT int getTargKindAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return getTargKind(&targs->get(i));
+}
+
+DLLEXPORT int getTSTTargKindAtIdx(clang::TemplateSpecializationType *TST, size_t i)
+{
+    return getTargKind(&TST->getArg(i));
 }
 
 DLLEXPORT size_t getTargPackAtIdxSize(clang::TemplateArgumentList *targs, size_t i)
@@ -1449,6 +1475,16 @@ TMember(isCharType)
 TMember(isIntegerType)
 TMember(isEnumeralType)
 TMember(isFloatingType)
+TMember(isDependentType)
+TMember(isTemplateTypeParmType)
+
+DLLEXPORT int isTemplateSpecializationType(clang::Type *t) {
+  return isa<clang::TemplateSpecializationType>(t);
+}
+
+DLLEXPORT int isElaboratedType(clang::Type *t) {
+  return isa<clang::ElaboratedType>(t);
+}
 
 DLLEXPORT void *isIncompleteType(clang::Type *t)
 {
@@ -1743,8 +1779,30 @@ DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
   void *ret = (void*)sema.ActOnTypeParameter(&S, false, clang::SourceLocation(),
                                     clang::SourceLocation(), PP.getIdentifierInfo(Name), clang::SourceLocation(), 0, Position,
                                     clang::SourceLocation(), DefaultArg);
-  sema.ActOnPopScope(clang::SourceLocation(),&S);
+  //sema.ActOnPopScope(clang::SourceLocation(),&S);
   return ret;
+}
+
+DLLEXPORT void EnterParserScope(C)
+{
+  Cxx->Parser->EnterScope(clang::Scope::TemplateParamScope);
+}
+
+DLLEXPORT void *ActOnTypeParameterParserScope(C, char *Name, unsigned Position)
+{
+  clang::Sema &sema = Cxx->CI->getSema();
+  clang::ParsedType DefaultArg;
+  clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
+  void *ret = (void*)sema.ActOnTypeParameter(Cxx->Parser->getCurScope(), false, clang::SourceLocation(),
+                                    clang::SourceLocation(), PP.getIdentifierInfo(Name), clang::SourceLocation(), 0, Position,
+                                    clang::SourceLocation(), DefaultArg);
+  //sema.ActOnPopScope(clang::SourceLocation(),&S);
+  return ret;
+}
+
+DLLEXPORT void ExitParserScope(C)
+{
+  Cxx->Parser->ExitScope();
 }
 
 DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t ND)
@@ -1899,6 +1957,11 @@ DLLEXPORT int hasFDBody(clang::FunctionDecl *FD)
   return FD->hasBody();
 }
 
+DLLEXPORT void *getUnderlyingTemplateDecl(clang::TemplateSpecializationType *TST)
+{
+  return (void*)TST->getTemplateName().getAsTemplateDecl();
+}
+
 DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl *FTD, void *T)
 {
   clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
@@ -1918,6 +1981,21 @@ DLLEXPORT void *CreateIntegerLiteral(C, uint64_t val, void *T)
   clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
   return (void*)clang::IntegerLiteral::Create(Cxx->CI->getASTContext(),
     llvm::APInt(8*sizeof(uint64_t),val), QT, clang::SourceLocation());
+}
+
+DLLEXPORT void *desugarElaboratedType(clang::ElaboratedType *T)
+{
+  return (void *)T->desugar().getAsOpaquePtr();
+}
+
+DLLEXPORT unsigned getTTPTIndex(clang::TemplateTypeParmType *TTPT)
+{
+  return TTPT->getIndex();
+}
+
+DLLEXPORT void *getTemplatedDecl(clang::TemplateDecl *TD)
+{
+  return TD->getTemplatedDecl();
 }
 
 extern void *jl_pchar_to_string(const char *str, size_t len);

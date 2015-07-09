@@ -2,7 +2,9 @@ import Base: dump
 export @icxxdebug_str
 
 dump(d::pcpp"clang::Decl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
+dump(d::pcpp"clang::NamedDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
 dump(d::pcpp"clang::FunctionDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
+dump(d::pcpp"clang::TemplateDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
 dump(expr::pcpp"clang::Expr") = ccall((:exprdump,libcxxffi),Void,(Ptr{Void},),expr)
 dump(t::pcpp"clang::Type") = ccall((:typedump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Value") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)

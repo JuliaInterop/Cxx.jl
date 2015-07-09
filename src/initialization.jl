@@ -96,18 +96,18 @@ function ParseToEndOfFile(C)
     !hadError
 end
 
-function ParseTypeName(C)
-    ret = ccall((:ParseTypeName,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)
+function ParseTypeName(C, ParseAlias = false)
+    ret = ccall((:ParseTypeName,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Cint),&C, ParseAlias)
     if ret == C_NULL
         error("Could not parse type name")
     end
     QualType(ret)
 end
 
-function cxxparse(C,string, isTypeName = false)
+function cxxparse(C,string, isTypeName = false, ParseAlias = false)
     EnterBuffer(C,string)
     if isTypeName
-        ParseTypeName(C)
+        ParseTypeName(C,ParseAlias)
     else
         ParseToEndOfFile(C) || error("Could not parse string")
     end
@@ -118,7 +118,7 @@ cxxparse(string) = cxxparse(__default_compiler__,string)
 function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column, isTypeName = false)
     EnterVirtualSource(C,string, VirtualFileName)
     if isTypeName
-        juliatype(ParseTypeName(C))
+        ParseTypeName(C)
     else
         ParseToEndOfFile(C) ||
             error("Could not parse C++ code at $FileName:$Line:$Column")

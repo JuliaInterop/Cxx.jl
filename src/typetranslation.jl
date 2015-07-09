@@ -326,31 +326,34 @@ const KindTemplateExpansion = 6
 const KindExpression        = 7
 const KindPack              = 8
 
-function getTemplateParameters(cxxd)
+function getTemplateParameters(cxxd,typeargs = Dict{Int64,Void}())
     targt = Tuple{}
     if isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(cxxd.ptr))
         tmplt = dcastClassTemplateSpecializationDecl(pcpp"clang::Decl"(cxxd.ptr))
-        targs = getTemplateArgs(tmplt)
-        args = Any[]
-        for i = 0:(getTargsSize(targs)-1)
-            kind = getTargKindAtIdx(targs,i)
-            if kind == KindType
-                T = juliatype(getTargTypeAtIdx(targs,i))
-                if T <: CppValue
-                    T = T.parameters[1]
-                end
-                push!(args,T)
-            elseif kind == KindIntegral
-                val = getTargAsIntegralAtIdx(targs,i)
-                t = getTargIntegralTypeAtIdx(targs,i)
-                push!(args,convert(juliatype(t),val))
-            else
-                error("Unhandled template argument kind ($kind)")
-            end
-        end
-        targt = Tuple{args...}
+    elseif isa(cxxd,pcpp"clang::CXXRecordDecl")
+        return Tuple{}
+    else
+        tmplt = cxxd
     end
-    targt
+    targs = getTemplateArgs(tmplt)
+    args = Any[]
+    for i = 0:(getTargsSize(targs)-1)
+        kind = getTargKindAtIdx(targs,i)
+        if kind == KindType
+            T = juliatype(getTargTypeAtIdx(targs,i),typeargs)
+            if T <: CppValue
+                T = T.parameters[1]
+            end
+            push!(args,T)
+        elseif kind == KindIntegral
+            val = getTargAsIntegralAtIdx(targs,i)
+            t = getTargIntegralTypeAtIdx(targs,i)
+            push!(args,convert(juliatype(t,typeargs),val))
+        else
+            error("Unhandled template argument kind ($kind)")
+        end
+    end
+    targt = Tuple{args...}
 end
 
 # TODO: Autogenerate this from the appropriate header
@@ -399,7 +402,7 @@ function toBaseType(t::pcpp"clang::Type")
     T
 end
 
-function juliatype(t::QualType)
+function juliatype(t::QualType, typeargs = Dict{Int,Void}())
     CVR = extractCVR(t)
     t = extractTypePtr(t)
     t = canonicalType(t)
@@ -488,6 +491,24 @@ function juliatype(t::QualType)
             return Float64
         end
         error("Unrecognized floating point type")
+    # If this is not dependent, the generic logic handles it fine
+    elseif isElaboratedType(t) && isDependentType(t)
+        return juliatype(desugar(pcpp"clang::ElaboratedType"(t.ptr)), typeargs)
+    elseif isTemplateTypeParmType(t)
+        t = pcpp"clang::TemplateTypeParmType"(t.ptr)
+        idx = getTTPTIndex(t)
+        if !haskey(typeargs, idx)
+            error("No translation for typearg")
+        end
+        return typeargs[idx]
+    elseif isTemplateSpecializationType(t) && isDependentType(t)
+        t = pcpp"clang::TemplateSpecializationType"(t.ptr)
+        TD = getUnderlyingTemplateDecl(t)
+        TDargs = getTemplateParameters(t,typeargs)
+        r = length(TDargs.parameters):(getNumParameters(TD)-1)
+        @assert isempty(r)
+        T = CppBaseType{symbol(get_name(TD))}
+        return CppValue{CxxQualType{CppTemplate{T,Tuple{TDargs.parameters...}},CVR}}
     else
         return CppValue{CxxQualType{toBaseType(t),CVR}}
     end
