@@ -842,9 +842,9 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->getLangOpts().RTTIData = 1;
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
-    Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling 
-    Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions 
-    Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions 
+    Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
+    Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
+    Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
@@ -1937,8 +1937,12 @@ DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
   Cxx->CGF->destroyCXXObject(*Cxx->CGF, x, clang::QualType(T,0));
 }
 
-DLLEXPORT bool hasTrivialDestructor(clang::CXXRecordDecl *RD)
+DLLEXPORT bool hasTrivialDestructor(C, clang::CXXRecordDecl *RD)
 {
+  clang::CXXScopeSpec spec;
+  spec.setBeginLoc(getTrivialSourceLocation(Cxx));
+  clang::Sema &cs = Cxx->CI->getSema();
+  cs.RequireCompleteDeclContext(spec,RD);
   return RD->hasTrivialDestructor();
 }
 
@@ -2038,8 +2042,8 @@ template <class Tag>
 struct stowed
 {
      static typename Tag::type value;
-}; 
-template <class Tag> 
+};
+template <class Tag>
 typename Tag::type stowed<Tag>::value;
 
 template <class Tag, typename Tag::type x>
@@ -2048,9 +2052,9 @@ struct stow_private
      stow_private() { stowed<Tag>::value = x; }
      static stow_private instance;
 };
-template <class Tag, typename Tag::type x> 
+template <class Tag, typename Tag::type x>
 stow_private<Tag,x> stow_private<Tag,x>::instance;
- 
+
 
 typedef llvm::DenseMap<const clang::Type*, llvm::StructType *> TMap;
 typedef llvm::DenseMap<const clang::Type*, clang::CodeGen::CGRecordLayout *> CGRMap;

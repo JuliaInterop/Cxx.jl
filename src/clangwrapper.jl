@@ -544,7 +544,8 @@ SetDeclUsed(C,FD) = ccall((:SetDeclUsed, libcxxffi),Void,(Ptr{ClangCompiler},Ptr
 
 emitDestroyCXXObject(C, x, T) = ccall((:emitDestroyCXXObject, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,x,T)
 
-hasTrivialDestructor(D::pcpp"clang::CXXRecordDecl") = ccall((:hasTrivialDestructor, libcxxffi), Bool, (Ptr{Void},), D)
+hasTrivialDestructor(C, D::pcpp"clang::CXXRecordDecl") =
+  ccall((:hasTrivialDestructor, libcxxffi), Bool, (Ptr{ClangCompiler}, Ptr{Void},), &C, D)
 
 setPersonality(F::pcpp"llvm::Function", PersonalityF::pcpp"llvm::Function") =
     ccall((:setPersonality, libcxxffi), Void, (Ptr{Void}, Ptr{Void}), F, PersonalityF)

@@ -2,6 +2,11 @@ const libcxx_class               = 0x434C4E47432B2B00
 const libcxx_dependent_class     = 0x434C4E47432B2B01
 const get_vendor_and_language    = 0xFFFFFFFFFFFFFF00
 
+const libstdcxx_class =
+  bswap(reinterpret(UInt64,Uint8['G','N','U','C','C','+','+','\0'])[1])
+const libstdcxx_depdendent_class =
+  bswap(reinterpret(UInt64,Uint8['G','N','U','C','C','+','+','\x1'])[1])
+
 immutable _UnwindException
     class::UInt64
     cleanup::Ptr{Void}
@@ -24,6 +29,8 @@ immutable LibCxxException
     adjustedPtr::Ptr{Void}
     unwindHeader::_UnwindException
 end
+
+const LibStdCxxException = LibCxxException
 
 immutable CxxException{kind}
     exception::Ptr{LibCxxException}
@@ -50,6 +57,12 @@ function process_cxx_exception(code::UInt64, e::Ptr{Void})
         cxxe = Ptr{LibCxxException}(e - offset)
         T = unsafe_load(cxxe).exceptionType
         throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
+    elseif (code & get_vendor_and_language) == libstdcxx_class
+      # This is a libstdc++ exception
+      offset = Base.field_offset(LibStdCxxException,length(LibStdCxxException.types)-1)
+      cxxe = Ptr{LibStdCxxException}(e - offset)
+      T = unsafe_load(cxxe).exceptionType
+      throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
     end
     error("Caught a C++ exception")
 end

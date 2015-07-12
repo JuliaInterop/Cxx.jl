@@ -33,7 +33,7 @@ function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constan
     ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,decl,val)
 end
 
-function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs)
+function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs=Dict{Void,Void}())
     if isa(e,Expr) || isa(e,Symbol)
         T = typeof(e)
         # Create a thunk that contains this expression
@@ -97,9 +97,12 @@ function CreateTemplatedLambdaCall(C,DC,callnum,nargs)
 end
 
 substitute_symbols!(s::Symbol,substs) = haskey(substs,s) ? substs[s] : s
+substitute_symbols!(s::GlobalRef, substs) =
+  haskey(substs,s.name) ? substs[s.name] : s
 function substitute_symbols!(e::Expr,substs)
     for i in 1:length(e.args)
-        if !isa(e.args[i],Symbol) && !isa(e.args[i],Expr)
+        if !isa(e.args[i],Symbol) && !isa(e.args[i],Expr) &&
+           !isa(e.args[i],GlobalRef)
             continue
         end
         e.args[i] = substitute_symbols!(e.args[i],substs)
@@ -594,10 +597,14 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
             if icxx == Any[]
                 s = gensym()
                 sv = gensym()
+                x = :(Cxx.ssv($instance,e,$ctx,$startvarnum,eval(:( ()->($e) )),$sourcebuf))
+                if type_name
+                  push!(x.args,typeargs)
+                end
                 push!(argsetup.args,quote
                     ($s, $sv) =
                         let e = $expr
-                            Cxx.ssv($instance,e,$ctx,$startvarnum,eval(:( ()->($e) )),$sourcebuf,$typeargs)
+                            $x
                         end
                     end)
                 push!(argcleanup.args,:(Cxx.ArgCleanup($instance,$s,$sv)))
@@ -627,22 +634,26 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 $( col ),
                 $(type_name) ) )
         x = gensym()
+        if type_name
+          unshift!(argsetup.args,quote
+            $typeargs = Dict{Int64,TypeVar}()
+            Cxx.EnterParserScope($instance)
+          end)
+          push!(postparse.args, quote
+            Cxx.ExitParserScope($instance)
+            $x = Cxx.juliatype($x, $typeargs)
+          end)
+        end
         return quote
             let
                 jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
                 ns = Cxx.createNamespace($instance,"julia")
                 $ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
                 unsafe_store!(jns,ns.ptr)
-                $typeargs = Dict{Int64,TypeVar}()
-                $type_name && Cxx.EnterParserScope($instance)
                 $argsetup
                 $argcleanup
                 $x = $parsecode
                 $postparse
-                $type_name && Cxx.ExitParserScope($instance)
-                if $type_name
-                    $x = Cxx.juliatype($x, $typeargs)
-                end
                 unsafe_store!(jns,C_NULL)
                 $x
             end
