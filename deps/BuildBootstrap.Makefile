@@ -59,7 +59,7 @@ endif
 
 
 ifeq ($(USE_LLVM_SHLIB),1)
-ifeq ($(LLVM_USE_NINJA),1)
+ifeq ($(LLVM_USE_CMAKE),1)
 LDFLAGS += -lLLVM
 else
 LDFLAGS += -lLLVM-$(call exec,$(LLVM_CONFIG) --version)
