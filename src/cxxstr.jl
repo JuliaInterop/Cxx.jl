@@ -22,7 +22,7 @@ function llvmconst(val::ANY)
                 error("Creating LLVM constants for type `T` not implemented yet")
             end
         else
-            vals = [getfield(val,i) for i = 1:length(T.names)]
+            vals = [getfield(val,i) for i = 1:length(fieldnames(T))]
             return getConstantStruct(julia_to_llvm(T),vals)
         end
     end
