@@ -15,32 +15,31 @@ CLANG_LIBS = -lclangFrontendTool -lclangBasic -lclangLex -lclangDriver -lclangFr
     -lclangStaticAnalyzerCore -lclangStaticAnalyzerFrontend -lclangTooling -lclangToolingCore \
     -lclangCodeGen -lclangARCMigrate
 
-LLDB_LIBS = -llldbAPI -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialize \
-    -llldbDataFormatters -llldbExpression -llldbHostCommon  \
-    -llldbInitAndLog -llldbInterpreter  \
+LLDB_LIBS = -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialization \
+    -llldbDataFormatters -llldbExpression -llldbHost  \
+    -llldbBase -llldbInterpreter  \
     -llldbPluginABISysV_x86_64 -llldbPluginABISysV_i386 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginABISysV_arm -llldbPluginABISysV_arm64 -llldbPluginABISysV_mips -llldbPluginABISysV_mips64 \
-    -llldbPluginDynamicLoaderPOSIX -llldbPluginDynamicLoaderStatic -llldbPluginEmulateInstructionARM \
-    -llldbPluginDynamicLoaderMacOSX \
-    -llldbPluginEmulateInstructionMIPS64 -llldbPluginEmulateInstructionMIPS \
-    -llldbPluginEmulateInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginLanguageRuntimeCPlusPlusItaniumABI \
+    -llldbPluginDynamicLoaderPosixDYLD -llldbPluginDynamicLoaderStatic -llldbPluginInstructionARM \
+    -llldbPluginDynamicLoaderMacOSXDYLD \
+    -llldbPluginInstructionMIPS64 -llldbPluginInstructionMIPS \
+    -llldbPluginInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginCXXItaniumABI \
     -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
-    -llldbPluginObjectContainerUniversalMachO \
-    -llldbPluginObjectFilePECOFF -llldbPluginOperatingSystemPython \
-    -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDBServer -llldbPluginPlatformLinux \
+    -llldbPluginObjectContainerMachOArchive \
+    -llldbPluginObjectFilePECOFF -llldbPluginOSPython \
+    -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDB -llldbPluginPlatformLinux \
     -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows -llldbPluginPlatformKalimba \
-    -llldbPluginPlatformMacOSX  -llldbPluginLanguageRuntimeObjCAppleObjCRuntime \
+    -llldbPluginPlatformMacOSX  -llldbPluginAppleObjCRuntime \
     -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote -llldbPluginMemoryHistoryASan \
     -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab -llldbPluginSymbolVendorELF -llldbSymbol -llldbUtility \
     -llldbPluginSystemRuntimeMacOSX \
-    -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyx86 -llldbPluginUtility -llldbTarget \
+    -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyX86 -llldbTarget \
     -llldbPluginInstrumentationRuntimeAddressSanitizer -llldbPluginPlatformAndroid \
-    -llldbPluginLanguageRuntimeRenderScriptRuntime \
+    -llldbPluginRenderScriptRuntime \
     $(call exec,$(LLVM_CONFIG) --system-libs)
 LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginABIMacOSX_i386
 ifeq ($(OS), Darwin)
-LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols -llldbHostMacOSX \
-	-llldbHostPOSIX \
+LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols
 	-llldbPluginPlatformAndroid \
     -llldbPluginDynamicLoaderDarwinKernel \
     -llldbPluginProcessDarwin  -llldbPluginProcessMachCore \
@@ -52,15 +51,19 @@ ifeq ($(EXPERIMENTAL_LLDB),1)
 LLDB_LIBS +=  -llldbPluginABIMips32 -llldbPluginUnwindAssemblyMips
 endif
 ifeq ($(OS), WINNT)
-LLDB_LIBS += -llldbHostWindows -llldbPluginProcessWindows -lWs2_32
+LLDB_LIBS += -llldbPluginProcessWindows -lWs2_32
 endif
 ifeq ($(OS), Linux)
-LLDB_LIBS += -llldbHostLinux -llldbPluginProcessLinux -llldbPluginProcessPOSIX -llldbHostPosix -lz -lbsd -ledit
+LLDB_LIBS += -llldbPluginProcessLinux -llldbPluginProcessPOSIX -lz -lbsd -ledit
 endif
 
 
 ifeq ($(USE_LLVM_SHLIB),1)
+ifeq ($(LLVM_USE_NINJA),1)
+LDFLAGS += -lLLVM
+else
 LDFLAGS += -lLLVM-$(call exec,$(LLVM_CONFIG) --version)
+endif
 endif
 
 
