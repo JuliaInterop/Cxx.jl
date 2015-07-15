@@ -90,7 +90,8 @@ module CxxREPL
                 $(pointer(data)),$(sizeof(data)));
             clang::PreprocessorLexer *L = PP->getCurrentLexer();
             P->ConsumeToken();
-            bool result = P->isCXXDeclarationStatement();
+            bool result = P->getCurToken().is(clang::tok::kw_template) ||
+              P->isCXXDeclarationStatement();
             TA.Revert();
             // Consume all cached tokens, so we don't accidentally
             // Lex them later after we abort this buffer
