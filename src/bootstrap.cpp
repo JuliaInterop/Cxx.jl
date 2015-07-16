@@ -1934,6 +1934,13 @@ DLLEXPORT void *getPointerElementType(llvm::Type *T)
 
 DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
 {
+  clang::CXXRecordDecl *RD = T->getAsCXXRecordDecl();
+  Cxx->CI->getSema().MarkBaseAndMemberDestructorsReferenced(
+    clang::SourceLocation(), RD);
+  clang::CXXDestructorDecl *Destructor = Cxx->CI->getSema().LookupDestructor(RD);
+  Cxx->CI->getSema().MarkFunctionReferenced(clang::SourceLocation(), Destructor);
+  Cxx->CI->getSema().DefineUsedVTables();
+  Cxx->CI->getSema().PerformPendingInstantiations(false);
   Cxx->CGF->destroyCXXObject(*Cxx->CGF, x, clang::QualType(T,0));
 }
 
