@@ -1559,7 +1559,7 @@ DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
   Cxx->CI->getSema().RequireCompleteType(getTrivialSourceLocation(Cxx),
     clang::QualType(decl->getTypeForDecl(),0),0);
   auto t = cgt->ConvertRecordDeclType(decl);
-  return dl->getTypeSizeInBits(t)/8;
+  return dl.getTypeSizeInBits(t)/8;
 }
 
 DLLEXPORT size_t cxxsizeofType(C, void *t)
@@ -1567,7 +1567,7 @@ DLLEXPORT size_t cxxsizeofType(C, void *t)
   llvm::ExecutionEngine *ee = (llvm::ExecutionEngine *)jl_get_llvm_ee();
   auto dl = ee->getDataLayout();
   clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
-  return dl->getTypeSizeInBits(
+  return dl.getTypeSizeInBits(
     cgt->ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t)))/8;
 }
 
