@@ -582,7 +582,7 @@ function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr
 end
 
 function process_cxx_string(str,global_scope = true,type_name = false,filename=symbol(""),line=1,col=1;
-    compiler = :__current_compiler__)
+    compiler = :__current_compiler__, tojuliatype = true)
     startvarnum, sourcebuf, exprs, isexprs, icxxs = process_body(str, global_scope, filename, line, col)
     if global_scope
         argsetup = Expr(:block)
@@ -641,8 +641,11 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
           end)
           push!(postparse.args, quote
             Cxx.ExitParserScope($instance)
-            $x = Cxx.juliatype($x, $typeargs)
           end)
+          tojuliatype &&
+            push!(postparse.args, quote
+                $x = Cxx.juliatype($x, $typeargs)
+            end)
         end
         return quote
             let
@@ -671,6 +674,11 @@ end
 
 macro cxxt_str(str,args...)
     esc(process_cxx_string(str,true,true,args...))
+end
+
+# Not exported
+macro ccxxt_str(str,args...)
+    esc(process_cxx_string(str,true,true,args...; tojuliatype = false))
 end
 
 macro icxx_str(str,args...)

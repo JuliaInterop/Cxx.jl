@@ -1348,6 +1348,11 @@ DLLEXPORT void *getPointeeType(clang::Type *t)
     return t->getPointeeType().getAsOpaquePtr();
 }
 
+DLLEXPORT void *getArrayElementType(clang::Type *t)
+{
+    return cast<clang::ArrayType>(t)->getElementType().getAsOpaquePtr();
+}
+
 DLLEXPORT void *getOriginalTypePtr(clang::ParmVarDecl *d)
 {
   return (void*)d->getOriginalType().getTypePtr();
@@ -1361,6 +1366,13 @@ DLLEXPORT void *getPointerTo(C, void *T)
 DLLEXPORT void *getReferenceTo(C, void *T)
 {
     return Cxx->CI->getASTContext().getLValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
+}
+
+DLLEXPORT void *getIncompleteArrayType(C, void *T)
+{
+    return Cxx->CI->getASTContext().getIncompleteArrayType(
+      clang::QualType::getFromOpaquePtr(T),
+      clang::ArrayType::Normal, 0).getAsOpaquePtr();
 }
 
 DLLEXPORT void *createDerefExpr(C, clang::Expr *expr)
@@ -1477,6 +1489,7 @@ TMember(isEnumeralType)
 TMember(isFloatingType)
 TMember(isDependentType)
 TMember(isTemplateTypeParmType)
+TMember(isArrayType)
 
 DLLEXPORT int isTemplateSpecializationType(clang::Type *t) {
   return isa<clang::TemplateSpecializationType>(t);

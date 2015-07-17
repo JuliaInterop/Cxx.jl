@@ -242,6 +242,7 @@ addQualifiers(clangT::pcpp"clang::Type",CVR) = addQualifiers(QualType(clangT.ptr
 # And finally the actual definition of cpptype
 
 cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(C,p)))
+cpptype{T}(C,p::Type{CxxArrayType{T}}) = getIncompleteArrayType(C,cpptype(C,T))
 function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
     addQualifiers(pointerTo(C,cpptype(C,T)),CVR)
 end
@@ -491,6 +492,8 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
             return Float64
         end
         error("Unrecognized floating point type")
+    elseif isArrayType(t)
+        return CxxArrayType{juliatype(getArrayElementType(t))}
     # If this is not dependent, the generic logic handles it fine
     elseif isElaboratedType(t) && isDependentType(t)
         return juliatype(desugar(pcpp"clang::ElaboratedType"(t.ptr)), typeargs)

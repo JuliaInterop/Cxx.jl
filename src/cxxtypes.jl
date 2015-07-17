@@ -64,6 +64,10 @@ end
 immutable CxxQualType{T,CVR}
 end
 
+# The abstract notion of a C++ array type
+immutable CxxArrayType{T}
+end
+
 # The equivalent of a C++ on-stack value.
 # The representation of this is important and subject to change.
 # The current implementation is inefficient, because it puts the object on the

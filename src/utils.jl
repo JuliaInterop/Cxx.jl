@@ -10,7 +10,7 @@ dump(t::pcpp"clang::Type") = ccall((:typedump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Value") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Function") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::pcpp"llvm::Type") = ccall((:llvmtdump,libcxxffi),Void,(Ptr{Void},),t)
-dump(t::QualType) = dump(extractTypePtr(t))
+dump(t::QualType) = dump(canonicalType(extractTypePtr(t)))
 
 parser(C) = pcpp"clang::Parser"(
     ccall((:clang_parser,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))

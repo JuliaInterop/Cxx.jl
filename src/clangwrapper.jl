@@ -438,7 +438,7 @@ for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isCharType, :isIntegerType, :isFunctionPointerType, :isMemberFunctionPointerType,
     :isFunctionType, :isFunctionProtoType, :isEnumeralType, :isFloatingType,
     :isElaboratedType, :isTemplateSpecializationType, :isDependentType,
-    :isTemplateTypeParmType)
+    :isTemplateTypeParmType, :isArrayType)
 
     @eval ($s)(t::QualType) = ($s)(extractTypePtr(t))
     @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
@@ -588,3 +588,7 @@ getTTPTIndex(T::pcpp"clang::TemplateTypeParmType") = ccall((:getTTPTIndex, libcx
 getTparam(T::pcpp"clang::TemplateDecl", i) = pcpp"clang::NamedDecl"(ccall((:getTDParamAtIdx, libcxxffi), Ptr{Void}, (Ptr{Void}, Cint), T, i))
 
 getTemplatedDecl(T::pcpp"clang::TemplateDecl") = pcpp"clang::NamedDecl"(ccall((:getTemplatedDecl, libcxxffi), Ptr{Void}, (Ptr{Void},), T))
+
+getArrayElementType(T::pcpp"clang::Type") = QualType(ccall((:getArrayElementType, libcxxffi), Ptr{Void}, (Ptr{Void},), T))
+
+getIncompleteArrayType(C, T) = QualType(ccall((:getIncompleteArrayType,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,T))
