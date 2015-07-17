@@ -21,7 +21,7 @@ LLDB_LIBS = -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialization \
     -llldbPluginABISysV_x86_64 -llldbPluginABISysV_i386 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
     -llldbPluginABISysV_arm -llldbPluginABISysV_arm64 -llldbPluginABISysV_mips -llldbPluginABISysV_mips64 \
     -llldbPluginDynamicLoaderPosixDYLD -llldbPluginDynamicLoaderStatic -llldbPluginInstructionARM \
-    -llldbPluginDynamicLoaderMacOSXDYLD \
+    -llldbPluginDynamicLoaderMacOSXDYLD -llldbPluginDynamicLoaderWindowsDYLD \
     -llldbPluginInstructionMIPS64 -llldbPluginInstructionMIPS \
     -llldbPluginInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginCXXItaniumABI \
     -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
