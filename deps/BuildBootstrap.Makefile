@@ -60,12 +60,12 @@ endif
 
 ifeq ($(USE_LLVM_SHLIB),1)
 ifeq ($(LLVM_USE_CMAKE),1)
-LDFLAGS += -lLLVM
+LLVM_LIB_NAME = LLVM
 else
-LDFLAGS += -lLLVM-$(call exec,$(LLVM_CONFIG) --version)
+LLVM_LIB_NAME = LLVM-$(call exec,$(LLVM_CONFIG) --version)
 endif
 endif
-
+LDFLAGS += -l$(LLVM_LIB_NAME)
 
 all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT)
 
@@ -85,7 +85,7 @@ LINKED_LIBS += $(LLDB_LIBS)
 endif
 
 ifneq (,$(wildcard $(build_shlibdir)/libjulia.$(SHLIB_EXT)))
-usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o | usr/lib
+usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o $(build_libdir)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT) | usr/lib
 	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 	@cp usr/lib/libcxxffi.$(SHLIB_EXT) $(build_shlibdir)
 else
