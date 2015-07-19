@@ -733,7 +733,7 @@ public:
   }
 
   void VisitStmt(clang::Stmt *Node) {
-    for (clang::Stmt::child_range I = Node->children(); I; ++I)
+    for (clang::StmtIterator I = Node->children().begin(); I != Node->children().end(); ++I)
       if (*I)
         Visit(*I);
   }
