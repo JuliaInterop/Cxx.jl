@@ -1368,6 +1368,11 @@ DLLEXPORT void *getReferenceTo(C, void *T)
     return Cxx->CI->getASTContext().getLValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
 }
 
+DLLEXPORT void *getRvalueReferenceTo(C, void *T)
+{
+    return Cxx->CI->getASTContext().getRValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
+}
+
 DLLEXPORT void *getIncompleteArrayType(C, void *T)
 {
     return Cxx->CI->getASTContext().getIncompleteArrayType(
@@ -1908,6 +1913,12 @@ DLLEXPORT void *CreateFunctionRefExprFD(C, clang::FunctionDecl *FD)
   return (void*)CreateFunctionRefExpr(Cxx->CI->getSema(),FD,FD,false).get();
 }
 
+DLLEXPORT void *CreateFunctionRefExprFDTemplate(C, clang::FunctionTemplateDecl *FTD)
+{
+  return (void*)CreateFunctionRefExpr(Cxx->CI->getSema(),FTD->getTemplatedDecl(),FTD,false).get();
+}
+
+
 DLLEXPORT void SetFDBody(clang::FunctionDecl *FD, clang::Stmt *body)
 {
   FD->setBody(body);
@@ -1986,16 +1997,18 @@ DLLEXPORT void *getUnderlyingTemplateDecl(clang::TemplateSpecializationType *TST
   return (void*)TST->getTemplateName().getAsTemplateDecl();
 }
 
-DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl *FTD, void *T)
+DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl *FTD, void **T, size_t nargs)
 {
-  clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
   clang::TemplateArgumentListInfo TALI;
   clang::sema::TemplateDeductionInfo Info(clang::SourceLocation{});
   clang::FunctionDecl *FD;
-  clang::TemplateArgumentLoc TAL(
-      clang::TemplateArgument{QT},
-      Cxx->CI->getASTContext().getTrivialTypeSourceInfo(QT));
-  TALI.addArgument(TAL);
+  for (int i = 0; i < nargs; ++i) {
+    clang::QualType QT = clang::QualType::getFromOpaquePtr(T[i]);
+    clang::TemplateArgumentLoc TAL(
+        clang::TemplateArgument{QT},
+        Cxx->CI->getASTContext().getTrivialTypeSourceInfo(QT));
+    TALI.addArgument(TAL);
+  }
   Cxx->CI->getSema().DeduceTemplateArguments(FTD, &TALI, FD, Info, false);
   return FD;
 }

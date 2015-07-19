@@ -37,6 +37,11 @@ function referenceTo(C,t::QualType)
     QualType(ccall((:getReferenceTo,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,t.ptr))
 end
 
+function RValueRefernceTo(C,t::QualType)
+    QualType(ccall((:getRvalueReferenceTo,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,t))
+end
+
+
 tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
 tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(p.ptr)
 tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(p.ptr)
@@ -525,8 +530,12 @@ function SetFDBody(FD,body)
     ccall((:SetFDBody,libcxxffi),Void,(Ptr{Void},Ptr{Void}),FD,body)
 end
 
-function CreateFunctionRefExpr(C,FD)
+function CreateFunctionRefExpr(C,FD::pcpp"clang::FunctionDecl")
     pcpp"clang::Expr"(ccall((:CreateFunctionRefExprFD,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+end
+
+function CreateFunctionRefExpr(C,FD::pcpp"clang::FunctionTemplateDecl")
+    pcpp"clang::Expr"(ccall((:CreateFunctionRefExprFDTemplate,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
 end
 
 LANG_C   = 0x2
@@ -563,8 +572,9 @@ getPointerElementType(T::pcpp"llvm::Type") = pcpp"llvm::Type"(ccall((:getPointer
 
 hasFDBody(FD::pcpp"clang::FunctionDecl") = ccall((:hasFDBody,libcxxffi),Cint,(Ptr{Void},),FD) != 0
 
-getOrCreateTemplateSpecialization(C,FTD,T) =
-    pcpp"clang::FunctionDecl"(ccall((:getOrCreateTemplateSpecialization,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,FTD,T))
+getOrCreateTemplateSpecialization(C,FTD,Ts::Vector{pcpp"clang::Type"}) =
+    pcpp"clang::FunctionDecl"(ccall((:getOrCreateTemplateSpecialization,libcxxffi),Ptr{Void},
+      (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Csize_t),&C,FTD,Ts,endof(Ts)))
 
 CreateIntegerLiteral(C, val::UInt64, T) =
     pcpp"clang::IntegerLiteral"(ccall((:CreateIntegerLiteral, libcxxffi), Ptr{Void}, (Ptr{ClangCompiler}, UInt64, Ptr{Void}), &C, val, T))

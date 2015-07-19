@@ -86,7 +86,7 @@ end
 function CreateTemplatedLambdaCall(C,DC,callnum,nargs)
     TPs = [ ActOnTypeParameter(C,string("param",i),i-1) for i = 1:nargs ]
     Params = CreateTemplateParameterList(C,TPs)
-    argts = QualType[ typeForDecl(T) for T in TPs ]
+    argts = QualType[ RValueRefernceTo(C,QualType(typeForDecl(T))) for T in TPs ]
     FD = CreateFunctionDecl(C, DC, string("call",callnum) ,makeFunctionType(C,cpptype(C,Void),argts))
     params = pcpp"clang::ParmVarDecl"[
         CreateParmVarDecl(C, argt,string("__juliavar",i)) for (i,argt) in enumerate(argts)]
@@ -173,6 +173,8 @@ function CreateLambdaCallExpr(C, T, argt = [])
     ce, rt, pvds
 end
 
+const lambda_roots = Function[]
+
 function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
     sps = getSpecializations(D)
     for x in sps
@@ -183,16 +185,36 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
         PVoid = cpptype(C,Ptr{Void})
         tpvds = pcpp"clang::ParmVarDecl"[]
 
+        useBoxed = false
+        types = pcpp"clang::Type"[]
         for i = 1:nargs
             T = getTargTypeAtIdx(TP,i-1)
-
-            # Step 1: Find the this lambda's call operator and wrap it using
-            # the generic machinery
-            ce, rt, pvds = CreateLambdaCallExpr(C, T)
+            push!(types, canonicalType(extractTypePtr(T)))
             push!(tpvds, getParmVarDecl(x,i-1))
 
-            body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void}],pvds; symargs = (:($(syms[i])),))
-            push!(bodies,body)
+            # The reason for this split is that the first code is older and
+            # more narrow, not being able to handle lambdacalls with captured
+            # arguments. However it is currently still more efficient, since
+            # the second method relies on generic dispatch. If this limitation
+            # is lifted in the future, it would be good to switch everything
+            # to the second method.
+            if isempty(icxxs[i][3])
+              # Find the this lambda's call operator and wrap it using
+              # the generic machinery
+              ce, rt, pvds = CreateLambdaCallExpr(C, T)
+
+              body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void}],pvds; symargs = (:($(syms[i])),))
+              push!(bodies,body)
+            else
+              # Use the lambdacall method
+              body = Expr(:call, Cxx.lambdacall,
+                :($(Cxx.CxxInstance{findfirst(active_instances,C)})()),
+                syms[i], [arg[1] for arg in icxxs[i][3]]...)
+              push!(bodies,body)
+
+              # Use the icxx code to do this
+              useBoxed = true
+            end
         end
 
         # Step 2: Create the instantiated julia function
@@ -200,7 +222,7 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         # Collect substitutions
         substs = Dict{Symbol,Any}()
-        for (i,(j,_)) in enumerate(icxxs)
+        for (i,(j,)) in enumerate(icxxs)
             substs[j] = bodies[i]
         end
 
@@ -209,44 +231,67 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
         substitute_symbols!(ast,substs)
         F.code.ast = ast
 
-        # Perform type inference
-        linfo = F.code
-        ST = Tuple{[Ptr{Void} for _ in 1:nargs]...}
-        (tree, ty) = Core.Inference.typeinf(linfo,ST,svec())
-        T = ty
-        F.code.ast = tree
-
-        # Pretend we're a specialized generic function
-        # to get the good calling convention. The compiler
-        # will never know :)
-        setfield!(F.code,6,ST)
-        if T === Union{}
-            T = Nothing
-        end
-        if isa(T,UnionType) || T.abstract
-            error("Inferred Union or abstract type $T for expression $F")
-        end
-        if T !== Nothing
-            error("Currently only `Nothing` is supported for nested expressions")
-        end
-
-        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool), F, C_NULL, false))
-        @assert f != C_NULL
-
-        # Create a Clang function Decl to represent this julia function
-        ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
-        JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), [PVoid for _ = 1:nargs]))
-
-        # Create the body for the instantiation
-        JCE = CreateCallExpr(C,CreateFunctionRefExpr(C, JFD),
-                [ createCast(C,CreateAddrOfExpr(C,CreateDeclRefExpr(C,pvd)),PVoid,CK_BitCast) for pvd in tpvds ])
-        SetFDBody(x,CreateReturnStmt(C,JCE))
-
         for pvd in tpvds
             SetDeclUsed(C,pvd)
         end
 
+        if !useBoxed
+          # Perform type inference
+          linfo = F.code
+          ST = Tuple{[Ptr{Void} for _ in 1:nargs]...}
+          (tree, ty) = Core.Inference.typeinf(linfo,ST,svec())
+          T = ty
+          F.code.ast = tree
+
+          # Pretend we're a specialized generic function
+          # to get the good calling convention. The compiler
+          # will never know :)
+          setfield!(F.code,6,ST)
+          if T === Union{}
+              T = Nothing
+          end
+          if isa(T,UnionType) || T.abstract
+              error("Inferred Union or abstract type $T for expression $F")
+          end
+          if T !== Nothing
+              error("Currently only `Nothing` is supported for nested expressions")
+          end
+
+          # We can emit a direct llvm-level reference to this
+          f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool), F, C_NULL, false))
+          @assert f != C_NULL
+
+          # Create a Clang function Decl to represent this julia function
+          ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
+          JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), [PVoid for _ = 1:nargs]))
+
+          # Create the body for the instantiation
+          JCE = CreateCallExpr(C,CreateFunctionRefExpr(C, JFD),
+                  [ createCast(C,CreateAddrOfExpr(C,CreateDeclRefExpr(C,pvd)),PVoid,CK_BitCast) for pvd in tpvds ])
+        else
+          push!(lambda_roots,F)
+          # Forward this to jl_calln
+          CFD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["jl_calln"]).ptr)
+          forwardD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["std","forward"]).ptr)
+          lambda_typeD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["lambda_type"]).ptr)
+          FExpr = createCast(C,
+            CreateIntegerLiteral(C,
+              convert(UInt,pointer_from_objref(F)),cpptype(C,UInt)),
+              cpptype(C,Function), CK_IntegralToPointer)
+          FD = getOrCreateTemplateSpecialization(C, CFD, types)
+          args = [FExpr]
+          for (i,D) in enumerate(tpvds)
+            createLambdaTypeSpecialization(C, lambda_typeD, QualType(types[i]))
+            specializedForward = getOrCreateTemplateSpecialization(C, forwardD, [types[i]])
+            forwardCall = CreateCallExpr(C,
+              CreateFunctionRefExpr(C, specializedForward),
+              [CreateDeclRefExpr(C,D)])
+            push!(args, forwardCall)
+          end
+          JCE = CreateCallExpr(C,CreateFunctionRefExpr(C, FD), args)
+        end
         # Now that the specialization has a body, emit it
+        SetFDBody(x,CreateReturnStmt(C,JCE))
         EmitTopLevelDecl(C, x)
     end
 end
@@ -440,6 +485,7 @@ function collect_exprs(str)
         expr == nothing && continue
         write(sourcebuf,string("__lambdaarg",i))
         push!(exprs, (expr, isexpr))
+        i += 1
     end
     exprs, takebuf_string(sourcebuf)
 end
@@ -544,8 +590,9 @@ end
     C = instance(CT)
     T = typeForLambda(l)
     ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
-    EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
+    body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
         symargs = (:(l.captureData),[:(args[$i]) for i = 1:length(args)]...))
+    body
 end
 
 function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)

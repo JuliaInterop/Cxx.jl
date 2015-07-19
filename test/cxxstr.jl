@@ -134,7 +134,7 @@ $:(push!(test103::Vector{Int32},icxx"return x;"); nothing);
 @cxx foo103()
 @test test103 == [5,5]
 
-#The same thing with two arguments
+# The same thing with two arguments
 test2_103 = Array(Tuple{Int32,Int32},0)
 cxx"""
 void foo2_103() {
@@ -146,3 +146,19 @@ $:(push!(test2_103,(icxx"return x;",icxx"return y;")); nothing);
 @cxx foo2_103()
 @test test2_103 == [(5,6)]
 
+# And with arguments being interpolated again form the julia level (aka L4 nesting)
+global foo3_103_ok = false
+cxx"""
+bool foo3_103() {
+$:(begin
+  x = 5
+  y = 6
+  @assert !icxx"return $x == $y;"
+  global foo3_103_ok = true
+  nothing
+end);
+return true;
+}
+"""
+@assert @cxx foo3_103();
+@assert foo3_103_ok
