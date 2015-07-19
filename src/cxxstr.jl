@@ -96,16 +96,21 @@ function CreateTemplatedLambdaCall(C,DC,callnum,nargs)
     D
 end
 
-substitute_symbols!(s::Symbol,substs) = haskey(substs,s) ? substs[s] : s
-substitute_symbols!(s::GlobalRef, substs) =
-  haskey(substs,s.name) ? substs[s.name] : s
-function substitute_symbols!(e::Expr,substs)
+callsymbol(s::Symbol) = s
+callsymbol(s::GlobalRef) = s.name
+function substitute_lambdacalls!(e::Expr,substs)
     for i in 1:length(e.args)
-        if !isa(e.args[i],Symbol) && !isa(e.args[i],Expr) &&
-           !isa(e.args[i],GlobalRef)
+        if !isa(e.args[i],Expr)
             continue
         end
-        e.args[i] = substitute_symbols!(e.args[i],substs)
+        arg = e.args[i]
+        if isexpr(arg,:call) && length(arg.args) >= 3 &&
+            arg.args[1] == Cxx.lambdacall &&
+            haskey(substs,callsymbol(arg.args[3]))
+            e.args[i] = substs[callsymbol(arg.args[3])]
+        else
+            e.args[i] = substitute_lambdacalls!(arg, substs)
+        end
     end
     e
 end
@@ -207,13 +212,9 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
               push!(bodies,body)
             else
               # Use the lambdacall method
-              body = Expr(:call, Cxx.lambdacall,
-                :($(Cxx.CxxInstance{findfirst(active_instances,C)})()),
-                syms[i], [arg[1] for arg in icxxs[i][3]]...)
-              push!(bodies,body)
-
-              # Use the icxx code to do this
               useBoxed = true
+              # This is the default representation, so no substitutions needed
+              push!(bodies,Expr(:thisisnotavalidexprdontlookatthis))
             end
         end
 
@@ -222,14 +223,21 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         # Collect substitutions
         substs = Dict{Symbol,Any}()
+        hasSubstitutions = false
         for (i,(j,)) in enumerate(icxxs)
+            if bodies[i].head == :thisisnotavalidexprdontlookatthis
+              continue
+            end
             substs[j] = bodies[i]
+            hasSubstitutions = true
         end
 
         # Apply them
-        ast = Base.uncompressed_ast(F.code)
-        substitute_symbols!(ast,substs)
-        F.code.ast = ast
+        if hasSubstitutions
+          ast = Base.uncompressed_ast(F.code)
+          substitute_lambdacalls!(ast,substs)
+          F.code.ast = ast
+        end
 
         for pvd in tpvds
             SetDeclUsed(C,pvd)
@@ -268,8 +276,12 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
           # Create the body for the instantiation
           JCE = CreateCallExpr(C,CreateFunctionRefExpr(C, JFD),
                   [ createCast(C,CreateAddrOfExpr(C,CreateDeclRefExpr(C,pvd)),PVoid,CK_BitCast) for pvd in tpvds ])
+
         else
-          push!(lambda_roots,F)
+          # Root the function in the above array. Not that we don't care about
+          # that in the other branch of this if statement, because there we
+          # generate IR, which never ever goes away
+          hasSubstitutions && push!(lambda_roots,F)
           # Forward this to jl_calln
           CFD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["jl_calln"]).ptr)
           forwardD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["std","forward"]).ptr)
@@ -490,22 +502,22 @@ function collect_exprs(str)
     exprs, takebuf_string(sourcebuf)
 end
 
-collect_icxx(s,icxxs) = s
-function collect_icxx(e::Expr,icxxs)
+collect_icxx(compiler, s, icxxs) = s
+function collect_icxx(compiler, e::Expr,icxxs)
     if isexpr(e,:macrocall) && e.args[1] == symbol("@icxx_str")
         x = gensym()
         exprs, str = collect_exprs(e.args[2])
         push!(icxxs, (x,str,exprs))
-        return x
+        return Expr(:call, Cxx.lambdacall, compiler, x, [e[1] for e in exprs]...)
     else
         for i in 1:length(e.args)
-            e.args[i] = collect_icxx(e.args[i], icxxs)
+            e.args[i] = collect_icxx(compiler,e.args[i], icxxs)
         end
     end
     e
 end
 
-function process_body(str, global_scope = true, filename=symbol(""),line=1,col=1)
+function process_body(compiler, str, global_scope = true, filename=symbol(""),line=1,col=1)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
@@ -549,7 +561,7 @@ function process_body(str, global_scope = true, filename=symbol(""),line=1,col=1
         push!(isexprs,isexpr)
         this_icxxs = Any[]
         if isexpr
-            collect_icxx(expr,this_icxxs)
+            collect_icxx(compiler, expr,this_icxxs)
         end
         push!(icxxs, this_icxxs)
         cxxargs = join([begin
@@ -610,13 +622,7 @@ function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr
             end
             largs = Expr(:tuple)
             if !isempty(icxxs[i])
-                substs = Dict{Symbol,Any}()
-                for (j,(s,_,ixexprs)) in enumerate(icxxs[i])
-                    arg = gensym()
-                    push!(largs.args, arg)
-                    substs[s] = Expr(:call,Cxx.lambdacall,compiler,arg,[x[1] for x in ixexprs]...)
-                end
-                substitute_symbols!(e,substs)
+                largs.args = [ s for (s,_,ixexprs) in icxxs[i]]
             end
             push!(setup.args,Expr(:(=),s,Expr(:->,largs,e)))
             push!(cxxstr.args,s)
@@ -630,7 +636,7 @@ end
 
 function process_cxx_string(str,global_scope = true,type_name = false,filename=symbol(""),line=1,col=1;
     compiler = :__current_compiler__, tojuliatype = true)
-    startvarnum, sourcebuf, exprs, isexprs, icxxs = process_body(str, global_scope, filename, line, col)
+    startvarnum, sourcebuf, exprs, isexprs, icxxs = process_body(compiler, str, global_scope, filename, line, col)
     if global_scope
         argsetup = Expr(:block)
         argcleanup = Expr(:block)
@@ -665,7 +671,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
                 push!(argsetup.args,quote
                     $s = Cxx.CreateTemplatedLambdaCall($instance,$ctx,$startvarnum,$(length(icxx)))
                 end)
-                syms = tuple([gensym() for _ in 1:length(icxx)]...)
+                syms = [ s for (s,_,ixexprs) in icxxs[i]]
                 push!(postparse.args,quote
                     Cxx.InstantiateSpecializations($instance,$ctx,$s,
                         $(Expr(:->,length(syms) == 1 ? syms[1] : Expr(:tuple,syms...),expr.args[1])),$syms,$icxx)
