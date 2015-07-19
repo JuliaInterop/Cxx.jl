@@ -57,6 +57,9 @@ ifeq ($(OS), Linux)
 LLDB_LIBS += -llldbPluginProcessLinux -llldbPluginProcessPOSIX -lz -lbsd -ledit
 endif
 
+ifneq ($(LLVM_USE_CMAKE),1)
+LLDB_LIBS += -llldbAPI
+endif
 
 ifeq ($(USE_LLVM_SHLIB),1)
 ifeq ($(LLVM_USE_CMAKE),1)
