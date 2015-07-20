@@ -980,6 +980,8 @@ DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     Cxx->CGF->Builder.ClearInsertionPoint();
     Cxx->CGF->FinishFunction(getTrivialSourceLocation(Cxx));
     Cxx->CGF->ReturnBlock.getBlock()->eraseFromParent();
+    Cxx->CGF->ReturnBlock = Cxx->CGF->getJumpDestInCurrentScope(
+      Cxx->CGF->createBasicBlock("return"));
 
     Cxx->CI->getSema().DefineUsedVTables();
     Cxx->CI->getSema().PerformPendingInstantiations(false);
