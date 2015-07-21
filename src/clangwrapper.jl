@@ -602,3 +602,5 @@ getTemplatedDecl(T::pcpp"clang::TemplateDecl") = pcpp"clang::NamedDecl"(ccall((:
 getArrayElementType(T::pcpp"clang::Type") = QualType(ccall((:getArrayElementType, libcxxffi), Ptr{Void}, (Ptr{Void},), T))
 
 getIncompleteArrayType(C, T) = QualType(ccall((:getIncompleteArrayType,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,T))
+
+getFunctionTypeReturnType(T::pcpp"clang::Type") = QualType(ccall((:getFunctionTypeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),T))

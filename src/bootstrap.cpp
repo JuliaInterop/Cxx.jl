@@ -1867,6 +1867,11 @@ DLLEXPORT void *getLambdaCallOperator(clang::CXXRecordDecl *R)
   return R->getLambdaCallOperator();
 }
 
+DLLEXPORT void *getFunctionTypeReturnType(void *T)
+{
+  return ((clang::FunctionType*)T)->getReturnType().getAsOpaquePtr();
+}
+
 /// From SemaOverload.cpp
 /// A convenience routine for creating a decayed reference to a function.
 static clang::ExprResult

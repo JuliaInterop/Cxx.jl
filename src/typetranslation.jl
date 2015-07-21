@@ -517,3 +517,10 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
     end
     return Ptr{Void}
 end
+
+# Some other utilities (some of which are used externally)
+
+function getFTyReturnType(T::QualType)
+    @assert isFunctionType(T)
+    getFunctionTypeReturnType(extractTypePtr(T))
+end
