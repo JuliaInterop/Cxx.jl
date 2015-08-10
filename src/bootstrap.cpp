@@ -875,14 +875,13 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->createPreprocessor(clang::TU_Prefix);
     Cxx->CI->createASTContext();
     Cxx->shadow = new llvm::Module("clangShadow",jl_LLVMContext);
-    TD = new DataLayout(tin.getTargetDescription());
+    TD = new DataLayout(tin.getDataLayoutString());
     Cxx->CGM = new clang::CodeGen::CodeGenModule(
         Cxx->CI->getASTContext(),
         Cxx->CI->getHeaderSearchOpts(),
         Cxx->CI->getPreprocessorOpts(),
         Cxx->CI->getCodeGenOpts(),
         *Cxx->shadow,
-        *TD,
         Cxx->CI->getDiagnostics());
     Cxx->CGF = new clang::CodeGen::CodeGenFunction(*Cxx->CGM);
     Cxx->CGF->CurFuncDecl = NULL;
@@ -903,7 +902,7 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->Parser = new clang::Parser(pp, sema, false);
 
     Cxx->CI->getDiagnosticClient().BeginSourceFile(Cxx->Parser->getLangOpts(), 0);
-    pp.getBuiltinInfo().InitializeBuiltins(pp.getIdentifierTable(),
+    pp.getBuiltinInfo().initializeBuiltins(pp.getIdentifierTable(),
                                            Cxx->Parser->getLangOpts());
     pp.enableIncrementalProcessing();
 
