@@ -2048,7 +2048,6 @@ DLLEXPORT void *getTypeName(C, void *Ty)
   llvm::raw_svector_ostream Out(OutName);
   Cxx->CGM->getCXXABI().
     getMangleContext().mangleCXXRTTIName(clang::QualType::getFromOpaquePtr(Ty), Out);
-  Out.flush();
   StringRef Name = OutName.str();
   StringRef ActualName = Name.substr(4);
   return jl_pchar_to_string(ActualName.data(), ActualName.size());
