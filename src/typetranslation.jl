@@ -475,6 +475,10 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
             return UInt32
         elseif kind == cInt
             return Int32
+        elseif kind == cUShort
+            return UInt16    
+        elseif kind == cShort
+            return Int16
         elseif kind == cChar_U || kind == cChar_S
             return UInt8
         elseif kind == cSChar
