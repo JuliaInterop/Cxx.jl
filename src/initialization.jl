@@ -194,11 +194,11 @@ function ScanLibDirForGCCTriple(base,triple)
         # Skip cross compilers
         # "gcc-cross"
         ("/" * triple * "/gcc/" * triple, "/../../../.."),
-        ("/" * triple, "/../..")
+        ("/" * triple, "/../.."),
         # Don't try to find ubuntu weirdness
         # hopefully recent enough versions don't
         # have this mismatch
-        # "/i386-linux-gnu/gcc/" * triple
+        ("/i386-linux-gnu/gcc/" * triple, "/../../../..")
     ]
     Version = v"0.0.0"
     VersionString = ""
@@ -207,6 +207,7 @@ function ScanLibDirForGCCTriple(base,triple)
         path = base * suffix
         isdir(path) || continue
         for dir in readdir(path)
+            isdir(joinpath(path, dir)) || continue
             CandidateVersion = try
                 VersionNumber(dir)
             catch
@@ -223,7 +224,8 @@ function ScanLibDirForGCCTriple(base,triple)
                ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
                   !isdir( IncPath * "/c++/" * dir ) )  &&
                ( !isdir( IncPath * "/c++/" * dir * "/" * triple ) ||
-                  !isdir( IncPath * "/c++/" * dir ) )
+                  !isdir( IncPath * "/c++/" * dir ) )  && 
+               (triple != "i686-linux-gnu" || !isdir( IncPath * "/i386-linux-gnu/c++/" * dir ))
                 continue
             end
             Version = CandidateVersion
@@ -245,15 +247,24 @@ function AddLinuxHeaderPaths(C)
     "x86_64-linux-android", "x86_64-unknown-linux"
     ]
 
+    const X86LibDirs = ["/lib32", "/lib"]
+    const X86Triples = ["i686-linux-gnu",       "i686-pc-linux-gnu",     "i486-linux-gnu",
+                        "i386-linux-gnu",       "i386-redhat-linux6E",   "i686-redhat-linux",
+                        "i586-redhat-linux",    "i386-redhat-linux",     "i586-suse-linux",
+                        "i486-slackware-linux", "i686-montavista-linux", "i686-linux-android",
+                        "i586-linux-gnu"]
+
     const Prefixes = ["/usr"]
 
+    LibDirs = (Int === Int64 ? X86_64LibDirs : X86LibDirs)
+    Triples = (Int === Int64 ? X86_64Triples : X86Triples)
     Version = v"0.0.0"
     Path = VersionString = Triple = ""
     for prefix in Prefixes
         isdir(prefix) || continue
-        for dir in X86_64LibDirs
-            isdir(prefix) || continue
-            for triple in X86_64Triples
+        for dir in LibDirs
+            isdir(prefix*dir) || continue
+            for triple in Triples
                 CandidateVersion, CandidateVersionString, CandidatePath =
                     ScanLibDirForGCCTriple(prefix*dir,triple)
                 if CandidateVersion > Version
@@ -280,6 +291,9 @@ function AddLinuxHeaderPaths(C)
     addHeaderDir(C, incpath * "/c++/" * VersionString, kind = C_System)
 
     # check which type of include dir we have
+    if Triple == "i686-linux-gnu" && !isdir(incpath * "/" * Triple)
+        Triple = "i386-linux-gnu"
+    end
     if isdir(incpath * "/" * Triple)
        addHeaderDir(C, incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
        addHeaderDir(C, incpath * "/" * Triple, kind = C_System)
