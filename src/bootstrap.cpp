@@ -875,7 +875,7 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->createPreprocessor(clang::TU_Prefix);
     Cxx->CI->createASTContext();
     Cxx->shadow = new llvm::Module("clangShadow",jl_LLVMContext);
-    TD = new DataLayout(tin.getDataLayoutString());
+    Cxx->shadow->setDataLayout(tin.getDataLayoutString());
     Cxx->CGM = new clang::CodeGen::CodeGenModule(
         Cxx->CI->getASTContext(),
         Cxx->CI->getHeaderSearchOpts(),

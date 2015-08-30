@@ -433,7 +433,7 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
     # @cxx llvm::isa{$rt}(t)
-    @eval $(isas)(t::$(argt)) = ccall(($(quot(isas)),libcxxffi),Int,(Ptr{Void},),t) != 0
+    @eval $(isas)(t::$(argt)) = ccall(($(quot(isas)),libcxxffi),Cint,(Ptr{Void},),t) != 0
     @eval $(ds)(t::$(argt)) = ($rt)(ccall(($(quot(ds)),libcxxffi),Ptr{Void},(Ptr{Void},),t))
 end
 
@@ -446,7 +446,7 @@ for s in (:isVoidType,:isBooleanType,:isPointerType,:isReferenceType,
     :isTemplateTypeParmType, :isArrayType)
 
     @eval ($s)(t::QualType) = ($s)(extractTypePtr(t))
-    @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Int,(Ptr{Void},),t) != 0
+    @eval ($s)(t::pcpp"clang::Type") = ccall(($(quot(s)),libcxxffi),Cint,(Ptr{Void},),t) != 0
 end
 
 for (r,s) in ((pcpp"clang::CXXRecordDecl",:getPointeeCXXRecordDecl),
