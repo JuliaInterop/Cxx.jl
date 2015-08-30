@@ -230,3 +230,13 @@ finalize(X)
 foo{T}(x::cxxt"std::vector<$T>") = icxx"$x.size();"
 @test foo(icxx"std::vector<uint64_t>{0};") == 1
 @test foo(icxx"std::vector<uint64_t>{};") == 0
+
+
+# #141
+@assert icxx"""
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+bool ok =(size_t)(&((clang::LangOptions*)0)->CurrentModule) == offsetof(clang::LangOptions,CurrentModule);
+#pragma clang diagnostic pop
+return ok;
+"""
