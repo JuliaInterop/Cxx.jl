@@ -69,8 +69,6 @@ using namespace llvm;
 extern ExecutionEngine *jl_ExecutionEngine;
 extern llvm::LLVMContext &jl_LLVMContext;
 
-static DataLayout *TD;
-
 class JuliaCodeGenerator;
 
 struct CxxInstance {
