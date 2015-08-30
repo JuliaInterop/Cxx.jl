@@ -2,10 +2,29 @@
  * This header file is included by Cxx.jl upon starting up and provides some basic definitions
  * for functionality provided by Cxx, including interaction with julia functions and expressions.
  */
+extern "C" {
+    // Work around a bug in libstdc++
+    extern char *gets (char *str);
+}
+
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <type_traits>
+
+// More workarounds for old libstdc++
+#if defined(__GLIBCXX__) && !defined(__cpp_lib_is_final)
+ namespace std {
+     /// is_final
+     template<typename _Tp>
+       struct is_final
+       : public integral_constant<bool, __is_final(_Tp)>
+       { };
+ }
+#endif
+
 extern "C" {
+
     // Usually this is added by the linker, but we just do it ourselves, because we
     // never actually go to the linker.
     void __dso_handle() {}
