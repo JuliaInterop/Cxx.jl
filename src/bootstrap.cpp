@@ -1406,7 +1406,7 @@ DLLEXPORT void *BuildMemberReference(C, clang::Expr *base, clang::Type *t, int I
     clang::Sema &sema = Cxx->CI->getSema();
     clang::CXXScopeSpec scope;
     return (void*)sema.BuildMemberReferenceExpr(base,clang::QualType(t,0), getTrivialSourceLocation(Cxx), IsArrow, scope,
-      getTrivialSourceLocation(Cxx), nullptr, clang::DeclarationNameInfo(DName, getTrivialSourceLocation(Cxx)), nullptr).get();
+      getTrivialSourceLocation(Cxx), nullptr, clang::DeclarationNameInfo(DName, getTrivialSourceLocation(Cxx)), nullptr, nullptr).get();
 }
 
 DLLEXPORT void *BuildDeclarationNameExpr(C, char *name, clang::DeclContext *ctx)
