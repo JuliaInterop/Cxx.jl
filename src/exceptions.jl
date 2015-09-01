@@ -45,8 +45,8 @@ function exceptionObject{T<:CppRef}(e::CxxException,::Type{T})
 end
 
 import Base: showerror
-function showerror(io::IO, e::CxxException)
-    print(io,"Unrecognized C++ Exception")
+function showerror{kind}(io::IO, e::CxxException{kind})
+    print(io,"Unrecognized C++ Exception ($kind)")
 end
 
 function process_cxx_exception(code::UInt64, e::Ptr{Void})
@@ -58,11 +58,11 @@ function process_cxx_exception(code::UInt64, e::Ptr{Void})
         T = unsafe_load(cxxe).exceptionType
         throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
     elseif (code & get_vendor_and_language) == libstdcxx_class
-      # This is a libstdc++ exception
-      offset = Base.field_offset(LibStdCxxException,length(LibStdCxxException.types)-1)
-      cxxe = Ptr{LibStdCxxException}(e - offset)
-      T = unsafe_load(cxxe).exceptionType
-      throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
+        # This is a libstdc++ exception
+        offset = Base.field_offset(LibStdCxxException,length(LibStdCxxException.types)-1)
+        cxxe = Ptr{LibStdCxxException}(e - offset)
+        T = unsafe_load(cxxe).exceptionType
+        throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
     end
     error("Caught a C++ exception")
 end
