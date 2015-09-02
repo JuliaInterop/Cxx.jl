@@ -330,7 +330,6 @@ function ActOnStartOfFunction(C,D,ScopeIsNull = false)
 end
 function ParseFunctionStatementBody(C,D)
     if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void}),&C,D) == 0
-        dump(D)
         error("A failure occured while parsing the function body")
     end
 end
@@ -398,7 +397,7 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
 
     local FD
     local dne
-    try
+    begin
         ND = ActOnStartNamespaceDef(C,"__icxx")
         fname = string("icxx",icxxcounter)
         icxxcounter += 1
@@ -418,14 +417,9 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(FD.ptr))
         ParseFunctionStatementBody(C,FD)
         ActOnFinishNamespaceDef(C,ND)
-    catch e
-        # Make sure to note that an exception occured, in case
-        # it gets swallowed by the staged function
-        println("Caught exception")
-        rethrow(e)
     end
 
-    #dump(FD)
+    # dump(FD)
 
     EmitTopLevelDecl(C,FD)
 
@@ -445,8 +439,6 @@ end
 
     FD, llvmargs, argidxs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
 
-#    @show "test"
-#    dump(FD)
     InstantiateLambdaType(C)
 
     dne = CreateDeclRefExpr(C,FD)
