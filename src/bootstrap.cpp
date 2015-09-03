@@ -465,12 +465,15 @@ DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
 
   // If the function body could not be parsed, return an error
   if (!FnBody.isUsable()) {
+    sema.ActOnFinishFunctionBody(D, nullptr);
     return false;
   }
 
   clang::CompoundStmt *Body = cast<clang::CompoundStmt>(FnBody.get());
-  if (Body->body_empty())
+  if (Body->body_empty()) {
+    sema.ActOnFinishFunctionBody(D, nullptr);
     return false;
+  }
 
   // If we don't yet have a return statement, implicitly return
   // the result of the last statement
@@ -479,8 +482,10 @@ DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
     clang::Stmt *last = Body->body_back();
     if (last && isa<clang::Expr>(last)) {
       clang::StmtResult RetStmt(sema.BuildReturnStmt(getTrivialSourceLocation(Cxx), cast<clang::Expr>(last)));
-      if (!RetStmt.isUsable())
+      if (!RetStmt.isUsable()) {
+        sema.ActOnFinishFunctionBody(D, nullptr);
         return false;
+      }
       Body->setLastStmt(RetStmt.get());
     }
   }
