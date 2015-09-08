@@ -268,6 +268,8 @@ cpptype{f}(C,p::Type{CppFptr{f}}) = pointerTo(C,cpptype(C,f))
 
 cpptype(C,F::Type{Function}) = cpptype(C,pcpp"jl_function_t")
 
+Base.call(F::pcpp"_jl_function_t", args...) = (unsafe_pointer_to_objref(F.ptr)::Function)(args...)
+
 # # # # Section 2: Mapping Julia types to clang types
 #
 # Somewhat simpler than the above, because we simply need to call the

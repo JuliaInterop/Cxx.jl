@@ -158,20 +158,21 @@ module CxxREPL
             prompt_suffix=Base.text_colors[:white],
             on_enter = s->isExpressionComplete(C,bytestring(LineEdit.buffer(s))))
 
+        mirepl = isdefined(Base.active_repl,:mi) ? Base.active_repl.mi : Base.active_repl
         repl = Base.active_repl
 
         panel.on_done = REPL.respond(onDoneCreator(C),repl,panel)
 
-        main_mode = repl.interface.modes[1]
+        main_mode = mirepl.interface.modes[1]
 
-        push!(repl.interface.modes,panel)
+        push!(mirepl.interface.modes,panel)
 
         hp = main_mode.hist
         hp.mode_mapping[name] = panel
         panel.hist = hp
 
         const cxx_keymap = Dict{Any,Any}(
-            '<' => function (s,args...)
+            key => function (s,args...)
                 if isempty(s) || position(LineEdit.buffer(s)) == 0
                     buf = copy(LineEdit.buffer(s))
                     LineEdit.transition(s, panel) do
