@@ -224,7 +224,7 @@ function ScanLibDirForGCCTriple(base,triple)
                ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
                   !isdir( IncPath * "/c++/" * dir ) )  &&
                ( !isdir( IncPath * "/c++/" * dir * "/" * triple ) ||
-                  !isdir( IncPath * "/c++/" * dir ) )  && 
+                  !isdir( IncPath * "/c++/" * dir ) )  &&
                (triple != "i686-linux-gnu" || !isdir( IncPath * "/i386-linux-gnu/c++/" * dir ))
                 continue
             end
@@ -320,18 +320,24 @@ function addClangHeaders(C)
     addHeaderDir(C,joinpath(JULIA_HOME,"../lib/clang/3.8.0/include/"), kind = C_ExternCSystem)
 end
 
-function initialize_instance!(C)
+function initialize_instance!(C; register_boot = true)
     if !nostdcxx
         addStdHeaders(C)
     end
     addClangHeaders(C)
-    cxxinclude(C,Pkg.dir("Cxx","src","boot.h"))
+    register_boot && register_booth(C)
+end
+
+function register_booth(C)
+    C = Cxx.instance(C)
+    cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
     RegisterType(C,lookup_name(C,["jl_value_t"]),getPointerElementType(julia_to_llvm(Any)))
 end
 
+
+
 # As an optimzation, create a generic function per compiler instance,
 # to avoid having to create closures at the call site
-
 function __init__()
     init_libcxxffi()
     C = setup_instance()
@@ -342,9 +348,9 @@ function __init__()
     unsafe_store!(callback, cfunction(process_cxx_exception,Void,Tuple{UInt64,Ptr{Void}}))
 end
 
-function new_clang_instance()
+function new_clang_instance(register_boot = true)
     C = setup_instance()
-    initialize_instance!(C)
+    initialize_instance!(C; register_boot = register_boot)
     push!(active_instances, C)
     CxxInstance{length(active_instances)}()
 end

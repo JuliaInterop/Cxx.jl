@@ -30,3 +30,4 @@ const __default_compiler__ = __current_compiler__
 
 instance{n}(::CxxInstance{n}) = active_instances[n]
 instance{n}(::Type{CxxInstance{n}}) = active_instances[n]
+instance(C::ClangCompiler) = C

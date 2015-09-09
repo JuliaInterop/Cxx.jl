@@ -24,11 +24,15 @@ extern "C" {
 #endif
 
 extern "C" {
-
     // Usually this is added by the linker, but we just do it ourselves, because we
     // never actually go to the linker.
     void __dso_handle() {}
 
+// Some bootstrap definitions to be able to call julia functions.
+// However, these conflict with the real julia.h, so when that's present,
+// don't define this. You'll need to delay loading this file until after
+// julia.h is loaded.
+#ifndef JULIA_H
     typedef struct _jl_value_t {
         struct _jl_value_t *fake;
     } jl_value_t;
@@ -83,6 +87,7 @@ extern "C" {
     // This is not the definition of this in C, but it is the definition that
     // julia exposes to LLVM, so we need to stick to it.
     extern jl_value_t **jl_pgcstack;
+#endif
 
     extern int __cxxjl_personality_v0();
 }
@@ -90,6 +95,7 @@ void *__hack() {
     return (void*)&__cxxjl_personality_v0;
 }
 
+#ifndef JULIA_H
 #define JL_GC_PUSHARGS(rts_var,n)                                   \
   rts_var = ((jl_value_t**)__builtin_alloca(((n)+2)*sizeof(jl_value_t*)))+2;  \
   ((void**)rts_var)[-2] = (void*)(((size_t)n)<<1);                  \
@@ -97,6 +103,7 @@ void *__hack() {
   memset((void*)rts_var, 0, (n)*sizeof(jl_value_t*));               \
   jl_pgcstack = (jl_value_t **)&(((void**)rts_var)[-2])
 #define JL_GC_POP() (jl_pgcstack = (jl_value_t**)((jl_gcframe_t*)jl_pgcstack)->prev)
+#endif
 
 template <typename arg> struct lambda_type {
   static jl_value_t *type;
