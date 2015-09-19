@@ -430,7 +430,7 @@ DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *
     Value::user_iterator I = NF->user_begin();
     if (llvm::isa<llvm::CallInst>(*I)) {
       llvm::InlineFunctionInfo IFI;
-      llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,true);
+      llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,nullptr,true);
     } else {
       jl_error("Tried to do something other than calling it to a julia expression");
     }
@@ -983,7 +983,7 @@ DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     //assert(in_cpp == true);
     //in_cpp = false;
 
-    Cxx->CGF->ReturnValue = nullptr;
+    Cxx->CGF->ReturnValue = clang::CodeGen::Address(nullptr,clang::CharUnits());
     Cxx->CGF->Builder.ClearInsertionPoint();
     Cxx->CGF->FinishFunction(getTrivialSourceLocation(Cxx));
     Cxx->CGF->ReturnBlock.getBlock()->eraseFromParent();
@@ -1106,7 +1106,8 @@ DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
     if (type == cT_int1(Cxx))
       V = Cxx->CGF->Builder.CreateZExt(V, Ty);
     // Associate the value with this decl
-    Cxx->CGF->EmitParmDecl(*vd, Cxx->CGF->Builder.CreateBitCast(V, Ty), false, 0);
+    Cxx->CGF->EmitParmDecl(*vd,
+      clang::CodeGen::CodeGenFunction::ParamValue::forDirect(Cxx->CGF->Builder.CreateBitCast(V, Ty)), 0);
 }
 
 DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
@@ -1163,16 +1164,18 @@ DLLEXPORT void *emitcallexpr(C, clang::Expr *E, llvm::Value *rslot)
     clang::CallExpr *CE = dyn_cast<clang::CallExpr>(E);
     assert(CE != NULL);
 
-    clang::CodeGen::RValue ret = Cxx->CGF->EmitCallExpr(CE,clang::CodeGen::ReturnValueSlot(rslot,false));
+    clang::CodeGen::RValue ret = Cxx->CGF->EmitCallExpr(CE,clang::CodeGen::ReturnValueSlot(
+      clang::CodeGen::Address(rslot,clang::CharUnits::One()),false));
     if (ret.isScalar())
       return ret.getScalarVal();
     else
-      return ret.getAggregateAddr();
+      return ret.getAggregateAddress().getPointer();
 }
 
 DLLEXPORT void emitexprtomem(C,clang::Expr *E, llvm::Value *addr, int isInit)
 {
-    Cxx->CGF->EmitAnyExprToMem(E, addr, clang::Qualifiers(), isInit);
+    Cxx->CGF->EmitAnyExprToMem(E, clang::CodeGen::Address(addr,clang::CharUnits::One()),
+      clang::Qualifiers(), isInit);
 }
 
 DLLEXPORT void *EmitAnyExpr(C, clang::Expr *E, llvm::Value *rslot)
@@ -1181,7 +1184,7 @@ DLLEXPORT void *EmitAnyExpr(C, clang::Expr *E, llvm::Value *rslot)
     if (ret.isScalar())
       return ret.getScalarVal();
     else
-      return ret.getAggregateAddr();
+      return ret.getAggregateAddress().getPointer();
 }
 
 DLLEXPORT void *get_nth_argument(Function *f, size_t n)
@@ -1977,7 +1980,7 @@ DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
   Cxx->CI->getSema().MarkFunctionReferenced(clang::SourceLocation(), Destructor);
   Cxx->CI->getSema().DefineUsedVTables();
   Cxx->CI->getSema().PerformPendingInstantiations(false);
-  Cxx->CGF->destroyCXXObject(*Cxx->CGF, x, clang::QualType(T,0));
+  Cxx->CGF->destroyCXXObject(*Cxx->CGF, clang::CodeGen::Address(x,clang::CharUnits::One()), clang::QualType(T,0));
 }
 
 DLLEXPORT bool hasTrivialDestructor(C, clang::CXXRecordDecl *RD)

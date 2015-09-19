@@ -2,10 +2,10 @@
 # into a clang AST, as well as performing the necessary work to do the
 # actual codegen.
 
-const CxxBuiltinTypes = Union(Type{Bool},
+const CxxBuiltinTypes = Union{Type{Bool},
     Type{UInt8},  Type{Int8},    Type{UInt16}, Type{Int16},
     Type{Int32},  Type{UInt32},  Type{Int64},  Type{UInt64},
-    Type{Float32}, Type{Float64})
+    Type{Float32}, Type{Float64}}
 
 # # # Section 1: Pseudo-AST handling
 #
@@ -89,8 +89,8 @@ CppAddr{T}(val::T) = CppAddr{T}(val)
 # we'll be dealing with these directly
 
 stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
-stripmodifier{T,CVR}(p::Union(Type{CppPtr{T,CVR}},
-    Type{CppRef{T,CVR}})) = p
+stripmodifier{T,CVR}(p::Union{Type{CppPtr{T,CVR}},
+    Type{CppRef{T,CVR}}}) = p
 stripmodifier{T <: CppValue}(p::Type{T}) = p
 stripmodifier{s}(p::Type{CppEnum{s}}) = p
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
@@ -99,7 +99,7 @@ stripmodifier(p::Type{Function}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = p
 stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
 
-resolvemodifier{T,CVR}(C,p::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}), e::pcpp"clang::Expr") = e
+resolvemodifier{T,CVR}(C,p::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T <: CppValue}(C, p::Type{T}, e::pcpp"clang::Expr") = e
 resolvemodifier(C,p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
 resolvemodifier{T}(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
@@ -137,7 +137,7 @@ resolvemodifier_llvm(C, builder, t::Type{Function}, v::pcpp"llvm::Value") = v
 
 
 function resolvemodifier_llvm{T,CVR}(C, builder,
-    t::Union(Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}), v::pcpp"llvm::Value")
+    t::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, v::pcpp"llvm::Value")
     # CppPtr and CppRef are julia immutables with one field, so at the LLVM
     # level they are represented as LLVM structrs with one (pointer) field.
     # To get at the pointer itself, we simply need to emit an extract
@@ -423,7 +423,7 @@ end
 # error.
 function check_args(argt,f)
     for (i,t) in enumerate(argt)
-        if isa(t,UnionType) || (isa(t,DataType) && t.abstract) ||
+        if isa(t,Union) || (isa(t,DataType) && t.abstract) ||
             (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) &&
                 !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
                 !(t <: CppDeref) && !(t <: CppAddr) && !(t <: Ptr) &&
@@ -512,7 +512,7 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
 
     rett = juliatype(rt)
 
-    @assert !(rett <: None)
+    @assert !(rett <: Union{})
 
     needsret = false
     if rett <: CppValue
@@ -679,7 +679,7 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
         rt = BuildDecltypeType(C,ce)
         rett = juliatype(rt)
 
-        issret = (rett != None) && rett <: CppValue
+        issret = (rett != Union{}) && rett <: CppValue
     elseif ctce != C_NULL
         issret = true
         rt = GetExprResultType(ctce)
@@ -779,7 +779,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         end
     end
 
-    if (rett != None) && rett <: CppValue
+    if (rett != Union{}) && rett <: CppValue
         arguments = vcat([:r], args2)
         size = cxxsizeof(C,rt)
         B = Expr(:block,

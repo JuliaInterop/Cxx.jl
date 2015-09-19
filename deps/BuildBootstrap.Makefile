@@ -1,11 +1,11 @@
-JULIAHOME = $(subst \,/,$(JULIA_HOME))/../..
+JULIAHOME := $(subst \,/,$(JULIA_HOME))/../..
 include $(JULIAHOME)/deps/Versions.make
 include $(JULIAHOME)/Make.inc
 
 FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) -I$(build_includedir) \
 		-I$(JULIAHOME)/src/support \
 		-I$(call exec,$(LLVM_CONFIG) --includedir) \
-		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
+		-I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib
 
 JULIA_LDFLAGS = -L$(build_shlibdir) -L$(build_libdir)
 
@@ -41,6 +41,7 @@ LLDB_LIBS = -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialization \
     -llldbPluginCPlusPlusLanguage \
     -llldbPluginObjCPlusPlusLanguage \
     -llldbPluginExpressionParserClang \
+    -llldbPluginOSGo \
     $(call exec,$(LLVM_CONFIG) --system-libs)
 LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginABIMacOSX_i386
 ifeq ($(OS), Darwin)

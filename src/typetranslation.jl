@@ -121,7 +121,7 @@ function lookup_name(C::ClangCompiler,parts, cxxscope = C_NULL, start=translatio
 end
 
 # Convenience method for splitting a qualified name into actual parts
-function lookup_ctx(C, fname::String;
+function lookup_ctx(C, fname::AbstractString;
     cxxscope=C_NULL, cur=translation_unit(C), addlast = false)
     lookup_name(C, split(fname,"::"),cxxscope,cur, addlast)
 end
@@ -203,18 +203,18 @@ end
 
 # For getting the decl ignore the CVR qualifiers, pointer qualification, etc.
 # and just do the lookup on the base decl
-function cppdecl{T,CVR}(C,::Union(
-    Type{CppPtr{T,CVR}}, Type{CxxQualType{T,CVR}}, Type{CppRef{T,CVR}}))
+function cppdecl{T,CVR}(C,::Union{
+    Type{CppPtr{T,CVR}}, Type{CxxQualType{T,CVR}}, Type{CppRef{T,CVR}}})
     cppdecl(C,T)
 end
 
 # Get a clang Type * for the decl we have looked up.
 # @cxx (@cxx dyn_cast{vcpp"clang::TypeDecl"}(d))->getTypeForDecl()
-function typeForDecl(d::Union(
+function typeForDecl(d::Union{
         # Luckily Decl is the first base for these, so we can get away
         # with only one function on the C++ side that takes a Decl*
         pcpp"clang::Decl",pcpp"clang::CXXRecordDecl",
-        pcpp"clang::ClassTemplateSpecializationDecl"))
+        pcpp"clang::ClassTemplateSpecializationDecl"})
     @assert d != C_NULL
     pcpp"clang::Type"(ccall((:typeForDecl,libcxxffi),Ptr{Void},(Ptr{Void},),d))
 end

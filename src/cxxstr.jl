@@ -11,7 +11,7 @@ function llvmconst(val::ANY)
     T = typeof(val)
     if isbits(T)
         if !Base.isstructtype(T)
-            if T <: FloatingPoint
+            if T <: AbstractFloat
                 return getConstantFloat(julia_to_llvm(T),Float64(val))
             elseif T <: Integer
                 return getConstantInt(julia_to_llvm(T),UInt64(val))
@@ -46,9 +46,9 @@ function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs=Dict{Void,Void}())
         # will never know :)
         setfield!(thunk.code,6,Tuple{})
         if T === Union{}
-            T = Nothing
+            T = Void
         end
-        if isa(T,UnionType) || T.abstract
+        if isa(T,Union) || T.abstract
             error("Inferred Union or abstract type $T for expression $e")
         end
         sv = CreateFunctionDecl(C,ctx,string("call",varnum),makeFunctionType(C,cpptype(C,T),QualType[]))
@@ -256,13 +256,13 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
           # will never know :)
           setfield!(F.code,6,ST)
           if T === Union{}
-              T = Nothing
+              T = Void
           end
-          if isa(T,UnionType) || T.abstract
+          if isa(T,Union) || T.abstract
               error("Inferred Union or abstract type $T for expression $F")
           end
-          if T !== Nothing
-              error("Currently only `Nothing` is supported for nested expressions")
+          if T !== Void
+              error("Currently only `Void` is supported for nested expressions")
           end
 
           # We can emit a direct llvm-level reference to this
@@ -317,7 +317,7 @@ function ArgCleanup(C,e,sv)
     end
 end
 
-const sourcebuffers = Array(Tuple{String,Symbol,Int,Int},0)
+const sourcebuffers = Array(Tuple{AbstractString,Symbol,Int,Int},0)
 
 immutable SourceBuf{id}; end
 sourceid{id}(::Type{SourceBuf{id}}) = id

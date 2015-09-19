@@ -49,7 +49,7 @@ tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(p.ptr)
 # For typetranslation.jl
 BuildNNS(C,cxxscope,part) = ccall((:BuildNNS,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8}),&C,cxxscope,part)
 
-function _lookup_name(C,fname::String, ctx::pcpp"clang::DeclContext")
+function _lookup_name(C,fname::AbstractString, ctx::pcpp"clang::DeclContext")
     @assert ctx != C_NULL
     pcpp"clang::Decl"(
         ccall((:lookup_name,libcxxffi),Ptr{Void},
@@ -149,8 +149,8 @@ getNumParameters(targs::pcpp"clang::TemplateDecl") =
 
 getTargType(targ) = QualType(ccall((:getTargType,libcxxffi),Ptr{Void},(Ptr{Void},),targ))
 
-getTargTypeAtIdx(targs::Union(rcpp"clang::TemplateArgumentList",
-                              pcpp"clang::TemplateArgumentList"), i) =
+getTargTypeAtIdx(targs::Union{rcpp"clang::TemplateArgumentList",
+                              pcpp"clang::TemplateArgumentList"}, i) =
     QualType(ccall((:getTargTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
 
 getTargTypeAtIdx(targs::pcpp"clang::TemplateSpecializationType", i) =
@@ -327,7 +327,7 @@ getCalleeReturnType(t::pcpp"clang::CallExpr") = QualType(ccall((:getCalleeReturn
 
 isIncompleteType(t::pcpp"clang::Type") = pcpp"clang::NamedDecl"(ccall((:isIncompleteType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
-function createNamespace(C,name::String)
+function createNamespace(C,name::AbstractString)
     pcpp"clang::NamespaceDecl"(
         ccall((:createNamespace,libcxxffi),Ptr{Void},
             (Ptr{ClangCompiler},Ptr{UInt8}),&C,bytestring(name)))
@@ -477,7 +477,7 @@ to_decl(p::pcpp"clang::DeclContext") =
 isaNamespaceDecl(d::pcpp"clang::CXXRecordDecl") = false
 
 ActOnTypeParameter(C, Name, pos) =
-    pcpp"clang::Decl"(ccall((:ActOnTypeParameter,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Uint8},Cuint),&C,Name,pos))
+    pcpp"clang::Decl"(ccall((:ActOnTypeParameter,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{UInt8},Cuint),&C,Name,pos))
 
 CreateTemplateParameterList(C, decls) =
     pcpp"clang::TemplateParameterList"(ccall((:CreateTemplateParameterList,libcxxffi),
@@ -497,7 +497,7 @@ function getSpecializations(FTD)
 end
 
 function getMangledFunctionName(C, FD)
-    bytestring(ccall((:getMangledFunctionName,libcxxffi),Ptr{Uint8},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+    bytestring(ccall((:getMangledFunctionName,libcxxffi),Ptr{UInt8},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
 end
 
 function templateParameters(FD)
@@ -586,7 +586,7 @@ ActOnFinishFunctionBody(C, FD, Stmt) =
 EnterParserScope(C) = ccall((:EnterParserScope,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
 ExitParserScope(C) = ccall((:ExitParserScope,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
 ActOnTypeParameterParserScope(C, Name, pos) =
-    pcpp"clang::Decl"(ccall((:ActOnTypeParameterParserScope,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Uint8},Cint),&C,Name,pos))
+    pcpp"clang::Decl"(ccall((:ActOnTypeParameterParserScope,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{UInt8},Cint),&C,Name,pos))
 
 getUnderlyingTemplateDecl(TST) =
     pcpp"clang::TemplateDecl"(ccall((:getUnderlyingTemplateDecl,libcxxffi),Ptr{Void},(Ptr{Void},),TST))
