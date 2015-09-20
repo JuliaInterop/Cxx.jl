@@ -301,11 +301,18 @@ DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **types
 {
   clang::TemplateArgument *targs = new clang::TemplateArgument[nargs];
   for (size_t i = 0; i < nargs; ++i) {
-    if (integralValuePresent[i] == 1)
-      targs[i] = clang::TemplateArgument(Cxx->CI->getASTContext(),
-        llvm::APSInt(llvm::APInt(8,integralValues[i])),clang::QualType::getFromOpaquePtr(types[i]));
-    else
+    if (integralValuePresent[i] == 1) {
+      clang::QualType IntT = clang::QualType::getFromOpaquePtr(types[i]);
+      size_t BitWidth = Cxx->CI->getASTContext().getTypeSize(IntT);
+      llvm::APSInt Value(llvm::APInt(8,integralValues[i]));
+      if (Value.getBitWidth() != BitWidth)
+        Value = Value.extOrTrunc(BitWidth);
+      Value.setIsSigned(IntT->isSignedIntegerOrEnumerationType());
+      targs[i] = clang::TemplateArgument(Cxx->CI->getASTContext(),Value,IntT);
+    } else {
       targs[i] = clang::TemplateArgument(clang::QualType::getFromOpaquePtr(types[i]));
+    }
+    targs[i] = Cxx->CI->getASTContext().getCanonicalTemplateArgument(targs[i]);
   }
   void *InsertPos;
   clang::ClassTemplateSpecializationDecl *ret =
