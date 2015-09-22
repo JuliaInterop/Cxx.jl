@@ -38,7 +38,7 @@ end
 
 macro icxxdebug_str(str,args...)
     compiler = :__current_compiler__
-    startvarnum, sourcebuf, exprs, isexprs = process_body(str, false, args...)
+    startvarnum, sourcebuf, exprs, isexprs = process_body(compiler, str, false, args...)
     if isempty(args)
         args = (symbol(""),1,1)
     end

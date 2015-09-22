@@ -415,7 +415,7 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
         return Bool
     elseif isPointerType(t)
         pt = getPointeeType(t)
-        tt = juliatype(pt)
+        tt = juliatype(pt,typeargs)
         if tt <: CppFunc
             return CppFptr{tt}
         elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
@@ -442,7 +442,7 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
             for i = 0:(getNumParams(t)-1)
                 push!(args,getParam(t,i))
             end
-            f = CppFunc{juliatype(rt), Tuple{map(juliatype,args)...}}
+            f = CppFunc{juliatype(rt,typeargs), Tuple{map(juliatype,args)...}}
             return f
         else
             error("Function has no proto type")
@@ -453,9 +453,9 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
         return CppMFptr{juliatype(cxxd),juliatype(pointee)}
     elseif isReferenceType(t)
         t = getPointeeType(t)
-        jt = juliatype(t)
+        jt = juliatype(t,typeargs)
         if jt <: CppValue
-            return CppRef{toBaseType(extractTypePtr(t)),CVR}
+            return CppRef{jt.parameters[1],CVR}
         else
             return CppRef{jt,CVR}
         end

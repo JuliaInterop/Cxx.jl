@@ -6,6 +6,14 @@ immutable QualType
     ptr::Ptr{Void}
 end
 
+# All types that are recgonized as builtins
+const CxxBuiltinTypes = Union{Type{Bool},
+    Type{UInt8},  Type{Int8},    Type{UInt16}, Type{Int16},
+    Type{Int32},  Type{UInt32},  Type{Int64},  Type{UInt64},
+    Type{Float32}, Type{Float64}}
+const CxxBuiltinTs = Union{Bool, UInt8, Int8, UInt16, Int16,
+    Int32, UInt32, Int64, UInt64, Float32, Float64}
+
 # # # Representing C++ values
 #
 # Since we can't always keep C++ values in C++ land and to make C++ values
@@ -92,6 +100,8 @@ immutable CppRef{T,CVR}
 end
 
 cconvert(::Type{Ptr{Void}},p::CppRef) = p.ptr
+Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) =
+    unsafe_load(convert(Ptr{T},p.ptr))
 
 # The equivalent of a C++ pointer.
 # T can be a CppValue, CppPtr, etc. depending on the pointed to type,
