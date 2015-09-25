@@ -7,6 +7,10 @@ extern "C" {
     extern char *gets (char *str);
 }
 
+// For old C libraries that still look at this in C++ mode
+#define __STDC_LIMIT_MACROS
+#define __STDC_CONSTANT_MACROS
+
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
