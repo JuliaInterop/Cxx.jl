@@ -81,6 +81,9 @@ module CxxREPL
     end
 
     function isTopLevelExpression(C,data)
+        if contains(data,":=")
+            return false
+        end
         x = [Cxx.instance(C)]
         return isPPDirective(C,data) || icxx"""
             clang::Parser *P = $(Cxx.parser(C));
@@ -144,8 +147,23 @@ module CxxREPL
 
     function createDefaultDone(C)
         function(line)
-            Cxx.process_cxx_string(string(line,"\n;"), isTopLevelExpression(C,line), false, :REPL, 1, 1;
+            isToplevel = isTopLevelExpression(C,line)
+            isAssignment = false
+            if contains(line,":=")
+                parts = split(line,":=")
+                if length(parts) > 2
+                    error("Only one julia-assignment operator allowed per expression")
+                end
+                var, line = parts
+                var = symbol(strip(var))
+                isAssignment = true
+            end
+            ret = Cxx.process_cxx_string(string(line,"\n;"), isToplevel, false, :REPL, 1, 1;
     compiler = C)
+            if isAssignment
+                ret = :($var = $ret)
+            end
+            ret
         end
     end
 
