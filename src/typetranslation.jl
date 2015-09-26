@@ -455,7 +455,7 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
         t = getPointeeType(t)
         jt = juliatype(t,typeargs)
         if jt <: CppValue
-            return CppRef{jt.parameters[1],CVR}
+            return CppRef{jt.parameters[1].parameters[1],CVR}
         else
             return CppRef{jt,CVR}
         end
@@ -478,7 +478,7 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
         elseif kind == cInt
             return Int32
         elseif kind == cUShort
-            return UInt16    
+            return UInt16
         elseif kind == cShort
             return Int16
         elseif kind == cChar_U || kind == cChar_S
