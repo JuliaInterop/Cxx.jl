@@ -168,6 +168,7 @@ module CxxStd
 
     using Cxx
     include("std.jl")
+    include("show.jl")
 
 end
 
