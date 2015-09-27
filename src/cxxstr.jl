@@ -509,7 +509,7 @@ function collect_icxx(compiler, e::Expr,icxxs)
     e
 end
 
-function process_body(compiler, str, global_scope = true, filename=symbol(""),line=1,col=1)
+function process_body(compiler, str, global_scope = true, cxxt = false, filename=symbol(""),line=1,col=1)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
@@ -520,10 +520,10 @@ function process_body(compiler, str, global_scope = true, filename=symbol(""),li
     # rather than the source with __julia* substitutions
     pos = 1
     sourcebuf = IOBuffer()
-    if !global_scope
+    if !global_scope && !cxxt
         write(sourcebuf,"{\n")
     end
-    if filename != symbol("")
+    if !cxxt && filename != symbol("")
         if filename == :none
             filename = :REPL
         end
@@ -575,7 +575,7 @@ function process_body(compiler, str, global_scope = true, filename=symbol(""),li
                     write(sourcebuf, "jl_calln(")
                 end
             end
-            write(sourcebuf, string("__juliavar",localvarnum))
+            write(sourcebuf, string(cxxt?"__julia::var":"__juliavar",localvarnum))
             if isexpr
                 !isempty(this_icxxs) && write(sourcebuf,',')
                 write(sourcebuf,cxxargs)
@@ -584,7 +584,7 @@ function process_body(compiler, str, global_scope = true, filename=symbol(""),li
             localvarnum += 1
         end
     end
-    if !global_scope
+    if !cxxt && !global_scope
         write(sourcebuf,"\n}")
     end
     startvarnum, sourcebuf, exprs, isexprs, icxxs
@@ -597,6 +597,45 @@ end
     body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
         symargs = (:(l.captureData),[:(args[$i]) for i = 1:length(args)]...))
     body
+end
+
+immutable CodeLoc{filename,line,col}
+end
+
+immutable CxxTypeName{name}
+end
+
+@generated function CxxType(CT, t::CxxTypeName, loc, args...)
+    C = instance(CT)
+    typename = string(t.parameters[1])
+    varnum = 0
+    mapping = Dict{Int,Any}()
+    jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
+    ns = Cxx.createNamespace(C,"julia")
+    ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
+    unsafe_store!(jns,ns.ptr)
+    Cxx.EnterParserScope(C)
+    for (i,arg) in enumerate(args)
+        if arg == TypeVar || arg <: Integer
+            name = string("var",varnum)
+            typename = replace(typename, string("__julia::var",i), name)
+            ActOnTypeParameterParserScope(C,name,varnum)
+            mapping[varnum] = :(args[$i])
+            varnum += 1
+        elseif arg <: Type
+            QT = cpptype(C,arg.parameters[1])
+            name = string("var",i)
+            sv = CreateTypeDefDecl(C,ctx,name,QT)
+            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(sv.ptr))
+        end
+    end
+    x = Cxx.ParseVirtual(C, typename,
+        VirtualFileName(string(loc.parameters[1])), loc.parameters[1],
+        loc.parameters[2], loc.parameters[3], true)
+    Cxx.ExitParserScope(C)
+    unsafe_store!(jns,C_NULL)
+    ret = juliatype(x,true,mapping)
+    ret
 end
 
 function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)
@@ -628,7 +667,8 @@ end
 
 function process_cxx_string(str,global_scope = true,type_name = false,filename=symbol(""),line=1,col=1;
     compiler = :__current_compiler__, tojuliatype = true)
-    startvarnum, sourcebuf, exprs, isexprs, icxxs = process_body(compiler, str, global_scope, filename, line, col)
+    startvarnum, sourcebuf, exprs, isexprs, icxxs =
+        process_body(compiler, str, global_scope, !global_scope && type_name, filename, line, col)
     if global_scope
         argsetup = Expr(:block)
         argcleanup = Expr(:block)
@@ -689,7 +729,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
           end)
           tojuliatype &&
             push!(postparse.args, quote
-                $x = Cxx.juliatype($x, $typeargs)
+                $x = Cxx.juliatype($x, false, $typeargs)
             end)
         end
         return quote
@@ -707,9 +747,14 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
             end
         end
     else
-        push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
-        id = length(sourcebuffers)
-        build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
+        if type_name
+            Expr(:call,Cxx.CxxType,:__current_compiler__,
+                CxxTypeName{symbol(takebuf_string(sourcebuf))}(),CodeLoc{filename,line,col}(),exprs...)
+        else
+            push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
+            id = length(sourcebuffers)
+            build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
+        end
     end
 end
 
@@ -717,23 +762,21 @@ macro cxx_str(str,args...)
     esc(process_cxx_string(str,true,false,args...))
 end
 
-macro cxxt_str(str,args...)
-    esc(process_cxx_string(str,true,true,args...))
-end
-
 # Not exported
-macro ccxxt_str(str,args...)
-    esc(process_cxx_string(str,true,true,args...; tojuliatype = false))
+macro cxxt_str(str,args...)
+    esc(process_cxx_string(str,false,true,args...))
 end
 
 macro icxx_str(str,args...)
     esc(process_cxx_string(str,false,false,args...))
 end
 
-macro icxx_mstr(str,args...)
-    esc(process_cxx_string(str,false,false,args...))
+# Not exported
+macro gcxxt_str(str,args...)
+    esc(process_cxx_string(str,true,true,args...))
 end
 
-macro cxx_mstr(str,args...)
-    esc(process_cxx_string(str,true,false,args...))
+
+macro ccxxt_str(str,args...)
+    esc(process_cxx_string(str,true,true,args...; tojuliatype = false))
 end

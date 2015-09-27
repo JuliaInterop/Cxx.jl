@@ -76,5 +76,5 @@ Base.getindex(x::cxxt"std::vector<uint64_t>",i) = icxx"auto x = $ints.at($i); re
 @assert length(ints) == 10
 Cxx.@list cxxt"std::vector<uint64_t>"
 for (i, x) in enumerate(ints)
-    @assert 10*(i-1) < x <= 10*i
+    @assert 10*(i-1) < convert(UInt64,x) <= 10*i
 end

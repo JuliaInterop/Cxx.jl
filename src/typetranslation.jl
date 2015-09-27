@@ -329,7 +329,7 @@ const KindTemplateExpansion = 6
 const KindExpression        = 7
 const KindPack              = 8
 
-function getTemplateParameters(cxxd,typeargs = Dict{Int64,Void}())
+function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}())
     targt = Tuple{}
     if isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(cxxd.ptr))
         tmplt = dcastClassTemplateSpecializationDecl(pcpp"clang::Decl"(cxxd.ptr))
@@ -343,20 +343,17 @@ function getTemplateParameters(cxxd,typeargs = Dict{Int64,Void}())
     for i = 0:(getTargsSize(targs)-1)
         kind = getTargKindAtIdx(targs,i)
         if kind == KindType
-            T = juliatype(getTargTypeAtIdx(targs,i),typeargs)
-            if T <: CppValue
-                T = T.parameters[1]
-            end
+            T = juliatype(getTargTypeAtIdx(targs,i),quoted,typeargs; wrapvalue = false)
             push!(args,T)
         elseif kind == KindIntegral
             val = getTargAsIntegralAtIdx(targs,i)
             t = getTargIntegralTypeAtIdx(targs,i)
-            push!(args,convert(juliatype(t,typeargs),val))
+            push!(args,convert(juliatype(t,quoted,typeargs),val))
         else
             error("Unhandled template argument kind ($kind)")
         end
     end
-    targt = Tuple{args...}
+    return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
 # TODO: Autogenerate this from the appropriate header
@@ -405,17 +402,20 @@ function toBaseType(t::pcpp"clang::Type")
     T
 end
 
-function juliatype(t::QualType, typeargs = Dict{Int,Void}())
+function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
+        wrapvalue = true, valuecvr = true)
     CVR = extractCVR(t)
     t = extractTypePtr(t)
     t = canonicalType(t)
+    local T::Type
     if isVoidType(t)
-        return Void
+        T = Void
     elseif isBooleanType(t)
-        return Bool
+        T = Bool
     elseif isPointerType(t)
+        @assert !quoted
         pt = getPointeeType(t)
-        tt = juliatype(pt,typeargs)
+        tt = juliatype(pt,quoted,typeargs)
         if tt <: CppFunc
             return CppFptr{tt}
         elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
@@ -435,6 +435,7 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
     elseif isFunctionPointerType(t)
         error("Is Function Pointer")
     elseif isFunctionType(t)
+        @assert !quoted
         if isFunctionProtoType(t)
             t = pcpp"clang::FunctionProtoType"(t.ptr)
             rt = getReturnType(t)
@@ -442,67 +443,67 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
             for i = 0:(getNumParams(t)-1)
                 push!(args,getParam(t,i))
             end
-            f = CppFunc{juliatype(rt,typeargs), Tuple{map(juliatype,args)...}}
+            f = CppFunc{juliatype(rt,quoted,typeargs), Tuple{map(x->juliatype(x,quoted,typeargs),args)...}}
             return f
         else
             error("Function has no proto type")
         end
     elseif isMemberFunctionPointerType(t)
+        @assert !quoted
         cxxd = QualType(getMemberPointerClass(t))
         pointee = getMemberPointerPointee(t)
-        return CppMFptr{juliatype(cxxd),juliatype(pointee)}
+        return CppMFptr{juliatype(cxxd,quoted,typeargs),juliatype(pointee,quoted,typeargs)}
     elseif isReferenceType(t)
         t = getPointeeType(t)
-        jt = juliatype(t,typeargs)
-        if jt <: CppValue
-            return CppRef{jt.parameters[1].parameters[1],CVR}
-        else
-            return CppRef{jt,CVR}
-        end
+        pointeeT = juliatype(t,quoted,typeargs; wrapvalue = false, valuecvr = false)
+        return quoted ? :( CppRef{$pointeeT,$CVR} ) : CppRef{pointeeT,CVR}
     elseif isCharType(t)
-        return UInt8
+        T = UInt8
     elseif isEnumeralType(t)
         if isAnonymous(t)
-            return Int32
+            T = Int32
         else
-            return CppEnum{symbol(get_name(t))}
+            T = CppEnum{symbol(get_name(t))}
         end
     elseif isIntegerType(t)
         kind = builtinKind(t)
         if kind == cLong || kind == cLongLong
-            return Int64
+            T = Int64
         elseif kind == cULong || kind == cULongLong
-            return UInt64
+            T = UInt64
         elseif kind == cUInt
-            return UInt32
+            T = UInt32
         elseif kind == cInt
-            return Int32
+            T = Int32
         elseif kind == cUShort
-            return UInt16
+            T = UInt16
         elseif kind == cShort
-            return Int16
+            T = Int16
         elseif kind == cChar_U || kind == cChar_S
-            return UInt8
+            T = UInt8
         elseif kind == cSChar
-            return Int8
+            T = Int8
+        else
+            dump(t)
+            error("Unrecognized Integer type")
         end
-        dump(t)
-        error("Unrecognized Integer type")
     elseif isFloatingType(t)
         kind = builtinKind(t)
         if kind == cHalf
-            return Float16
+            T = Float16
         elseif kind == cFloat
-            return Float32
+            T = Float32
         elseif kind == cDouble
-            return Float64
+            T = Float64
+        else
+            error("Unrecognized floating point type")
         end
-        error("Unrecognized floating point type")
     elseif isArrayType(t)
-        return CxxArrayType{juliatype(getArrayElementType(t))}
+        @assert !quoted
+        return CxxArrayType{juliatype(getArrayElementType(t),quoted,typeargs)}
     # If this is not dependent, the generic logic handles it fine
     elseif isElaboratedType(t) && isDependentType(t)
-        return juliatype(desugar(pcpp"clang::ElaboratedType"(t.ptr)), typeargs)
+        return juliatype(desugar(pcpp"clang::ElaboratedType"(t.ptr)), quoted, typeargs)
     elseif isTemplateTypeParmType(t)
         t = pcpp"clang::TemplateTypeParmType"(t.ptr)
         idx = getTTPTIndex(t)
@@ -513,15 +514,36 @@ function juliatype(t::QualType, typeargs = Dict{Int,Void}())
     elseif isTemplateSpecializationType(t) && isDependentType(t)
         t = pcpp"clang::TemplateSpecializationType"(t.ptr)
         TD = getUnderlyingTemplateDecl(t)
-        TDargs = getTemplateParameters(t,typeargs)
-        r = length(TDargs.parameters):(getNumParameters(TD)-1)
-        @assert isempty(r)
+        TDargs = getTemplateParameters(t,quoted,typeargs)
         T = CppBaseType{symbol(get_name(TD))}
-        return CppValue{CxxQualType{CppTemplate{T,Tuple{TDargs.parameters...}},CVR}}
+        if quoted
+            exprT = :(CppTemplate{$T,$TDargs})
+            valuecvr && (exprT = :(CxxQualType{$exprT,$CVR}))
+            wrapvalue && (exprT = :(CppValue{$exprT}))
+            return exprT
+        else
+            r = length(TDargs.parameters):(getNumParameters(TD)-1)
+            @assert isempty(r)
+            T = CppTemplate{T,Tuple{TDargs.parameters...}}
+            if valuecvr
+                T = CxxQualType{T,CVR}
+            end
+            if wrapvalue
+                T = CppValue{T}
+            end
+            return T
+        end
     else
-        return CppValue{CxxQualType{toBaseType(t),CVR}}
+        T = toBaseType(t)
+        if valuecvr
+            T = CxxQualType{T,CVR}
+        end
+        if wrapvalue
+            T = CppValue{T}
+        end
+        return T
     end
-    return Ptr{Void}
+    quoted ? :($T) : T
 end
 
 # Some other utilities (some of which are used externally)

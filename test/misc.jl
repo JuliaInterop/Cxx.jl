@@ -240,3 +240,17 @@ bool ok =(size_t)(&((clang::LangOptions*)0)->CurrentModule) == offsetof(clang::L
 #pragma clang diagnostic pop
 return ok;
 """
+
+# #163
+cxx"""
+struct bar163 {
+    int x;
+};
+"""
+Base.convert(::Type{cxxt"bar163"},x::Int) = icxx"bar163{.x = 1};"
+foo163() = convert(cxxt"bar163",1)
+foo163(); foo163();
+
+makeVector(T) = cxxt"std::vector<$T>"
+
+@assert makeVector(UInt64) === cxxt"std::vector<uint64_t>"
