@@ -44,9 +44,33 @@ function exceptionObject{T<:CppRef}(e::CxxException,::Type{T})
     T(convert(Ptr{Void},(e.exception+sizeof(LibCxxException))))
 end
 
+function show_cxx_backtrace(io::IO, t, set=1:typemax(Int))
+    show_cxx_backtrace(io,Base.eval_user_input.env.name,t, set)
+end
+
+function show_cxx_backtrace(io::IO, top_function::Symbol, t, set)
+    local process_entry
+    let saw_unwind_resume = false
+        function process_entry(lastname, lastfile, lastline, last_inlinedat_file, last_inlinedat_line, n)
+            if lastname == :_Unwind_Resume
+                saw_unwind_resume = true
+                return
+            end
+            saw_unwind_resume || return
+            lastname == symbol("???") && return
+            Base.show_trace_entry(io, lastname, lastfile, lastline, last_inlinedat_file, last_inlinedat_line, n)
+        end
+    end
+    Base.process_backtrace(process_entry, top_function, t, set; skipC = false)
+end
+
 import Base: showerror
 function showerror{kind}(io::IO, e::CxxException{kind})
     print(io,"Unrecognized C++ Exception ($kind)")
+end
+function showerror{kind}(io::IO, e::CxxException{kind}, bt)
+    showerror(io, e)
+    show_cxx_backtrace(io, bt)
 end
 
 function process_cxx_exception(code::UInt64, e::Ptr{Void})

@@ -13,11 +13,11 @@ end
 @generated function Base.show(io::IO,x::Union{Cxx.CppValue,Cxx.CppRef})
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,x)
-    RD = Cxx.getAsCXXRecordDecl(QT)
+    RD = Cxx.getAsCXXRecordDecl(x <: CppValue ? QT : Cxx.getPointeeType(QT))
     @assert RD != C_NULL
     name = typename(RD)
     ret = Expr(:block)
-    push!(ret.args,:(println(io,"(",$name,")"," {")))
+    push!(ret.args,:(println(io,"(",$name,x <: CppValue ? "" : "&",")"," {")))
     icxx"""
     for (auto field : $QT->getAsCXXRecordDecl()->fields()) {
         $:(begin
@@ -34,8 +34,8 @@ end
 @generated function Base.show(io::IO, x::Cxx.CppPtr)
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,x)
-    RD = Cxx.getAsCXXRecordDecl(QT)
+    RD = Cxx.getAsCXXRecordDecl(Cxx.getPointeeType(QT))
     @assert RD != C_NULL
     name = typename(RD)
-    :( println(io,"(",$name,")",x.ptr) )
+    :( println(io,"(",$name,"*) ",x.ptr) )
 end
