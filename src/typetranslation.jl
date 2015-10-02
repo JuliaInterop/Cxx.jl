@@ -256,6 +256,7 @@ function cpptype{T,CVR}(C,p::Type{CppRef{T,CVR}})
     referenceTo(C,addQualifiers(typeForDecl(cppdecl(C,T)),CVR))
 end
 
+cpptype{T<:Ref}(C,::Type{T}) = referenceTo(C,cpptype(C,eltype(T)))
 cpptype{T}(C,p::Type{Ptr{T}}) = pointerTo(C,cpptype(C,T))
 
 function cpptype{base,fptr}(C,p::Type{CppMFptr{base,fptr}})

@@ -92,12 +92,14 @@ stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier(p::CxxBuiltinTypes) = p
 stripmodifier(p::Type{Function}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = p
+stripmodifier{T<:Ref}(p::Type{T}) = p
 stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
 
 resolvemodifier{T,CVR}(C,p::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T <: CppValue}(C, p::Type{T}, e::pcpp"clang::Expr") = e
 resolvemodifier(C,p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
 resolvemodifier{T}(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
+resolvemodifier{T<:Ref}(C,p::Type{T}, e::pcpp"clang::Expr") = e
 resolvemodifier{s}(C,p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
 resolvemodifier{base,fptr}(C,p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
 resolvemodifier{f}(C,cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
@@ -124,6 +126,7 @@ resolvemodifier{T}(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
 # Builtin types and plain pointers are easy - they are represented the
 # same in julia and Clang
 resolvemodifier_llvm{ptr}(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm{T<:Ref}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
 resolvemodifier_llvm(C, builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 
 # Functions are also simple (for now) since we're just passing them through

@@ -254,3 +254,9 @@ foo163(); foo163();
 makeVector(T) = cxxt"std::vector<$T>"
 
 @assert makeVector(UInt64) === cxxt"std::vector<uint64_t>"
+
+# #169
+cxx""" void inp169(int &x){ x += 1; };  """
+x169 = Ref{Cint}(666)
+icxx"inp169($x169);"
+@assert x169[] == 667
