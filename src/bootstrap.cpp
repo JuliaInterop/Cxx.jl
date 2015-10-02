@@ -840,7 +840,7 @@ public:
 extern "C" {
 
 
-DLLEXPORT void init_clang_instance(C, const char *Triple) {
+DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot) {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     Cxx->CI = new clang::CompilerInstance;
     Cxx->CI->getDiagnosticOpts().ShowColors = 1;
@@ -868,6 +868,8 @@ DLLEXPORT void init_clang_instance(C, const char *Triple) {
     Cxx->CI->getHeaderSearchOpts().UseLibcxx = 1;
     Cxx->CI->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
     Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
+    if (SysRoot)
+      Cxx->CI->getHeaderSearchOpts().Sysroot = SysRoot;
     Cxx->CI->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
     Cxx->CI->getCodeGenOpts().StackRealignment = 1;
