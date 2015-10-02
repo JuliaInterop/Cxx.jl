@@ -17,9 +17,11 @@ end
     @assert RD != C_NULL
     name = typename(RD)
     ret = Expr(:block)
-    push!(ret.args,:(println(io,"(",$name,x <: CppValue ? "" : "&",")"," {")))
+    push!(ret.args,:(println(io,"(",$name,$(x <: CppValue ? "" : "&"),")"," {")))
     icxx"""
     for (auto field : $QT->getAsCXXRecordDecl()->fields()) {
+        if (field->getAccess() != clang::AS_public)
+          continue;
         $:(begin
             fieldname = bytestring(icxx"return field->getName();")
             showexpr = Expr(:macrocall,symbol("@icxx_str"),"\$x.$fieldname;")
