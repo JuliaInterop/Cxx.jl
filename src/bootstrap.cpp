@@ -223,7 +223,7 @@ DLLEXPORT void EnterSourceFile(C, char *data, size_t length)
     const clang::DirectoryLookup *CurDir = nullptr;
     clang::FileManager &fm = Cxx->CI->getFileManager();
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
-    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
+    clang::FileID FID = sm.createFileID(llvm::MemoryBuffer::getMemBufferCopy(llvm::StringRef(data,length)),clang::SrcMgr::C_User,
       0,0,sm.getLocForStartOfFile(sm.getMainFileID()));
     clang::Preprocessor &P = Cxx->Parser->getPreprocessor();
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
@@ -237,7 +237,7 @@ DLLEXPORT void EnterVirtualFile(C, char *data, size_t length, char *VirtualPath,
     llvm::StringRef FileName(VirtualPath, PathLength);
     llvm::StringRef Code(data,length);
     std::unique_ptr<llvm::MemoryBuffer> Buf =
-      llvm::MemoryBuffer::getMemBuffer(Code, FileName);
+      llvm::MemoryBuffer::getMemBufferCopy(Code, FileName);
     const clang::FileEntry *Entry =
         fm.getVirtualFile(FileName, Buf->getBufferSize(), 0);
     sm.overrideFileContents(Entry, std::move(Buf));
