@@ -98,7 +98,7 @@ module CxxREPL
             TA.Revert();
             // Consume all cached tokens, so we don't accidentally
             // Lex them later after we abort this buffer
-            while (PP->InCachingLexMode())
+            while (PP->InCachingLexMode() || PP->getCurrentLexer() == nullptr)
             {
                 clang::Token Tok;
                 PP->Lex(Tok);
