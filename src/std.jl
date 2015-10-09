@@ -48,3 +48,8 @@ function Base.filter!(f, a::StdVector)
     end
     return a
 end
+
+function Base.show{T}(io::IO,
+    ptr::Union{cxxt"std::shared_ptr<$T>",cxxt"std::shared_ptr<$T>&"})
+    println(io,"shared_ptr<",typename(T),"> @",convert(UInt,icxx"(void*)$ptr.get();"))
+end

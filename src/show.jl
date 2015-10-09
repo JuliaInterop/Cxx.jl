@@ -10,6 +10,11 @@ function typename(RD::pcpp"clang::CXXRecordDecl")
       name;
     """)
 end
+function typename{T<:Cxx.CxxQualType}(::Type{T})
+    C = Cxx.instance(Cxx.__default_compiler__)
+    QT = Cxx.cpptype(C,T)
+    typename(Cxx.getAsCXXRecordDecl(QT))
+end
 @generated function Base.show(io::IO,x::Union{Cxx.CppValue,Cxx.CppRef})
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,x)
@@ -19,7 +24,7 @@ end
     ret = Expr(:block)
     push!(ret.args,:(println(io,"(",$name,$(x <: CppValue ? "" : "&"),")"," {")))
     icxx"""
-    for (auto field : $QT->getAsCXXRecordDecl()->fields()) {
+    for (auto field : $RD->fields()) {
         if (field->getAccess() != clang::AS_public)
           continue;
         $:(begin
@@ -39,5 +44,5 @@ end
     RD = Cxx.getAsCXXRecordDecl(Cxx.getPointeeType(QT))
     @assert RD != C_NULL
     name = typename(RD)
-    :( println(io,"(",$name,"*) ",x.ptr) )
+    :( println(io,"(",$name,"*) @0x", hex(convert(UInt,x.ptr),Base.WORD_SIZE>>2) ))
 end

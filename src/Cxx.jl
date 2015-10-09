@@ -167,8 +167,8 @@ end
 module CxxStd
 
     using Cxx
-    include("std.jl")
     include("show.jl")
+    include("std.jl")
 
 end
 

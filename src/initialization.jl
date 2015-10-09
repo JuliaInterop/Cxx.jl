@@ -5,7 +5,7 @@
 
 # Paths
 basepath = joinpath(JULIA_HOME, "../../")
-depspath = joinpath(basepath, "deps")
+depspath = joinpath(basepath, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
