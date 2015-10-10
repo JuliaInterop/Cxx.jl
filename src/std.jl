@@ -4,6 +4,7 @@ cxxparse("""
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <memory>
 """)
 
 const StdString = cxxt"std::string"
