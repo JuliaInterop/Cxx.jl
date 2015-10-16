@@ -100,8 +100,8 @@ immutable CppRef{T,CVR}
 end
 
 cconvert(::Type{Ptr{Void}},p::CppRef) = p.ptr
-Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) =
-    unsafe_load(convert(Ptr{T},p.ptr))
+Base.unsafe_load{T<:CxxBuiltinTs}(p::CppRef{T}) = unsafe_load(convert(Ptr{T},p.ptr))
+Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
 
 # The equivalent of a C++ pointer.
 # T can be a CppValue, CppPtr, etc. depending on the pointed to type,

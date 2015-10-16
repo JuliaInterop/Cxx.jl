@@ -443,7 +443,8 @@ end
 
     dne = CreateDeclRefExpr(C,FD)
     argt = tuple(llvmargs...)
-    CallDNE(C,dne,argt; argidxs = argidxs)
+    expr = CallDNE(C,dne,argt; argidxs = argidxs)
+    expr
 end
 
 #

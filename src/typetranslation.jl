@@ -253,7 +253,7 @@ cpptype{T,N}(C,p::Type{CppValue{T,N}}) = cpptype(C,T)
 cpptype{T}(C,p::Type{CppValue{T}}) = cpptype(C,T)
 cpptype{s}(C,p::Type{CppBaseType{s}}) = QualType(typeForDecl(cppdecl(C,p)))
 function cpptype{T,CVR}(C,p::Type{CppRef{T,CVR}})
-    referenceTo(C,addQualifiers(typeForDecl(cppdecl(C,T)),CVR))
+    referenceTo(C,addQualifiers(cpptype(C,T),CVR))
 end
 
 cpptype{T<:Ref}(C,::Type{T}) = referenceTo(C,cpptype(C,eltype(T)))
