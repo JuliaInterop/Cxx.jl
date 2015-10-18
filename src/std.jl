@@ -5,10 +5,12 @@ cxxparse("""
 #include <vector>
 #include <stdexcept>
 #include <memory>
+#include <map>
 """)
 
 const StdString = cxxt"std::string"
 typealias StdVector{T} cxxt"std::vector<$T>"
+typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 
 bytestring(str::StdString) = bytestring((@cxx str->data()),@cxx str->size())
 
@@ -35,6 +37,16 @@ Base.getindex(it::StdVector,i) = icxx"($(it))[$i];"
 Base.length(it::StdVector) = icxx"$(it).size();"
 Base.deleteat!(v::StdVector,idxs::UnitRange) =
     icxx"$(v).erase($(v).begin()+$(first(idxs)),$(v).begin()+$(last(idxs)));"
+
+Base.start(map::StdMap) = icxx"$map.begin();"
+function Base.next(map::StdMap,i)
+    v = icxx"$i->first;" => icxx"$i->second;"
+    icxx"++$i;"
+    (v,i)
+end
+Base.done(map::StdMap,i) = icxx"$i == $map.end();"
+Base.length(map::StdMap) = icxx"$map.size();"
+Base.eltype{K,V}(::Type{StdMap{K,V}}) = Pair{K,V}
 
 function Base.filter!(f, a::StdVector)
     insrt = start(a)
