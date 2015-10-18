@@ -9,7 +9,7 @@ end
 function typename{T<:Cxx.CxxQualType}(::Type{T})
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,T)
-    typename(Cxx.getAsCXXRecordDecl(QT))
+    typename(QT)
 end
 @generated function Base.show(io::IO,x::Union{Cxx.CppValue,Cxx.CppRef})
     C = Cxx.instance(Cxx.__default_compiler__)
