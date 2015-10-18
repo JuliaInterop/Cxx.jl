@@ -241,6 +241,7 @@ addQualifiers(clangT::pcpp"clang::Type",CVR) = addQualifiers(QualType(clangT.ptr
 
 # And finally the actual definition of cpptype
 
+cpptype{T<:CppTemplate}(C,::Type{T}) = QualType(typeForDecl(cppdecl(C,T)))
 cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(C,p)))
 cpptype{T}(C,p::Type{CxxArrayType{T}}) = getIncompleteArrayType(C,cpptype(C,T))
 function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
