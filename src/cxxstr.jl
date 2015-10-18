@@ -415,8 +415,11 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         end
         SetFDParams(FD,params)
         FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(FD.ptr))
-        ParseFunctionStatementBody(C,FD)
-        ActOnFinishNamespaceDef(C,ND)
+        try
+            ParseFunctionStatementBody(C,FD)
+        finally
+            ActOnFinishNamespaceDef(C,ND)
+        end
     end
 
     # dump(FD)

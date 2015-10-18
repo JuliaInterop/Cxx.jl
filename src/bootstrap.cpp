@@ -151,6 +151,7 @@ DLLEXPORT int _cxxparse(C)
     S.DefineUsedVTables();
     S.PerformPendingInstantiations(false);
     Cxx->CGM->Release();
+    Cxx->CI->getDiagnostics().Reset();
 
     return 1;
 }
