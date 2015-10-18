@@ -42,8 +42,6 @@ end
 @generated function Base.show(io::IO, x::Cxx.CppPtr)
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,x)
-    RD = Cxx.getAsCXXRecordDecl(Cxx.getPointeeType(QT))
-    @assert RD != C_NULL
-    name = typename(RD)
-    :( println(io,"(",$name,"*) @0x", hex(convert(UInt,x.ptr),Base.WORD_SIZE>>2) ))
+    name = typename(QT)
+    :( println(io,"(",$name,") @0x", hex(convert(UInt,x.ptr),Base.WORD_SIZE>>2) ))
 end
