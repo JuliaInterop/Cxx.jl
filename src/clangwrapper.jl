@@ -310,8 +310,12 @@ getMemberPointerPointee(mptr::pcpp"clang::Type") =
 
 getReturnType(ft::pcpp"clang::FunctionProtoType") =
     QualType(ccall((:getFPTReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),ft))
+getReturnType(FD::pcpp"clang::FunctionDecl") =
+    QualType(ccall((:getFDReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),FD))
 getNumParams(ft::pcpp"clang::FunctionProtoType") =
     ccall((:getFPTNumParams,libcxxffi),Csize_t,(Ptr{Void},),ft)
+getNumParams(FD::pcpp"clang::FunctionDecl") =
+    ccall((:getFDNumParams,libcxxffi),Csize_t,(Ptr{Void},),FD)
 getParam(ft::pcpp"clang::FunctionProtoType", idx) =
     QualType(ccall((:getFPTParam,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),ft,idx))
 
@@ -546,6 +550,8 @@ function CreateLinkageSpec(C,DC::pcpp"clang::DeclContext",kind)
 end
 
 getName(x::pcpp"llvm::Function") = bytestring(ccall((:getLLVMValueName,libcxxffi),Ptr{UInt8},(Ptr{Void},),x))
+getName(ND::pcpp"clang::NamedDecl") = bytestring(ccall((:getNDName,libcxxffi),Ptr{UInt8},(Ptr{Void},),ND))
+getName(ND::pcpp"clang::ParmVarDecl") = getName(pcpp"clang::NamedDecl"(ND.ptr))
 
 getParmVarDecl(x::pcpp"clang::FunctionDecl",i) = pcpp"clang::ParmVarDecl"(ccall((:getParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Cuint),x,i))
 
@@ -604,3 +610,9 @@ getArrayElementType(T::pcpp"clang::Type") = QualType(ccall((:getArrayElementType
 getIncompleteArrayType(C, T) = QualType(ccall((:getIncompleteArrayType,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,T))
 
 getFunctionTypeReturnType(T::pcpp"clang::Type") = QualType(ccall((:getFunctionTypeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+
+ParseDeclaration(C) = pcpp"clang::NamedDecl"(ccall((:ParseDeclaration,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
+
+getOriginalType(PVD::pcpp"clang::ParmVarDecl") = QualType(ccall((:getOriginalType,libcxxffi),Ptr{Void},(Ptr{Void},),PVD))
+
+getParent(CxxMD::pcpp"clang::CXXMethodDecl") = pcpp"clang::CXXRecordDecl"(ccall((:getCxxMDParent,libcxxffi),Ptr{Void},(Ptr{Void},),CxxMD))

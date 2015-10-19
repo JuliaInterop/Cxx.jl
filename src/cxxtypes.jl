@@ -100,7 +100,7 @@ immutable CppRef{T,CVR}
 end
 
 cconvert(::Type{Ptr{Void}},p::CppRef) = p.ptr
-Base.unsafe_load{T<:CxxBuiltinTs}(p::CppRef{T}) = unsafe_load(convert(Ptr{T},p.ptr))
+Base.unsafe_load{T<:Union{CxxBuiltinTs,Ptr}}(p::CppRef{T}) = unsafe_load(convert(Ptr{T},p.ptr))
 Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
 
 # The equivalent of a C++ pointer.
@@ -184,3 +184,6 @@ end
 
 pcpp{T,N}(x::Type{CppValue{T,N}}) = CppPtr{T,NullCVR}
 pcpp{T}(x::Type{CppValue{T}}) = CppPtr{T,NullCVR}
+
+# Convert C++ QualType representation to julia representation
+Base.convert(::Type{QualType},T::vcpp"clang::QualType") = QualType(reinterpret(Ptr{UInt8}, T.data))

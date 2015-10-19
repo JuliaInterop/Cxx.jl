@@ -3,8 +3,8 @@ export __current_compiler__
 immutable ClangCompiler
     shadow::pcpp"llvm::Module"
     CI::pcpp"clang::CompilerInstance"
-    CGM::pcpp"clang::CodeGenModule"
-    CGF::pcpp"clang::CodeGenFunction"
+    CGM::pcpp"clang::CodeGen::CodeGenModule"
+    CGF::pcpp"clang::CodeGen::CodeGenFunction"
     Parser::pcpp"clang::Parser"
     JCodeGen::pcpp"JuliaCodeGenerator"
 end

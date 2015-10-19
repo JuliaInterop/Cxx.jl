@@ -166,3 +166,50 @@ end
 macro cxxnew(expr)
     cpps_impl(expr, Expr(:curly,Tuple), false, false, true)
 end
+
+function extract_params(C,FD)
+    params = Pair{Symbol,DataType}[]
+    CxxMD = dcastCXXMethodDecl(pcpp"clang::Decl"(FD.ptr))
+    if CxxMD != C_NULL
+        RD = getParent(CxxMD)
+        T = juliatype(pointerTo(C, QualType(typeForDecl(RD))))
+        push!(params,:this => T)
+    end
+    for i = 1:Cxx.getNumParams(FD)
+       PV = Cxx.getParmVarDecl(FD,i-1)
+       T = juliatype(Cxx.getOriginalType(PV))
+       name = getName(PV)
+       push!(params,symbol(name) => T)
+    end
+    params
+end
+
+function DeclToJuliaPrototype(C,FD,f)
+    Expr(:call,f,map(x->Expr(:(::),x[1],x[2]),extract_params(C,FD))...)
+end
+
+function get_llvmf_for_FD(C,jf,FD)
+    TT = Tuple{map(x->x[2],extract_params(C,FD))...}
+    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), jf, TT, false))
+    @assert f != C_NULL
+    f
+end
+
+macro cxxm(str,expr)
+    f = gensym()
+    FD = gensym()
+    RT = gensym()
+    esc(quote
+        Cxx.EnterBuffer(Cxx.instance(__current_compiler__),$str)
+        $FD = pcpp"clang::FunctionDecl"(Cxx.ParseDeclaration(Cxx.instance(__current_compiler__)).ptr)
+        if $FD == C_NULL
+            error("Failed to obtain declarator (see Clang Errors)")
+        end
+        $RT = Cxx.juliatype(Cxx.getReturnType($FD))
+        e = Expr(:function,Cxx.DeclToJuliaPrototype(Cxx.instance(__current_compiler__),$FD,$(quot(f))),
+            Expr(:call,:convert,$RT,$(quot(expr))))
+        eval(e)
+        Cxx.ReplaceFunctionForDecl(Cxx.instance(__current_compiler__),
+            $FD,Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD))
+    end)
+end

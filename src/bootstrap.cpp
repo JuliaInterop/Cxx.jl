@@ -51,6 +51,7 @@
 #include <clang/AST/DeclTemplate.h>
 #include <clang/Basic/Specifiers.h>
 
+#include "Parse/RAIIObjectsForParser.h"
 #include "CodeGen/CodeGenModule.h"
 #include <CodeGen/CodeGenTypes.h>
 #define private public
@@ -160,6 +161,22 @@ DLLEXPORT int _cxxparse(C)
     Cxx->CI->getDiagnostics().Reset();
 
     return 1;
+}
+
+DLLEXPORT void *ParseDeclaration(C)
+{
+  auto  *P = Cxx->Parser;
+  auto  *S = &Cxx->CI->getSema();
+  if (P->getPreprocessor().isIncrementalProcessingEnabled() &&
+     P->getCurToken().is(clang::tok::eof))
+         P->ConsumeToken();
+  clang::ParsingDeclSpec DS(*P);
+  clang::AccessSpecifier AS;
+  P->ParseDeclarationSpecifiers(DS, clang::Parser::ParsedTemplateInfo(), AS, clang::Parser::DSC_top_level);
+  clang::ParsingDeclarator D(*P, DS, clang::Declarator::FileContext);
+  P->ParseDeclarator(D);
+  D.setFunctionDefinitionKind(clang::FDK_Definition);
+  return S->HandleDeclarator(P->getCurScope(), D, clang::MultiTemplateParamsArg());
 }
 
 DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
@@ -419,15 +436,58 @@ DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
   return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
 
+static Function *CloneFunctionAndAdjust(const Function *F, FunctionType *FTy,
+                              bool ModuleLevelChanges,
+                              ClonedCodeInfo *CodeInfo) {
+  std::vector<Type*> ArgTypes;
+  llvm::ValueToValueMapTy VMap;
+
+  // Create the new function...
+  Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName());
+  llvm::BasicBlock *BB = BasicBlock::Create(NewF->getContext(), "entry");
+  llvm::IRBuilder<true> builder(BB);
+
+  // Loop over the arguments, copying the names of the mapped arguments over...
+  Function::arg_iterator DestI = NewF->arg_begin();
+  for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
+       I != E; ++I) {
+    DestI->setName(I->getName()); // Copy the name over...
+    if (DestI->getType() != I->getType()) {
+      assert(I->getType()->isPointerTy());
+      llvm::Value *A = builder.CreateAlloca(cast<llvm::PointerType>(I->getType())->getElementType());
+      builder.CreateStore(DestI,builder.CreateBitCast(A,llvm::PointerType::get(DestI->getType(),0)));
+      VMap[I] = A;
+    }
+    else
+      VMap[I] = DestI;
+    DestI++;
+  }
+
+  // if (ModuleLevelChanges)
+  // llvm::CloneDebugInfoMetadata(NewF, F, VMap);
+
+  SmallVector<ReturnInst*, 8> Returns;  // Ignore returns cloned.
+  CloneFunctionInto(NewF, F, VMap, ModuleLevelChanges, Returns, "", CodeInfo);
+  llvm::BasicBlock &EntryBB = NewF->getEntryBlock();
+  builder.CreateBr(&EntryBB);
+  NewF->getBasicBlockList().push_front(BB);
+
+  return NewF;
+}
+
+
 DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F)
 {
-  llvm::Constant *Const = Cxx->CGM->GetAddrOfFunction(D);
-  if (!isa<llvm::Function>(Const))
+  const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
+  llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
+  llvm::Constant *Const = Cxx->CGM->GetAddrOfFunction(D,Ty);
+  if (!Const || !isa<llvm::Function>(Const))
     jl_error("Clang did not create function for the given FunctionDecl");
+  assert(F);
   llvm::Function *OF = cast<llvm::Function>(Const);
   llvm::ValueToValueMapTy VMap;
   llvm::ClonedCodeInfo CCI;
-  llvm::Function *NF = llvm::CloneFunction(F,VMap,true,&CCI);
+  llvm::Function *NF = CloneFunctionAndAdjust(F,Ty,true,&CCI);
   // TODO: Ideally we would delete the cloned function
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
@@ -1381,9 +1441,9 @@ DLLEXPORT void *getArrayElementType(clang::Type *t)
     return cast<clang::ArrayType>(t)->getElementType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getOriginalTypePtr(clang::ParmVarDecl *d)
+DLLEXPORT void *getOriginalType(clang::ParmVarDecl *d)
 {
-  return (void*)d->getOriginalType().getTypePtr();
+  return (void*)d->getOriginalType().getAsOpaquePtr();
 }
 
 DLLEXPORT void *getPointerTo(C, void *T)
@@ -1647,6 +1707,11 @@ DLLEXPORT void *getParentContext(clang::DeclContext *DC)
   return (void*)DC->getParent();
 }
 
+DLLEXPORT void *getCxxMDParent(clang::CXXMethodDecl *CxxMD)
+{
+  return CxxMD->getParent();
+}
+
 DLLEXPORT uint64_t getDCDeclKind(clang::DeclContext *DC)
 {
   return (uint64_t)DC->getDeclKind();
@@ -1739,9 +1804,19 @@ DLLEXPORT void *getFPTReturnType(clang::FunctionProtoType *fpt)
   return fpt->getReturnType().getAsOpaquePtr();
 }
 
+DLLEXPORT void *getFDReturnType(clang::FunctionDecl *FD)
+{
+  return FD->getReturnType().getAsOpaquePtr();
+}
+
 DLLEXPORT size_t getFPTNumParams(clang::FunctionProtoType *fpt)
 {
   return fpt->getNumParams();
+}
+
+DLLEXPORT size_t getFDNumParams(clang::FunctionDecl *FD)
+{
+  return FD->getNumParams();
 }
 
 DLLEXPORT void *getFPTParam(clang::FunctionProtoType *fpt, size_t idx)
@@ -1972,6 +2047,11 @@ DLLEXPORT void *CreateLinkageSpec(C, clang::DeclContext *DC, unsigned kind)
 DLLEXPORT const char *getLLVMValueName(llvm::Value *V)
 {
   return V->getName().data();
+}
+
+DLLEXPORT const char *getNDName(clang::NamedDecl *ND)
+{
+  return ND->getName().data();
 }
 
 DLLEXPORT void *getParmVarDecl(clang::FunctionDecl *FD, unsigned i)

@@ -260,3 +260,22 @@ cxx""" void inp169(int &x){ x += 1; };  """
 x169 = Ref{Cint}(666)
 icxx"inp169($x169);"
 @assert x169[] == 667
+
+# Implement C++ Functions in julia
+
+@cxxm "int foofunc(int x)" begin
+    x+1
+end
+@test icxx"foofunc(5);" == 6
+
+cxx"""
+struct foostruct {
+    int x;
+    int Add1();
+};
+"""
+@cxxm "int foostruct::Add1()" begin
+    icxx"return $this->x;"+1
+end
+
+@test icxx"foostruct{1}.Add1();" == 2
