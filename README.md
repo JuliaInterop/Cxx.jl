@@ -63,7 +63,7 @@ The main interface provided by Cxx.jl is the @cxx macro. It supports two main us
   - Membercall (where m is a CppPtr, CppRef or CppValue)
       @cxx m->foo(args...)
       
-To embedd C++ functions in Julia, there are two main approaches:
+To embed C++ functions in Julia, there are two main approaches:
 
 ```julia 
 # Using @cxx (e.g.):   
