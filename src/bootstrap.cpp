@@ -14,6 +14,7 @@
 #include "llvm/IR/ValueMap.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Verifier.h"
 
 
 // Clang includes
@@ -184,8 +185,12 @@ DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
   if (Cxx->Parser->getPreprocessor().isIncrementalProcessingEnabled() &&
     Cxx->Parser->getCurToken().is(clang::tok::eof))
     Cxx->Parser->ConsumeToken();
-  return (void*)Cxx->Parser->ParseTypeName(nullptr, ParseAlias ?
-      clang::Declarator::AliasTemplateContext : clang::Declarator::TypeNameContext).get().getAsOpaquePtr();
+  auto result = Cxx->Parser->ParseTypeName(nullptr, ParseAlias ?
+      clang::Declarator::AliasTemplateContext : clang::Declarator::TypeNameContext);
+  if (result.isInvalid())
+    return 0;
+  clang::QualType QT = clang::Sema::GetTypeFromParser(result.get());
+  return (void*)QT.getAsOpaquePtr();
 }
 
 DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
@@ -436,18 +441,19 @@ DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
   return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
 
-static Function *CloneFunctionAndAdjust(const Function *F, FunctionType *FTy,
+static Function *CloneFunctionAndAdjust(Function *F, FunctionType *FTy,
                               bool ModuleLevelChanges,
                               ClonedCodeInfo *CodeInfo) {
   std::vector<Type*> ArgTypes;
   llvm::ValueToValueMapTy VMap;
 
   // Create the new function...
-  Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName());
-  llvm::BasicBlock *BB = BasicBlock::Create(NewF->getContext(), "entry");
+  Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName(), F->getParent());
+  llvm::BasicBlock *BB = BasicBlock::Create(NewF->getContext(), "entry", NewF);
   llvm::IRBuilder<true> builder(BB);
 
   // Loop over the arguments, copying the names of the mapped arguments over...
+  std::vector<Value*> args;
   Function::arg_iterator DestI = NewF->arg_begin();
   for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
        I != E; ++I) {
@@ -456,27 +462,42 @@ static Function *CloneFunctionAndAdjust(const Function *F, FunctionType *FTy,
       assert(I->getType()->isPointerTy());
       llvm::Value *A = builder.CreateAlloca(cast<llvm::PointerType>(I->getType())->getElementType());
       builder.CreateStore(DestI,builder.CreateBitCast(A,llvm::PointerType::get(DestI->getType(),0)));
-      VMap[I] = A;
+      args.push_back(A);
     }
-    else
-      VMap[I] = DestI;
+    else {
+      args.push_back(DestI);
+    }
     DestI++;
   }
 
-  // if (ModuleLevelChanges)
-  // llvm::CloneDebugInfoMetadata(NewF, F, VMap);
+  CallInst *Call = builder.CreateCall(F,args);
+  Value *Ret = Call;
 
-  SmallVector<ReturnInst*, 8> Returns;  // Ignore returns cloned.
-  CloneFunctionInto(NewF, F, VMap, ModuleLevelChanges, Returns, "", CodeInfo);
-  llvm::BasicBlock &EntryBB = NewF->getEntryBlock();
-  builder.CreateBr(&EntryBB);
-  NewF->getBasicBlockList().push_front(BB);
+  // Adjust the return value
+  if (F->getReturnType() != FTy->getReturnType()) {
+    assert(!F->hasStructRetAttr());
+    Value *A = builder.CreateAlloca(FTy->getReturnType());
+    builder.CreateStore(Call,builder.CreateBitCast(A,llvm::PointerType::get(Call->getType(),0)));
+    Ret = builder.CreateLoad(A);
+  }
+
+  if (Ret->getType()->isVoidTy())
+    builder.CreateRetVoid();
+  else
+    builder.CreateRet(Ret);
+
+  llvm::verifyFunction(*NewF);
+
+  InlineFunctionInfo IFI;
+  llvm::InlineFunction(Call,IFI);
+
+  llvm::verifyFunction(*NewF);
 
   return NewF;
 }
 
 
-DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F)
+DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline)
 {
   const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
   llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
@@ -492,21 +513,25 @@ DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
   // they're used.
-  Cxx->shadow->getFunctionList().push_back(NF);
   StringRef Name = OF->getName();
+  //OF->dump();
+  //NF->dump();
   OF->replaceAllUsesWith(NF);
   OF->removeFromParent();
   NF->setName(Name);
-  while (true)
-  {
-    if (NF->getNumUses() == 0)
-      return;
-    Value::user_iterator I = NF->user_begin();
-    if (llvm::isa<llvm::CallInst>(*I)) {
-      llvm::InlineFunctionInfo IFI;
-      llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,nullptr,true);
-    } else {
-      jl_error("Tried to do something other than calling it to a julia expression");
+  if (DoInline) {
+    while (true)
+    {
+      if (NF->getNumUses() == 0)
+        return;
+      Value::user_iterator I = NF->user_begin();
+      if (llvm::isa<llvm::CallInst>(*I)) {
+        llvm::InlineFunctionInfo IFI;
+        llvm::InlineFunction(cast<llvm::CallInst>(*I),IFI,nullptr,true);
+      } else {
+        I->dump();
+        jl_error("Tried to do something other than calling it to a julia expression");
+      }
     }
   }
 }

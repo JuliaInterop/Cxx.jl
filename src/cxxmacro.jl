@@ -207,9 +207,10 @@ macro cxxm(str,expr)
         end
         $RT = Cxx.juliatype(Cxx.getReturnType($FD))
         e = Expr(:function,Cxx.DeclToJuliaPrototype(Cxx.instance(__current_compiler__),$FD,$(quot(f))),
-            Expr(:call,:convert,$RT,$(quot(expr))))
+            Expr(:(::),Expr(:call,:convert,$RT,$(quot(expr))),$RT))
         eval(e)
         Cxx.ReplaceFunctionForDecl(Cxx.instance(__current_compiler__),
-            $FD,Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD))
+            $FD,Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD),
+            DoInline = false)
     end)
 end

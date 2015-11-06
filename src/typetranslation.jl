@@ -264,7 +264,7 @@ function cpptype{base,fptr}(C,p::Type{CppMFptr{base,fptr}})
     makeMemberFunctionType(C, cpptype(C,base), cpptype(C,fptr))
 end
 function cpptype{rt, args}(C,p::Type{CppFunc{rt,args}})
-    makeFunctionType(C, cpptype(C,rt),QualType[cpptype(C,arg) for arg in args])
+    makeFunctionType(C, cpptype(C,rt),QualType[cpptype(C,arg) for arg in args.parameters])
 end
 cpptype{f}(C,p::Type{CppFptr{f}}) = pointerTo(C,cpptype(C,f))
 
