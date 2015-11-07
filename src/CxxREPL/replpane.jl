@@ -69,9 +69,10 @@ module CxxREPL
     """
 
     function isPPDirective(C,data)
+        @assert data[end] == '\0'
         icxx"""
             const char *BufferStart = $(pointer(data));
-            const char *BufferEnd = BufferStart+$(endof(data));
+            const char *BufferEnd = BufferStart+$(endof(data))-1;
             clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
@@ -81,6 +82,7 @@ module CxxREPL
     end
 
     function isTopLevelExpression(C,data)
+        @assert data[end] == '\0'
         if contains(data,":=")
             return false
         end
@@ -90,7 +92,7 @@ module CxxREPL
             clang::Preprocessor *PP = &P->getPreprocessor();
             clang::Parser::TentativeParsingAction TA(*P);
             EnterSourceFile((CxxInstance*)$(convert(Ptr{Void},pointer(x))),
-                $(pointer(data)),$(sizeof(data)));
+                $(pointer(data)),$(sizeof(data))-1);
             clang::PreprocessorLexer *L = PP->getCurrentLexer();
             P->ConsumeToken();
             bool result = P->getCurToken().is(clang::tok::kw_template) ||
@@ -112,9 +114,10 @@ module CxxREPL
 
     # Inspired by cling's InputValidator.cpp
     function isExpressionComplete(C,data)
+        @assert data[end] == '\0'
         icxx"""
             const char *BufferStart = $(pointer(data));
-            const char *BufferEnd = BufferStart+$(endof(data));
+            const char *BufferEnd = BufferStart+$(endof(data))-1;
             clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
@@ -147,7 +150,7 @@ module CxxREPL
 
     function createDefaultDone(C)
         function(line)
-            isToplevel = isTopLevelExpression(C,line)
+            isToplevel = isTopLevelExpression(C,"$line\0")
             isAssignment = false
             if contains(line,":=")
                 parts = split(line,":=")
@@ -174,7 +177,7 @@ module CxxREPL
             # Copy colors from the prompt object
             prompt_prefix="\e[38;5;166m",
             prompt_suffix=Base.text_colors[:white],
-            on_enter = s->isExpressionComplete(C,bytestring(LineEdit.buffer(s))))
+            on_enter = s->isExpressionComplete(C,push!(copy(LineEdit.buffer(s).data),0)))
 
         mirepl = isdefined(Base.active_repl,:mi) ? Base.active_repl.mi : Base.active_repl
         repl = Base.active_repl
