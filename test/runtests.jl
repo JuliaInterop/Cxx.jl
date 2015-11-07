@@ -1,5 +1,6 @@
 include("cxxstr.jl")
 include("icxxstr.jl")
 include("misc.jl")
-include("llvmtest.jl")
-include("llvmgraph.jl")
+include("show.jl")
+#include("llvmtest.jl")
+#include("llvmgraph.jl")

@@ -139,6 +139,8 @@ end
 ==(p1::CppEnum,p2::Integer) = p1.val == p2
 ==(p1::Integer,p2::CppEnum) = p1 == p2.val
 
+Base.unsafe_load{T<:CppEnum}(p::CppRef{T}) = unsafe_load(convert(Ptr{Cint},p.ptr))
+
 # Representa a C++ Lambda. Since they are not nameable, we need to number them
 # and record the corresponding type
 immutable CppLambda{num}
