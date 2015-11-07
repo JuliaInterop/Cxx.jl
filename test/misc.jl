@@ -10,7 +10,7 @@ extern "C" {
 """
 @cxx foo37()
 
-# Constnes in template arguments - issue #33
+# Constness in template arguments - issue #33
 cxx"""
 #include <map>
 #include <string>

@@ -441,14 +441,14 @@ DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
   return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
 
-static Function *CloneFunctionAndAdjust(Function *F, FunctionType *FTy,
+static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
                               bool ModuleLevelChanges,
                               ClonedCodeInfo *CodeInfo) {
   std::vector<Type*> ArgTypes;
   llvm::ValueToValueMapTy VMap;
 
   // Create the new function...
-  Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName(), F->getParent());
+  Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName(), Cxx->shadow);
   llvm::BasicBlock *BB = BasicBlock::Create(NewF->getContext(), "entry", NewF);
   llvm::IRBuilder<true> builder(BB);
 
@@ -508,7 +508,7 @@ DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *
   llvm::Function *OF = cast<llvm::Function>(Const);
   llvm::ValueToValueMapTy VMap;
   llvm::ClonedCodeInfo CCI;
-  llvm::Function *NF = CloneFunctionAndAdjust(F,Ty,true,&CCI);
+  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI);
   // TODO: Ideally we would delete the cloned function
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
