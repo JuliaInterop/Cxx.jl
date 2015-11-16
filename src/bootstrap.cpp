@@ -4,6 +4,16 @@
 
 #include <iostream>
 
+#ifdef NDEBUG
+#define OLD_NDEBUG
+#endif
+
+#ifdef LLVM_DEBUG
+#undef NDEBUG
+#else
+#define NDEBUG 1
+#endif
+
 // LLVM includes
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Bitcode/ReaderWriter.h"
@@ -65,6 +75,10 @@
 
 #if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 6
 #define LLVM36 1
+#endif
+
+#ifndef OLD_NDEBUG
+#undef NDEBUG
 #endif
 
 // From julia
