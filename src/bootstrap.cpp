@@ -2007,6 +2007,11 @@ DLLEXPORT void *getLambdaCallOperator(clang::CXXRecordDecl *R)
   return R->getLambdaCallOperator();
 }
 
+DLLEXPORT bool isCxxDLambda(clang::CXXRecordDecl *R)
+{
+  return R->isLambda();
+}
+
 DLLEXPORT void *getFunctionTypeReturnType(void *T)
 {
   return ((clang::FunctionType*)T)->getReturnType().getAsOpaquePtr();

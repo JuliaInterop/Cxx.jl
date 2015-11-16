@@ -250,6 +250,10 @@ end
 function cpptype{T,CVR}(C,p::Type{CxxQualType{T,CVR}})
     addQualifiers(typeForDecl(cppdecl(C,T)),CVR)
 end
+# This is a hack, we should find a better way to do this
+function cpptype{T<:CppLambda,CVR}(C,p::Type{CxxQualType{T,CVR}})
+    addQualifiers(typeForLambda(T),CVR)
+end
 cpptype{T,N}(C,p::Type{CppValue{T,N}}) = cpptype(C,T)
 cpptype{T}(C,p::Type{CppValue{T}}) = cpptype(C,T)
 cpptype{s}(C,p::Type{CppBaseType{s}}) = QualType(typeForDecl(cppdecl(C,p)))
@@ -536,7 +540,12 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
             return T
         end
     else
-        T = toBaseType(t)
+        cxxd = getAsCXXRecordDecl(t)
+        if cxxd != C_NULL && isLambda(cxxd)
+            T = lambdaForType(QualType(t))
+        else
+            T = toBaseType(t)
+        end
         if valuecvr
             T = CxxQualType{T,CVR}
         end

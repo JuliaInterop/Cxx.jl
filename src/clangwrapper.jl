@@ -515,6 +515,10 @@ function getLambdaCallOperator(R::pcpp"clang::CXXRecordDecl")
     pcpp"clang::CXXMethodDecl"(ccall((:getLambdaCallOperator,libcxxffi),Ptr{Void},(Ptr{Void},),R))
 end
 
+function isLambda(R::pcpp"clang::CXXRecordDecl")
+    ccall((:isCxxDLambda,libcxxffi),Bool,(Ptr{Void},),R)
+end
+
 function CreateCxxOperatorCallCall(C,meth,args)
     @assert meth != C_NULL
     pcpp"clang::CXXOperatorCall"(ccall((:CreateCxxOperatorCallCall,libcxxffi),Ptr{Void},
