@@ -290,6 +290,7 @@ function AddLinuxHeaderPaths(C)
 
     addHeaderDir(C, incpath, kind = C_System)
     addHeaderDir(C, incpath * "/c++/" * VersionString, kind = C_System)
+    addHeaderDir(C, incpath * "/c++/" * VersionString * "/backward", kind = C_System)
 
     # check which type of include dir we have
     if Triple == "i686-linux-gnu" && !isdir(incpath * "/" * Triple)
