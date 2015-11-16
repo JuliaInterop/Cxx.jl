@@ -85,6 +85,11 @@ usr/lib:
 build:
 	@mkdir -p $(CURDIR)/build
 
+LLVM_EXTRA_CPPFLAGS = 
+ifneq ($(LLVM_DEBUG),)
+LLVM_EXTRA_CPPFLAGS += -DLLVM_DEBUG
+endif
+
 build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build
 	@$(call PRINT_CC, $(CXX) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
 
