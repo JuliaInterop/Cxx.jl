@@ -475,11 +475,11 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
     if (DestI->getType() != I->getType()) {
       assert(I->getType()->isPointerTy());
       llvm::Value *A = builder.CreateAlloca(cast<llvm::PointerType>(I->getType())->getElementType());
-      builder.CreateStore(DestI,builder.CreateBitCast(A,llvm::PointerType::get(DestI->getType(),0)));
+      builder.CreateStore(&*DestI,builder.CreateBitCast(A,llvm::PointerType::get(DestI->getType(),0)));
       args.push_back(A);
     }
     else {
-      args.push_back(DestI);
+      args.push_back(&*DestI);
     }
     DestI++;
   }
@@ -1309,7 +1309,7 @@ DLLEXPORT void *get_nth_argument(Function *f, size_t n)
     for (; AI != f->arg_end(); ++i, ++AI)
     {
         if (i == n)
-            return (void*)((Value*)AI++);
+            return (void*)((Value*)&*AI++);
     }
     return NULL;
 }
@@ -1811,7 +1811,7 @@ DLLEXPORT void *makeFunctionType(C, void *rt, void **argts, size_t nargs)
   clang::QualType T;
   if (rt == NULL) {
     T = Cxx->CI->getASTContext().getAutoType(clang::QualType(),
-                                 /*decltype(auto)*/true,
+                                             clang::AutoTypeKeyword::DecltypeAuto,
                                  /*IsDependent*/   false);
   } else {
     T = clang::QualType::getFromOpaquePtr(rt);
