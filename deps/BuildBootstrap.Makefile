@@ -86,8 +86,8 @@ build:
 	@mkdir -p $(CURDIR)/build
 
 LLVM_EXTRA_CPPFLAGS = 
-ifneq ($(LLVM_DEBUG),)
-LLVM_EXTRA_CPPFLAGS += -DLLVM_DEBUG
+ifneq ($(LLVM_ASSERTIONS),1)
+LLVM_EXTRA_CPPFLAGS += -DLLVM_NDEBUG
 endif
 
 build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build

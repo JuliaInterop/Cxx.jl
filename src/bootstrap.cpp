@@ -8,10 +8,10 @@
 #define OLD_NDEBUG
 #endif
 
-#ifdef LLVM_DEBUG
-#undef NDEBUG
-#else
+#ifdef LLVM_NDEBUG
 #define NDEBUG 1
+#else
+#undef NDEBUG
 #endif
 
 // LLVM includes
