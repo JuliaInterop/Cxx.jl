@@ -88,9 +88,11 @@ extern "C" {
         // actual roots go here
     } jl_gcframe_t;
 
+    extern jl_value_t ***(jl_get_ptls_states)(void);
+
     // This is not the definition of this in C, but it is the definition that
     // julia exposes to LLVM, so we need to stick to it.
-    extern jl_value_t **jl_pgcstack;
+    #define jl_pgcstack (*jl_get_ptls_states())
 #endif
 
     extern int __cxxjl_personality_v0();

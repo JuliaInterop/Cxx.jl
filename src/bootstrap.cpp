@@ -39,6 +39,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/ASTConsumer.h"
+#include "clang/Sema/SemaConsumer.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Analysis/DomainSpecific/CocoaConventions.h"
 #include "clang/Basic/Diagnostic.h"
@@ -54,6 +55,8 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/PrettyDeclStackTrace.h"
+#include "clang/Serialization/ASTWriter.h"
+#include "clang/Frontend/MultiplexConsumer.h"
 #include "Sema/TypeLocBuilder.h"
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CodeGenOptions.h>
@@ -95,6 +98,7 @@ struct CxxInstance {
   clang::CodeGen::CodeGenFunction *CGF;
   clang::Parser *Parser;
   JuliaCodeGenerator *JCodeGen;
+  clang::PCHGenerator *PCHGenerator;
 };
 #define C CxxInstance *Cxx
 
@@ -943,10 +947,34 @@ public:
 
 };
 
+class JuliaPCHGenerator : public clang::PCHGenerator
+{
+public:
+  JuliaPCHGenerator(
+    const clang::Preprocessor &PP, StringRef OutputFile,
+    clang::Module *Module, StringRef isysroot,
+    std::shared_ptr<clang::PCHBuffer> Buffer,
+    ArrayRef<llvm::IntrusiveRefCntPtr<clang::ModuleFileExtension>> Extensions,
+    bool AllowASTWithErrors = false,
+    bool IncludeTimestamps = true) : 
+  PCHGenerator(PP,OutputFile,Module,isysroot,Buffer,Extensions,
+    AllowASTWithErrors,IncludeTimestamps) {}
+
+  void HandleTranslationUnit(clang::ASTContext &Ctx) {
+    PCHGenerator::HandleTranslationUnit(Ctx);
+    std::error_code EC;
+    llvm::raw_fd_ostream OS("Cxx.pch",EC,llvm::sys::fs::F_None);
+    OS << getPCH();
+    OS.flush();
+    OS.close();
+  }
+};
+
 extern "C" {
 
 
-DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot) {
+DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
+  const char *UsePCH) {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     Cxx->CI = new clang::CompilerInstance;
     Cxx->CI->getDiagnosticOpts().ShowColors = 1;
@@ -1013,7 +1041,36 @@ DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot) {
     // Cxx isn't fully initialized yet, but that's fine since JuliaCodeGenerator does
     // not need the parser
     Cxx->JCodeGen = new JuliaCodeGenerator(Cxx);
-    Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
+
+    if (EmitPCH) {
+      assert(&Cxx->CI->getPreprocessor() != NULL);
+      assert(&Cxx->CI->getPreprocessor().getModuleLoader() != NULL);
+      StringRef OutputFile = "Cxx.pch";
+      auto Buffer = std::make_shared<clang::PCHBuffer>();
+      Cxx->PCHGenerator = new JuliaPCHGenerator(
+                        Cxx->CI->getPreprocessor(), OutputFile, nullptr,
+                        Cxx->CI->getHeaderSearchOpts().Sysroot,
+                        Buffer, Cxx->CI->getFrontendOpts().ModuleFileExtensions,
+                        true);
+      std::vector<std::unique_ptr<clang::ASTConsumer>> Consumers;
+      Consumers.push_back(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
+      Consumers.push_back(std::unique_ptr<clang::ASTConsumer>(Cxx->PCHGenerator));
+      Cxx->CI->setASTConsumer(
+        llvm::make_unique<clang::MultiplexConsumer>(std::move(Consumers)));
+    } else {
+      Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
+    }
+
+    if (UsePCH) {
+        clang::ASTDeserializationListener *DeserialListener =
+            Cxx->CI->getASTConsumer().GetASTDeserializationListener();
+        bool DeleteDeserialListener = false;
+        Cxx->CI->createPCHExternalASTSource(
+          UsePCH,
+          Cxx->CI->getPreprocessorOpts().DisablePCHValidation,
+          Cxx->CI->getPreprocessorOpts().AllowPCHWithCompilerErrors, DeserialListener,
+          DeleteDeserialListener);
+    }
 
     Cxx->CI->createSema(clang::TU_Prefix,NULL);
     Cxx->CI->getSema().addExternalSource(new JuliaSemaSource());
@@ -1034,6 +1091,15 @@ DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot) {
 
     sema.getPreprocessor().EnterMainSourceFile();
     Cxx->Parser->Initialize();
+}
+
+void decouple_pch(C)
+{
+  Cxx->PCHGenerator->HandleTranslationUnit(Cxx->CI->getASTContext());
+  Cxx->JCodeGen = new JuliaCodeGenerator(Cxx);
+  Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
+  Cxx->CI->getSema().Consumer = Cxx->CI->getASTConsumer();
+  Cxx->PCHGenerator = nullptr;
 }
 
 static llvm::Module *cur_module = NULL;
@@ -1698,9 +1764,8 @@ DLLEXPORT void *getConstantIntToPtr(llvm::Constant *CC, llvm::Type *type)
 
 DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
 {
-  llvm::ExecutionEngine *ee = (llvm::ExecutionEngine *)jl_get_llvm_ee();
   clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
-  auto dl = ee->getDataLayout();
+  auto dl = Cxx->shadow->getDataLayout();
   Cxx->CI->getSema().RequireCompleteType(getTrivialSourceLocation(Cxx),
     clang::QualType(decl->getTypeForDecl(),0),0);
   auto t = cgt->ConvertRecordDeclType(decl);
@@ -1709,8 +1774,7 @@ DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
 
 DLLEXPORT size_t cxxsizeofType(C, void *t)
 {
-  llvm::ExecutionEngine *ee = (llvm::ExecutionEngine *)jl_get_llvm_ee();
-  auto dl = ee->getDataLayout();
+  auto dl = Cxx->shadow->getDataLayout();
   clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
   return dl.getTypeSizeInBits(
     cgt->ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t)))/8;

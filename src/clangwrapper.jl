@@ -620,3 +620,5 @@ ParseDeclaration(C) = pcpp"clang::NamedDecl"(ccall((:ParseDeclaration,libcxxffi)
 getOriginalType(PVD::pcpp"clang::ParmVarDecl") = QualType(ccall((:getOriginalType,libcxxffi),Ptr{Void},(Ptr{Void},),PVD))
 
 getParent(CxxMD::pcpp"clang::CXXMethodDecl") = pcpp"clang::CXXRecordDecl"(ccall((:getCxxMDParent,libcxxffi),Ptr{Void},(Ptr{Void},),CxxMD))
+
+decouple_pch(C) = ccall((:decouple_pch,libcxxffi),Void,(Ptr{ClangCompiler},),&C)

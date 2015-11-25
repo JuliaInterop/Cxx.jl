@@ -657,7 +657,7 @@ end
 
 function CreateFunctionWithPersonality(C, args...)
     f = CreateFunction(C, args...)
-    PersonalityF = getFunction(C, "__cxxjl_personality_v0")
+    PersonalityF = pcpp"llvm::Function"(GetAddrOfFunction(C,lookup_name(C,["__cxxjl_personality_v0"])).ptr)
     @assert PersonalityF != C_NULL
     setPersonality(f, PersonalityF)
     f

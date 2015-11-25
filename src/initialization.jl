@@ -21,10 +21,12 @@ function init_libcxxffi()
 end
 init_libcxxffi()
 
-function setup_instance()
+function setup_instance(UsePCH = C_NULL)
     x = Array(ClangCompiler,1)
     sysroot = @osx? strip(readall(`xcodebuild -version -sdk macosx Path`)) : C_NULL
-    ccall((:init_clang_instance,libcxxffi),Void,(Ptr{Void},Ptr{UInt8},Ptr{UInt8}),x,C_NULL,sysroot)
+    EmitPCH = true
+    ccall((:init_clang_instance,libcxxffi),Void,(Ptr{Void},Ptr{UInt8},Ptr{UInt8},Bool,Ptr{UInt8}),
+        x,C_NULL,sysroot,EmitPCH,UsePCH)
     x[1]
 end
 

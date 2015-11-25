@@ -137,7 +137,7 @@
 # Function (in some cases we need to return some extra code, but those cases
 # are discussed below)
 #
-
+__precompile__(false)
 module Cxx
 
 using Base.Meta
@@ -161,6 +161,11 @@ include("utils.jl")
 include("exceptions.jl")
 include("autowrap.jl")
 
+end
+
+# In precompilation mode, we do still need clang, so do it manually
+if ccall(:jl_generating_output, Cint, ()) != 0
+    Cxx.__init__()
 end
 
 # C++ standard library helpers
