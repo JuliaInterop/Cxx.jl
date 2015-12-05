@@ -104,7 +104,7 @@ struct CxxInstance {
 
 extern "C" {
   #define TYPE_ACCESS(EX,IN)                                    \
-  DLLEXPORT const clang::Type *EX(C) {                          \
+  JL_DLLEXPORT const clang::Type *EX(C) {                          \
     return Cxx->CI->getASTContext().IN.getTypePtrOrNull();      \
   }
 
@@ -147,7 +147,7 @@ extern "C" {
 extern void jl_error(const char *str);
 
 // For initialization.jl
-DLLEXPORT void add_directory(C, int kind, int isFramework, const char *dirname)
+JL_DLLEXPORT void add_directory(C, int kind, int isFramework, const char *dirname)
 {
   clang::SrcMgr::CharacteristicKind flag = (clang::SrcMgr::CharacteristicKind)kind;
   clang::FileManager &fm = Cxx->CI->getFileManager();
@@ -159,7 +159,7 @@ DLLEXPORT void add_directory(C, int kind, int isFramework, const char *dirname)
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
 
-DLLEXPORT int _cxxparse(C)
+JL_DLLEXPORT int _cxxparse(C)
 {
     clang::Sema &S = Cxx->CI->getSema();
     clang::ASTConsumer *Consumer = &S.getASTConsumer();
@@ -182,7 +182,7 @@ DLLEXPORT int _cxxparse(C)
     return 1;
 }
 
-DLLEXPORT void *ParseDeclaration(C)
+JL_DLLEXPORT void *ParseDeclaration(C)
 {
   auto  *P = Cxx->Parser;
   auto  *S = &Cxx->CI->getSema();
@@ -198,7 +198,7 @@ DLLEXPORT void *ParseDeclaration(C)
   return S->HandleDeclarator(P->getCurScope(), D, clang::MultiTemplateParamsArg());
 }
 
-DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
+JL_DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
 {
   if (Cxx->Parser->getPreprocessor().isIncrementalProcessingEnabled() &&
     Cxx->Parser->getCurToken().is(clang::tok::eof))
@@ -211,7 +211,7 @@ DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
   return (void*)QT.getAsOpaquePtr();
 }
 
-DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
+JL_DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
 {
     const clang::DirectoryLookup *CurDir;
     clang::FileManager &fm = Cxx->CI->getFileManager();
@@ -236,7 +236,7 @@ DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
  * Collect all global initializers into one llvm::Function, which
  * we can then call.
  */
-DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
+JL_DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
 {
     clang::CodeGen::CodeGenModule::CtorList &ctors = Cxx->CGM->getGlobalCtors();
     if (ctors.empty()) {
@@ -265,7 +265,7 @@ DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
     return InitF;
 }
 
-DLLEXPORT void EnterSourceFile(C, char *data, size_t length)
+JL_DLLEXPORT void EnterSourceFile(C, char *data, size_t length)
 {
     const clang::DirectoryLookup *CurDir = nullptr;
     clang::FileManager &fm = Cxx->CI->getFileManager();
@@ -276,7 +276,7 @@ DLLEXPORT void EnterSourceFile(C, char *data, size_t length)
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
 }
 
-DLLEXPORT void EnterVirtualFile(C, char *data, size_t length, char *VirtualPath, size_t PathLength)
+JL_DLLEXPORT void EnterVirtualFile(C, char *data, size_t length, char *VirtualPath, size_t PathLength)
 {
     const clang::DirectoryLookup *CurDir = nullptr;
     clang::FileManager &fm = Cxx->CI->getFileManager();
@@ -293,13 +293,13 @@ DLLEXPORT void EnterVirtualFile(C, char *data, size_t length, char *VirtualPath,
     P.EnterSourceFile(FID, CurDir, sm.getLocForStartOfFile(sm.getMainFileID()));
 }
 
-DLLEXPORT int cxxparse(C, char *data, size_t length)
+JL_DLLEXPORT int cxxparse(C, char *data, size_t length)
 {
     EnterSourceFile(Cxx, data, length);
     return _cxxparse(Cxx);
 }
 
-DLLEXPORT void defineMacro(C,const char *Name)
+JL_DLLEXPORT void defineMacro(C,const char *Name)
 {
   clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
   // Get the identifier.
@@ -311,7 +311,7 @@ DLLEXPORT void defineMacro(C,const char *Name)
 }
 
 // For typetranslation.jl
-DLLEXPORT bool BuildNNS(C, clang::CXXScopeSpec *spec, const char *Name)
+JL_DLLEXPORT bool BuildNNS(C, clang::CXXScopeSpec *spec, const char *Name)
 {
   clang::Preprocessor &PP = Cxx->CI->getPreprocessor();
   // Get the identifier.
@@ -329,7 +329,7 @@ DLLEXPORT bool BuildNNS(C, clang::CXXScopeSpec *spec, const char *Name)
   );
 }
 
-DLLEXPORT void *lookup_name(C, char *name, clang::DeclContext *ctx)
+JL_DLLEXPORT void *lookup_name(C, char *name, clang::DeclContext *ctx)
 {
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
     clang::CXXScopeSpec spec;
@@ -344,7 +344,7 @@ DLLEXPORT void *lookup_name(C, char *name, clang::DeclContext *ctx)
     return R.empty() ? NULL : R.getRepresentativeDecl();
 }
 
-DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **types, uint64_t *integralValues,int8_t *integralValuePresent, size_t nargs)
+JL_DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **types, uint64_t *integralValues,int8_t *integralValuePresent, size_t nargs)
 {
   clang::TemplateArgument *targs = new clang::TemplateArgument[nargs];
   for (size_t i = 0; i < nargs; ++i) {
@@ -383,7 +383,7 @@ DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **types
   return ret;
 }
 
-DLLEXPORT void *typeForDecl(clang::Decl *D)
+JL_DLLEXPORT void *typeForDecl(clang::Decl *D)
 {
     clang::TypeDecl *ty = dyn_cast<clang::TypeDecl>(D);
     if (ty == NULL)
@@ -391,22 +391,22 @@ DLLEXPORT void *typeForDecl(clang::Decl *D)
     return (void *)ty->getTypeForDecl();
 }
 
-DLLEXPORT void *withConst(void *T)
+JL_DLLEXPORT void *withConst(void *T)
 {
     return clang::QualType::getFromOpaquePtr(T).withConst().getAsOpaquePtr();
 }
 
-DLLEXPORT void *withVolatile(void *T)
+JL_DLLEXPORT void *withVolatile(void *T)
 {
     return clang::QualType::getFromOpaquePtr(T).withVolatile().getAsOpaquePtr();
 }
 
-DLLEXPORT void *withRestrict(void *T)
+JL_DLLEXPORT void *withRestrict(void *T)
 {
     return clang::QualType::getFromOpaquePtr(T).withRestrict().getAsOpaquePtr();
 }
 
-DLLEXPORT char *decl_name(clang::NamedDecl *decl)
+JL_DLLEXPORT char *decl_name(clang::NamedDecl *decl)
 {
     const clang::IdentifierInfo *II = decl->getIdentifier();
     const clang::TagDecl *TagD;
@@ -421,7 +421,7 @@ DLLEXPORT char *decl_name(clang::NamedDecl *decl)
     return cstr;
 }
 
-DLLEXPORT char *simple_decl_name(clang::NamedDecl *decl)
+JL_DLLEXPORT char *simple_decl_name(clang::NamedDecl *decl)
 {
     std::string str = decl->getNameAsString().data();
     char * cstr = (char*)malloc(str.length()+1);
@@ -430,7 +430,7 @@ DLLEXPORT char *simple_decl_name(clang::NamedDecl *decl)
 }
 
 // For cxxstr
-DLLEXPORT void *createNamespace(C,char *name)
+JL_DLLEXPORT void *createNamespace(C,char *name)
 {
   clang::IdentifierInfo *Id = Cxx->CI->getPreprocessor().getIdentifierInfo(name);
   return (void*)clang::NamespaceDecl::Create(
@@ -444,7 +444,7 @@ DLLEXPORT void *createNamespace(C,char *name)
         );
 }
 
-DLLEXPORT void SetDeclInitializer(C, clang::VarDecl *D, llvm::Constant *CI)
+JL_DLLEXPORT void SetDeclInitializer(C, clang::VarDecl *D, llvm::Constant *CI)
 {
     llvm::Constant *Const = Cxx->CGM->GetAddrOfGlobalVar(D);
     if (!isa<llvm::GlobalVariable>(Const))
@@ -454,7 +454,7 @@ DLLEXPORT void SetDeclInitializer(C, clang::VarDecl *D, llvm::Constant *CI)
     GV->setConstant(true);
 }
 
-DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
+JL_DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
 {
   return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
@@ -515,7 +515,7 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
 }
 
 
-DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline)
+JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline)
 {
   const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
   llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
@@ -554,14 +554,14 @@ DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *
   }
 }
 
-DLLEXPORT void *ActOnStartOfFunction(C, clang::FunctionDecl *D, bool ScopeIsNull = false)
+JL_DLLEXPORT void *ActOnStartOfFunction(C, clang::FunctionDecl *D, bool ScopeIsNull = false)
 {
   clang::Sema &sema = Cxx->CI->getSema();
   //ContextRAII SavedContext(sema, DC);
   return (void*)sema.ActOnStartOfFunctionDef(ScopeIsNull ? nullptr : Cxx->Parser->getCurScope(), D);
 }
 
-DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
+JL_DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
 {
   clang::Parser::ParseScope BodyScope(Cxx->Parser, clang::Scope::FnScope|clang::Scope::DeclScope);
   Cxx->Parser->ConsumeToken();
@@ -612,7 +612,7 @@ DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
   return true;
 }
 
-DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
+JL_DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
 {
   Cxx->Parser->EnterScope(clang::Scope::DeclScope);
   clang::ParsedAttributes attrs(Cxx->Parser->getAttrFactory());
@@ -627,7 +627,7 @@ DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
       );
 }
 
-DLLEXPORT void ActOnFinishNamespaceDef(C, clang::Decl *D)
+JL_DLLEXPORT void ActOnFinishNamespaceDef(C, clang::Decl *D)
 {
   Cxx->Parser->ExitScope();
   Cxx->CI->getSema().ActOnFinishNamespaceDef(
@@ -637,7 +637,7 @@ DLLEXPORT void ActOnFinishNamespaceDef(C, clang::Decl *D)
 
 // For codegen.jl
 
-DLLEXPORT int typeconstruct(C,void *type, clang::Expr **rawexprs, size_t nexprs, void **ret)
+JL_DLLEXPORT int typeconstruct(C,void *type, clang::Expr **rawexprs, size_t nexprs, void **ret)
 {
     clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
     clang::MultiExprArg Exprs(rawexprs,nexprs);
@@ -693,7 +693,7 @@ DLLEXPORT int typeconstruct(C,void *type, clang::Expr **rawexprs, size_t nexprs,
     return true;
 }
 
-DLLEXPORT void *BuildCXXNewExpr(C, clang::Type *type, clang::Expr **exprs, size_t nexprs)
+JL_DLLEXPORT void *BuildCXXNewExpr(C, clang::Type *type, clang::Expr **exprs, size_t nexprs)
 {
   clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
@@ -708,13 +708,13 @@ DLLEXPORT void *BuildCXXNewExpr(C, clang::Type *type, clang::Expr **exprs, size_
   //return (clang_astcontext) new clang::CXXNewExpr(clang_astcontext, false, nE, dE, )
 }
 
-DLLEXPORT void *EmitCXXNewExpr(C, clang::Expr *E)
+JL_DLLEXPORT void *EmitCXXNewExpr(C, clang::Expr *E)
 {
   assert(isa<clang::CXXNewExpr>(E));
   return (void*)Cxx->CGF->EmitCXXNewExpr(cast<clang::CXXNewExpr>(E));
 }
 
-DLLEXPORT void *build_call_to_member(C, clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
+JL_DLLEXPORT void *build_call_to_member(C, clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
 {
   if (MemExprE->getType() == Cxx->CI->getASTContext().BoundMemberTy ||
          MemExprE->getType() == Cxx->CI->getASTContext().OverloadTy)
@@ -731,7 +731,7 @@ DLLEXPORT void *build_call_to_member(C, clang::Expr *MemExprE,clang::Expr **expr
   }
 }
 
-DLLEXPORT void *PerformMoveOrCopyInitialization(C, void *rt, clang::Expr *expr)
+JL_DLLEXPORT void *PerformMoveOrCopyInitialization(C, void *rt, clang::Expr *expr)
 {
   clang::InitializedEntity Entity = clang::InitializedEntity::InitializeTemporary(
     clang::QualType::getFromOpaquePtr(rt));
@@ -740,11 +740,11 @@ DLLEXPORT void *PerformMoveOrCopyInitialization(C, void *rt, clang::Expr *expr)
 }
 
 // For CxxREPL
-DLLEXPORT void *clang_compiler(C)
+JL_DLLEXPORT void *clang_compiler(C)
 {
   return (void*)Cxx->CI;
 }
-DLLEXPORT void *clang_parser(C)
+JL_DLLEXPORT void *clang_parser(C)
 {
   return (void*)Cxx->Parser;
 }
@@ -927,7 +927,7 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
 
 
 extern "C" {
- DLLEXPORT void *julia_namespace = 0;
+ JL_DLLEXPORT void *julia_namespace = 0;
 }
 
 class JuliaSemaSource : public clang::ExternalSemaSource
@@ -973,7 +973,7 @@ public:
 extern "C" {
 
 
-DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
+JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
   const char *UsePCH) {
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     Cxx->CI = new clang::CompilerInstance;
@@ -1106,7 +1106,7 @@ static llvm::Module *cur_module = NULL;
 static llvm::Function *cur_func = NULL;
 
 
-DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
+JL_DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
 {
     //assert(in_cpp == false);
     //in_cpp = true;
@@ -1154,12 +1154,12 @@ DLLEXPORT void *setup_cpp_env(C, void *jlfunc)
     return state;
 }
 
-DLLEXPORT bool EmitTopLevelDecl(C, clang::Decl *D)
+JL_DLLEXPORT bool EmitTopLevelDecl(C, clang::Decl *D)
 {
     return Cxx->JCodeGen->EmitTopLevelDecl(D);
 }
 
-DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
+JL_DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
 {
     //assert(in_cpp == true);
     //in_cpp = false;
@@ -1214,13 +1214,13 @@ ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
 04468                     Expr *ExecConfig, bool IsExecConfig) {
 04469   // Since this might be a postfix expression, get rid of Pare
 */
-DLLEXPORT void *CreateCallExpr(C, clang::Expr *Fn,clang::Expr **exprs, size_t nexprs)
+JL_DLLEXPORT void *CreateCallExpr(C, clang::Expr *Fn,clang::Expr **exprs, size_t nexprs)
 {
     return Cxx->CI->getSema().ActOnCallExpr(NULL, Fn, getTrivialSourceLocation(Cxx),
       clang::MultiExprArg(exprs,nexprs), getTrivialSourceLocation(Cxx), NULL, false).get();
 }
 
-DLLEXPORT void *CreateVarDecl(C, void *DC, char* name, void *type)
+JL_DLLEXPORT void *CreateVarDecl(C, void *DC, char* name, void *type)
 {
   clang::QualType T = clang::QualType::getFromOpaquePtr(type);
   clang::VarDecl *D = clang::VarDecl::Create(Cxx->CI->getASTContext(), (clang::DeclContext *)DC,
@@ -1230,7 +1230,7 @@ DLLEXPORT void *CreateVarDecl(C, void *DC, char* name, void *type)
   return D;
 }
 
-DLLEXPORT void *CreateFunctionDecl(C, void *DC, char* name, void *type, int isextern)
+JL_DLLEXPORT void *CreateFunctionDecl(C, void *DC, char* name, void *type, int isextern)
 {
   clang::QualType T = clang::QualType::getFromOpaquePtr(type);
   clang::FunctionDecl *D = clang::FunctionDecl::Create(Cxx->CI->getASTContext(), (clang::DeclContext *)DC,
@@ -1241,7 +1241,7 @@ DLLEXPORT void *CreateFunctionDecl(C, void *DC, char* name, void *type, int isex
 }
 
 
-DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
+JL_DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
 {
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
     clang::ParmVarDecl *d = clang::ParmVarDecl::Create(
@@ -1257,7 +1257,7 @@ DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
     return (void*)d;
 }
 
-DLLEXPORT void *CreateTypeDefDecl(C, clang::DeclContext *DC, char *name, void *type)
+JL_DLLEXPORT void *CreateTypeDefDecl(C, clang::DeclContext *DC, char *name, void *type)
 {
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
     return (void*)clang::TypedefDecl::Create(Cxx->CI->getASTContext(),DC,getTrivialSourceLocation(Cxx),
@@ -1266,7 +1266,7 @@ DLLEXPORT void *CreateTypeDefDecl(C, clang::DeclContext *DC, char *name, void *t
         Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T));
 }
 
-DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, size_t npvds)
+JL_DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, size_t npvds)
 {
     FD->setParams(ArrayRef<clang::ParmVarDecl*>(PVDs,npvds));
     clang::TypeSourceInfo *TInfo = FD->getTypeSourceInfo();
@@ -1279,7 +1279,7 @@ DLLEXPORT void SetFDParams(clang::FunctionDecl *FD, clang::ParmVarDecl **PVDs, s
     }
 }
 
-DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
+JL_DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
 {
     clang::VarDecl *vd = dyn_cast<clang::VarDecl>(d);
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
@@ -1291,12 +1291,12 @@ DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
       clang::CodeGen::CodeGenFunction::ParamValue::forDirect(Cxx->CGF->Builder.CreateBitCast(V, Ty)), 0);
 }
 
-DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
+JL_DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
 {
     DC->addDecl(D);
 }
 
-DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)
+JL_DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)
 {
     clang::QualType T = D->getType();
     return (void*)clang::DeclRefExpr::Create(Cxx->CI->getASTContext(), scope ?
@@ -1305,39 +1305,39 @@ DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec *sc
             T.getNonReferenceType(), islvalue ? clang::VK_LValue : clang::VK_RValue);
 }
 
-DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
+JL_DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
 {
     return expr->getType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *CreateFunction(C, llvm::Type *rt, llvm::Type** argt, size_t nargs)
+JL_DLLEXPORT void *CreateFunction(C, llvm::Type *rt, llvm::Type** argt, size_t nargs)
 {
   llvm::FunctionType *ft = llvm::FunctionType::get(rt,llvm::ArrayRef<llvm::Type*>(argt,nargs),false);
   return (void*)llvm::Function::Create(ft, llvm::GlobalValue::ExternalLinkage, "", Cxx->shadow);
 }
 
-DLLEXPORT void *tovdecl(clang::Decl *D)
+JL_DLLEXPORT void *tovdecl(clang::Decl *D)
 {
     return dyn_cast<clang::ValueDecl>(D);
 }
 
-DLLEXPORT void *cxxtmplt(clang::Decl *D)
+JL_DLLEXPORT void *cxxtmplt(clang::Decl *D)
 {
     return dyn_cast<clang::ClassTemplateDecl>(D);
 }
 
 
-DLLEXPORT void *extractTypePtr(void *QT)
+JL_DLLEXPORT void *extractTypePtr(void *QT)
 {
     return (void*)clang::QualType::getFromOpaquePtr(QT).getTypePtr();
 }
 
-DLLEXPORT unsigned extractCVR(void *QT)
+JL_DLLEXPORT unsigned extractCVR(void *QT)
 {
     return clang::QualType::getFromOpaquePtr(QT).getCVRQualifiers();
 }
 
-DLLEXPORT void *emitcallexpr(C, clang::Expr *E, llvm::Value *rslot)
+JL_DLLEXPORT void *emitcallexpr(C, clang::Expr *E, llvm::Value *rslot)
 {
     if (isa<clang::CXXBindTemporaryExpr>(E))
       E = cast<clang::CXXBindTemporaryExpr>(E)->getSubExpr();
@@ -1353,13 +1353,13 @@ DLLEXPORT void *emitcallexpr(C, clang::Expr *E, llvm::Value *rslot)
       return ret.getAggregateAddress().getPointer();
 }
 
-DLLEXPORT void emitexprtomem(C,clang::Expr *E, llvm::Value *addr, int isInit)
+JL_DLLEXPORT void emitexprtomem(C,clang::Expr *E, llvm::Value *addr, int isInit)
 {
     Cxx->CGF->EmitAnyExprToMem(E, clang::CodeGen::Address(addr,clang::CharUnits::One()),
       clang::Qualifiers(), isInit);
 }
 
-DLLEXPORT void *EmitAnyExpr(C, clang::Expr *E, llvm::Value *rslot)
+JL_DLLEXPORT void *EmitAnyExpr(C, clang::Expr *E, llvm::Value *rslot)
 {
     clang::CodeGen::RValue ret = Cxx->CGF->EmitAnyExpr(E);
     if (ret.isScalar())
@@ -1368,7 +1368,7 @@ DLLEXPORT void *EmitAnyExpr(C, clang::Expr *E, llvm::Value *rslot)
       return ret.getAggregateAddress().getPointer();
 }
 
-DLLEXPORT void *get_nth_argument(Function *f, size_t n)
+JL_DLLEXPORT void *get_nth_argument(Function *f, size_t n)
 {
     size_t i = 0;
     Function::arg_iterator AI = f->arg_begin();
@@ -1380,27 +1380,27 @@ DLLEXPORT void *get_nth_argument(Function *f, size_t n)
     return NULL;
 }
 
-DLLEXPORT void *create_extract_value(C, Value *agg, size_t idx)
+JL_DLLEXPORT void *create_extract_value(C, Value *agg, size_t idx)
 {
     return Cxx->CGF->Builder.CreateExtractValue(agg,ArrayRef<unsigned>((unsigned)idx));
 }
 
-DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *agg, Value *val, size_t idx)
+JL_DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *agg, Value *val, size_t idx)
 {
     return builder->CreateInsertValue(agg,val,ArrayRef<unsigned>((unsigned)idx));
 }
 
-DLLEXPORT void *tu_decl(C)
+JL_DLLEXPORT void *tu_decl(C)
 {
     return Cxx->CI->getASTContext().getTranslationUnitDecl();
 }
 
-DLLEXPORT void *get_primary_dc(clang::DeclContext *dc)
+JL_DLLEXPORT void *get_primary_dc(clang::DeclContext *dc)
 {
     return dc->getPrimaryContext();
 }
 
-DLLEXPORT void *decl_context(clang::Decl *decl)
+JL_DLLEXPORT void *decl_context(clang::Decl *decl)
 {
     if(isa<clang::TypedefNameDecl>(decl))
     {
@@ -1420,108 +1420,108 @@ DLLEXPORT void *decl_context(clang::Decl *decl)
     return dyn_cast<clang::DeclContext>(decl);
 }
 
-DLLEXPORT void *to_decl(clang::DeclContext *decl)
+JL_DLLEXPORT void *to_decl(clang::DeclContext *decl)
 {
     return dyn_cast<clang::Decl>(decl);
 }
 
-DLLEXPORT void *to_cxxdecl(clang::Decl *decl)
+JL_DLLEXPORT void *to_cxxdecl(clang::Decl *decl)
 {
     return dyn_cast<clang::CXXRecordDecl>(decl);
 }
 
-DLLEXPORT void *GetFunctionReturnType(clang::FunctionDecl *FD)
+JL_DLLEXPORT void *GetFunctionReturnType(clang::FunctionDecl *FD)
 {
     return FD->getReturnType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *BuildDecltypeType(C, clang::Expr *E)
+JL_DLLEXPORT void *BuildDecltypeType(C, clang::Expr *E)
 {
     clang::QualType T = Cxx->CI->getSema().BuildDecltypeType(E,E->getLocStart());
     return Cxx->CI->getASTContext().getCanonicalType(T).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getTemplateArgs(clang::ClassTemplateSpecializationDecl *tmplt)
+JL_DLLEXPORT void *getTemplateArgs(clang::ClassTemplateSpecializationDecl *tmplt)
 {
     return (void*)&tmplt->getTemplateArgs();
 }
 
-DLLEXPORT size_t getTargsSize(clang::TemplateArgumentList *targs)
+JL_DLLEXPORT size_t getTargsSize(clang::TemplateArgumentList *targs)
 {
     return targs->size();
 }
 
-DLLEXPORT size_t getTSTTargsSize(clang::TemplateSpecializationType *TST)
+JL_DLLEXPORT size_t getTSTTargsSize(clang::TemplateSpecializationType *TST)
 {
     return TST->getNumArgs();
 }
 
-DLLEXPORT size_t getTDNumParameters(clang::TemplateDecl *TD)
+JL_DLLEXPORT size_t getTDNumParameters(clang::TemplateDecl *TD)
 {
     return TD->getTemplateParameters()->size();
 }
 
-DLLEXPORT void *getTargsPointer(clang::TemplateArgumentList *targs)
+JL_DLLEXPORT void *getTargsPointer(clang::TemplateArgumentList *targs)
 {
     return (void*)targs->data();
 }
 
-DLLEXPORT void *getTargType(const clang::TemplateArgument *targ)
+JL_DLLEXPORT void *getTargType(const clang::TemplateArgument *targ)
 {
     return (void*)targ->getAsType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getTDParamAtIdx(clang::TemplateDecl *TD, int i)
+JL_DLLEXPORT void *getTDParamAtIdx(clang::TemplateDecl *TD, int i)
 {
     return (void*)TD->getTemplateParameters()->getParam(i);
 }
 
-DLLEXPORT void *getTargTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
+JL_DLLEXPORT void *getTargTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return getTargType(&targs->get(i));
 }
 
-DLLEXPORT void *getTSTTargTypeAtIdx(clang::TemplateSpecializationType *targs, size_t i)
+JL_DLLEXPORT void *getTSTTargTypeAtIdx(clang::TemplateSpecializationType *targs, size_t i)
 {
     return getTargType(&targs->getArg(i));
 }
 
-DLLEXPORT void *getTargIntegralType(const clang::TemplateArgument *targ)
+JL_DLLEXPORT void *getTargIntegralType(const clang::TemplateArgument *targ)
 {
     return targ->getIntegralType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getTargIntegralTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
+JL_DLLEXPORT void *getTargIntegralTypeAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return getTargIntegralType(&targs->get(i));
 }
 
-DLLEXPORT int getTargKind(const clang::TemplateArgument *targ)
+JL_DLLEXPORT int getTargKind(const clang::TemplateArgument *targ)
 {
     return targ->getKind();
 }
 
-DLLEXPORT int getTargKindAtIdx(clang::TemplateArgumentList *targs, size_t i)
+JL_DLLEXPORT int getTargKindAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return getTargKind(&targs->get(i));
 }
 
-DLLEXPORT int getTSTTargKindAtIdx(clang::TemplateSpecializationType *TST, size_t i)
+JL_DLLEXPORT int getTSTTargKindAtIdx(clang::TemplateSpecializationType *TST, size_t i)
 {
     return getTargKind(&TST->getArg(i));
 }
 
-DLLEXPORT size_t getTargPackAtIdxSize(clang::TemplateArgumentList *targs, size_t i)
+JL_DLLEXPORT size_t getTargPackAtIdxSize(clang::TemplateArgumentList *targs, size_t i)
 {
     return targs->get(i).getPackAsArray().size();
 }
 
-DLLEXPORT void *getTargPackAtIdxTargAtIdx(clang::TemplateArgumentList *targs, size_t i, size_t j)
+JL_DLLEXPORT void *getTargPackAtIdxTargAtIdx(clang::TemplateArgumentList *targs, size_t i, size_t j)
 {
     return (void*)&targs->get(i).getPackAsArray()[j];
 }
 
-DLLEXPORT int64_t getTargAsIntegralAtIdx(clang::TemplateArgumentList *targs, size_t i)
+JL_DLLEXPORT int64_t getTargAsIntegralAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return targs->get(i).getAsIntegral().getSExtValue();
 }
@@ -1536,65 +1536,65 @@ size_t getTargPackSize(clang::TemplateArgument *targ)
     return targ->pack_size();
 }
 
-DLLEXPORT void *getPointeeType(clang::Type *t)
+JL_DLLEXPORT void *getPointeeType(clang::Type *t)
 {
     return t->getPointeeType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getArrayElementType(clang::Type *t)
+JL_DLLEXPORT void *getArrayElementType(clang::Type *t)
 {
     return cast<clang::ArrayType>(t)->getElementType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getOriginalType(clang::ParmVarDecl *d)
+JL_DLLEXPORT void *getOriginalType(clang::ParmVarDecl *d)
 {
   return (void*)d->getOriginalType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getPointerTo(C, void *T)
+JL_DLLEXPORT void *getPointerTo(C, void *T)
 {
     return Cxx->CI->getASTContext().getPointerType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getReferenceTo(C, void *T)
+JL_DLLEXPORT void *getReferenceTo(C, void *T)
 {
     return Cxx->CI->getASTContext().getLValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getRvalueReferenceTo(C, void *T)
+JL_DLLEXPORT void *getRvalueReferenceTo(C, void *T)
 {
     return Cxx->CI->getASTContext().getRValueReferenceType(clang::QualType::getFromOpaquePtr(T)).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getIncompleteArrayType(C, void *T)
+JL_DLLEXPORT void *getIncompleteArrayType(C, void *T)
 {
     return Cxx->CI->getASTContext().getIncompleteArrayType(
       clang::QualType::getFromOpaquePtr(T),
       clang::ArrayType::Normal, 0).getAsOpaquePtr();
 }
 
-DLLEXPORT void *createDerefExpr(C, clang::Expr *expr)
+JL_DLLEXPORT void *createDerefExpr(C, clang::Expr *expr)
 {
   return (void*)Cxx->CI->getSema().CreateBuiltinUnaryOp(getTrivialSourceLocation(Cxx),clang::UO_Deref,expr).get();
 }
 
-DLLEXPORT void *createAddrOfExpr(C, clang::Expr *expr)
+JL_DLLEXPORT void *createAddrOfExpr(C, clang::Expr *expr)
 {
   return (void*)Cxx->CI->getSema().CreateBuiltinUnaryOp(getTrivialSourceLocation(Cxx),clang::UO_AddrOf,expr).get();
 }
 
-DLLEXPORT void *createCast(C,clang::Expr *expr, clang::Type *t, int kind)
+JL_DLLEXPORT void *createCast(C,clang::Expr *expr, clang::Type *t, int kind)
 {
   return clang::ImplicitCastExpr::Create(Cxx->CI->getASTContext(),clang::QualType(t,0),
     (clang::CastKind)kind,expr,NULL,clang::VK_RValue);
 }
 
-DLLEXPORT void *CreateBinOp(C, clang::Scope *S, int opc, clang::Expr *LHS, clang::Expr *RHS)
+JL_DLLEXPORT void *CreateBinOp(C, clang::Scope *S, int opc, clang::Expr *LHS, clang::Expr *RHS)
 {
   return (void*)Cxx->CI->getSema().BuildBinOp(S,clang::SourceLocation(),(clang::BinaryOperatorKind)opc,LHS,RHS).get();
 }
 
-DLLEXPORT void *BuildMemberReference(C, clang::Expr *base, clang::Type *t, int IsArrow, char *name)
+JL_DLLEXPORT void *BuildMemberReference(C, clang::Expr *base, clang::Type *t, int IsArrow, char *name)
 {
     clang::DeclarationName DName(&Cxx->CI->getASTContext().Idents.get(name));
     clang::Sema &sema = Cxx->CI->getSema();
@@ -1603,7 +1603,7 @@ DLLEXPORT void *BuildMemberReference(C, clang::Expr *base, clang::Type *t, int I
       getTrivialSourceLocation(Cxx), nullptr, clang::DeclarationNameInfo(DName, getTrivialSourceLocation(Cxx)), nullptr, nullptr).get();
 }
 
-DLLEXPORT void *BuildDeclarationNameExpr(C, char *name, clang::DeclContext *ctx)
+JL_DLLEXPORT void *BuildDeclarationNameExpr(C, char *name, clang::DeclContext *ctx)
 {
     clang::Sema &sema = Cxx->CI->getSema();
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
@@ -1617,58 +1617,58 @@ DLLEXPORT void *BuildDeclarationNameExpr(C, char *name, clang::DeclContext *ctx)
     return (void*)sema.BuildDeclarationNameExpr(spec,R,false).get();
 }
 
-DLLEXPORT void *clang_get_builder(C)
+JL_DLLEXPORT void *clang_get_builder(C)
 {
     return (void*)&Cxx->CGF->Builder;
 }
 
-DLLEXPORT void *jl_get_llvm_ee()
+JL_DLLEXPORT void *jl_get_llvm_ee()
 {
     return jl_ExecutionEngine;
 }
 
-DLLEXPORT void *jl_get_llvmc()
+JL_DLLEXPORT void *jl_get_llvmc()
 {
     return &jl_LLVMContext;
 }
 
-DLLEXPORT void cdump(void *decl)
+JL_DLLEXPORT void cdump(void *decl)
 {
     ((clang::Decl*) decl)->dump();
 }
 
-DLLEXPORT void exprdump(void *expr)
+JL_DLLEXPORT void exprdump(void *expr)
 {
     ((clang::Expr*) expr)->dump();
 }
 
-DLLEXPORT void typedump(void *t)
+JL_DLLEXPORT void typedump(void *t)
 {
     ((clang::Type*) t)->dump();
 }
 
-DLLEXPORT void llvmdump(void *t)
+JL_DLLEXPORT void llvmdump(void *t)
 {
     ((llvm::Value*) t)->dump();
 }
 
-DLLEXPORT void llvmtdump(void *t)
+JL_DLLEXPORT void llvmtdump(void *t)
 {
     ((llvm::Type*) t)->dump();
 }
 
-DLLEXPORT void *createLoad(llvm::IRBuilder<false> *builder, llvm::Value *val)
+JL_DLLEXPORT void *createLoad(llvm::IRBuilder<false> *builder, llvm::Value *val)
 {
     return builder->CreateLoad(val);
 }
 
-DLLEXPORT void *CreateConstGEP1_32(llvm::IRBuilder<false> *builder, llvm::Value *val, uint32_t idx)
+JL_DLLEXPORT void *CreateConstGEP1_32(llvm::IRBuilder<false> *builder, llvm::Value *val, uint32_t idx)
 {
     return (void*)builder->CreateConstGEP1_32(val,idx);
 }
 
 #define TMember(s)              \
-DLLEXPORT int s(clang::Type *t) \
+JL_DLLEXPORT int s(clang::Type *t) \
 {                               \
   return t->s();                \
 }
@@ -1689,15 +1689,15 @@ TMember(isDependentType)
 TMember(isTemplateTypeParmType)
 TMember(isArrayType)
 
-DLLEXPORT int isTemplateSpecializationType(clang::Type *t) {
+JL_DLLEXPORT int isTemplateSpecializationType(clang::Type *t) {
   return isa<clang::TemplateSpecializationType>(t);
 }
 
-DLLEXPORT int isElaboratedType(clang::Type *t) {
+JL_DLLEXPORT int isElaboratedType(clang::Type *t) {
   return isa<clang::ElaboratedType>(t);
 }
 
-DLLEXPORT void *isIncompleteType(clang::Type *t)
+JL_DLLEXPORT void *isIncompleteType(clang::Type *t)
 {
     clang::NamedDecl *ND = NULL;
     t->isIncompleteType(&ND);
@@ -1705,7 +1705,7 @@ DLLEXPORT void *isIncompleteType(clang::Type *t)
 }
 
 #define W(M,ARG)              \
-DLLEXPORT void *M(ARG *p)     \
+JL_DLLEXPORT void *M(ARG *p)     \
 {                             \
   return (void *)p->M();      \
 }
@@ -1714,11 +1714,11 @@ W(getPointeeCXXRecordDecl, clang::Type)
 W(getAsCXXRecordDecl, clang::Type)
 
 #define ISAD(NS,T,ARGT)             \
-DLLEXPORT int isa ## T(ARGT *p)      \
+JL_DLLEXPORT int isa ## T(ARGT *p)      \
 {                                   \
   return llvm::isa<NS::T>(p);       \
 }                                   \
-DLLEXPORT void *dcast ## T(ARGT *p)  \
+JL_DLLEXPORT void *dcast ## T(ARGT *p)  \
 {                                   \
   return llvm::dyn_cast<NS::T>(p);  \
 }
@@ -1732,37 +1732,37 @@ ISAD(clang,FunctionDecl,clang::Decl)
 ISAD(clang,TypeDecl,clang::Decl)
 ISAD(clang,CXXMethodDecl,clang::Decl)
 
-DLLEXPORT void *getUndefValue(llvm::Type *t)
+JL_DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
   return (void*)llvm::UndefValue::get(t);
 }
 
-DLLEXPORT void *getStructElementType(llvm::Type *t, uint32_t i)
+JL_DLLEXPORT void *getStructElementType(llvm::Type *t, uint32_t i)
 {
   return (void*)t->getStructElementType(i);
 }
 
-DLLEXPORT void *CreateRet(llvm::IRBuilder<false> *builder, llvm::Value *ret)
+JL_DLLEXPORT void *CreateRet(llvm::IRBuilder<false> *builder, llvm::Value *ret)
 {
   return (void*)builder->CreateRet(ret);
 }
 
-DLLEXPORT void *CreateRetVoid(llvm::IRBuilder<false> *builder)
+JL_DLLEXPORT void *CreateRetVoid(llvm::IRBuilder<false> *builder)
 {
   return (void*)builder->CreateRetVoid();
 }
 
-DLLEXPORT void *CreateBitCast(llvm::IRBuilder<false> *builder, llvm::Value *val, llvm::Type *type)
+JL_DLLEXPORT void *CreateBitCast(llvm::IRBuilder<false> *builder, llvm::Value *val, llvm::Type *type)
 {
   return (void*)builder->CreateBitCast(val,type);
 }
 
-DLLEXPORT void *getConstantIntToPtr(llvm::Constant *CC, llvm::Type *type)
+JL_DLLEXPORT void *getConstantIntToPtr(llvm::Constant *CC, llvm::Type *type)
 {
   return (void*)ConstantExpr::getIntToPtr(CC,type);
 }
 
-DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
+JL_DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
 {
   clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
   auto dl = Cxx->shadow->getDataLayout();
@@ -1772,7 +1772,7 @@ DLLEXPORT size_t cxxsizeof(C, clang::CXXRecordDecl *decl)
   return dl.getTypeSizeInBits(t)/8;
 }
 
-DLLEXPORT size_t cxxsizeofType(C, void *t)
+JL_DLLEXPORT size_t cxxsizeofType(C, void *t)
 {
   auto dl = Cxx->shadow->getDataLayout();
   clang::CodeGen::CodeGenTypes *cgt = &Cxx->CGM->getTypes();
@@ -1780,52 +1780,52 @@ DLLEXPORT size_t cxxsizeofType(C, void *t)
     cgt->ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t)))/8;
 }
 
-DLLEXPORT void *ConvertTypeForMem(C, void *t)
+JL_DLLEXPORT void *ConvertTypeForMem(C, void *t)
 {
   return (void*)Cxx->CGM->getTypes().ConvertTypeForMem(clang::QualType::getFromOpaquePtr(t));
 }
 
-DLLEXPORT void *getValueType(llvm::Value *val)
+JL_DLLEXPORT void *getValueType(llvm::Value *val)
 {
   return (void*)val->getType();
 }
 
-DLLEXPORT int isLLVMPointerType(llvm::Type *t)
+JL_DLLEXPORT int isLLVMPointerType(llvm::Type *t)
 {
   return t->isPointerTy();
 }
 
-DLLEXPORT void *getLLVMPointerTo(llvm::Type *t)
+JL_DLLEXPORT void *getLLVMPointerTo(llvm::Type *t)
 {
   return (void*)t->getPointerTo();
 }
 
-DLLEXPORT void *getContext(clang::Decl *d)
+JL_DLLEXPORT void *getContext(clang::Decl *d)
 {
   return (void*)d->getDeclContext();
 }
 
-DLLEXPORT void *getParentContext(clang::DeclContext *DC)
+JL_DLLEXPORT void *getParentContext(clang::DeclContext *DC)
 {
   return (void*)DC->getParent();
 }
 
-DLLEXPORT void *getCxxMDParent(clang::CXXMethodDecl *CxxMD)
+JL_DLLEXPORT void *getCxxMDParent(clang::CXXMethodDecl *CxxMD)
 {
   return CxxMD->getParent();
 }
 
-DLLEXPORT uint64_t getDCDeclKind(clang::DeclContext *DC)
+JL_DLLEXPORT uint64_t getDCDeclKind(clang::DeclContext *DC)
 {
   return (uint64_t)DC->getDeclKind();
 }
 
-DLLEXPORT void *getDirectCallee(clang::CallExpr *e)
+JL_DLLEXPORT void *getDirectCallee(clang::CallExpr *e)
 {
   return (void*)e->getDirectCallee();
 }
 
-DLLEXPORT void *getCalleeReturnType(clang::CallExpr *e)
+JL_DLLEXPORT void *getCalleeReturnType(clang::CallExpr *e)
 {
   clang::FunctionDecl *fd = e->getDirectCallee();
   if (fd == NULL)
@@ -1833,24 +1833,24 @@ DLLEXPORT void *getCalleeReturnType(clang::CallExpr *e)
   return (void*)fd->getReturnType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *newCXXScopeSpec(C)
+JL_DLLEXPORT void *newCXXScopeSpec(C)
 {
   clang::CXXScopeSpec *scope = new clang::CXXScopeSpec();
   scope->MakeGlobal(Cxx->CI->getASTContext(),getTrivialSourceLocation(Cxx));
   return (void*)scope;
 }
 
-DLLEXPORT void deleteCXXScopeSpec(clang::CXXScopeSpec *spec)
+JL_DLLEXPORT void deleteCXXScopeSpec(clang::CXXScopeSpec *spec)
 {
   delete spec;
 }
 
-DLLEXPORT void ExtendNNS(C,clang::NestedNameSpecifierLocBuilder *builder, clang::NamespaceDecl *d)
+JL_DLLEXPORT void ExtendNNS(C,clang::NestedNameSpecifierLocBuilder *builder, clang::NamespaceDecl *d)
 {
   builder->Extend(Cxx->CI->getASTContext(),d,getTrivialSourceLocation(Cxx),getTrivialSourceLocation(Cxx));
 }
 
-DLLEXPORT void ExtendNNSIdentifier(C,clang::NestedNameSpecifierLocBuilder *builder, const char *Name)
+JL_DLLEXPORT void ExtendNNSIdentifier(C,clang::NestedNameSpecifierLocBuilder *builder, const char *Name)
 {
   clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
   // Get the identifier.
@@ -1858,7 +1858,7 @@ DLLEXPORT void ExtendNNSIdentifier(C,clang::NestedNameSpecifierLocBuilder *build
   builder->Extend(Cxx->CI->getASTContext(),Id,getTrivialSourceLocation(Cxx),getTrivialSourceLocation(Cxx));
 }
 
-DLLEXPORT void ExtendNNSType(C,clang::NestedNameSpecifierLocBuilder *builder, void *t)
+JL_DLLEXPORT void ExtendNNSType(C,clang::NestedNameSpecifierLocBuilder *builder, void *t)
 {
   clang::TypeLocBuilder TLBuilder;
   clang::QualType T = clang::QualType::getFromOpaquePtr(t);
@@ -1870,7 +1870,7 @@ DLLEXPORT void ExtendNNSType(C,clang::NestedNameSpecifierLocBuilder *builder, vo
     getTrivialSourceLocation(Cxx));
 }
 
-DLLEXPORT void *makeFunctionType(C, void *rt, void **argts, size_t nargs)
+JL_DLLEXPORT void *makeFunctionType(C, void *rt, void **argts, size_t nargs)
 {
   clang::QualType T;
   if (rt == NULL) {
@@ -1887,104 +1887,104 @@ DLLEXPORT void *makeFunctionType(C, void *rt, void **argts, size_t nargs)
   return Cxx->CI->getASTContext().getFunctionType(T, llvm::ArrayRef<clang::QualType>(qargs, nargs), EPI).getAsOpaquePtr();
 }
 
-DLLEXPORT void *makeMemberFunctionType(C, void *FT, clang::Type *cls)
+JL_DLLEXPORT void *makeMemberFunctionType(C, void *FT, clang::Type *cls)
 {
   return Cxx->CI->getASTContext().getMemberPointerType(clang::QualType::getFromOpaquePtr(FT), cls).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getMemberPointerClass(clang::Type *mptr)
+JL_DLLEXPORT void *getMemberPointerClass(clang::Type *mptr)
 {
   return (void*)cast<clang::MemberPointerType>(mptr)->getClass();
 }
 
-DLLEXPORT void *getMemberPointerPointee(clang::Type *mptr)
+JL_DLLEXPORT void *getMemberPointerPointee(clang::Type *mptr)
 {
   return cast<clang::MemberPointerType>(mptr)->getPointeeType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getFPTReturnType(clang::FunctionProtoType *fpt)
+JL_DLLEXPORT void *getFPTReturnType(clang::FunctionProtoType *fpt)
 {
   return fpt->getReturnType().getAsOpaquePtr();
 }
 
-DLLEXPORT void *getFDReturnType(clang::FunctionDecl *FD)
+JL_DLLEXPORT void *getFDReturnType(clang::FunctionDecl *FD)
 {
   return FD->getReturnType().getAsOpaquePtr();
 }
 
-DLLEXPORT size_t getFPTNumParams(clang::FunctionProtoType *fpt)
+JL_DLLEXPORT size_t getFPTNumParams(clang::FunctionProtoType *fpt)
 {
   return fpt->getNumParams();
 }
 
-DLLEXPORT size_t getFDNumParams(clang::FunctionDecl *FD)
+JL_DLLEXPORT size_t getFDNumParams(clang::FunctionDecl *FD)
 {
   return FD->getNumParams();
 }
 
-DLLEXPORT void *getFPTParam(clang::FunctionProtoType *fpt, size_t idx)
+JL_DLLEXPORT void *getFPTParam(clang::FunctionProtoType *fpt, size_t idx)
 {
   return fpt->getParamType(idx).getAsOpaquePtr();
 }
 
-DLLEXPORT void *getLLVMStructType(llvm::Type **ts, size_t nts)
+JL_DLLEXPORT void *getLLVMStructType(llvm::Type **ts, size_t nts)
 {
   return (void*)llvm::StructType::get(jl_LLVMContext,ArrayRef<llvm::Type*>(ts,nts));
 }
 
-DLLEXPORT void MarkDeclarationsReferencedInExpr(C,clang::Expr *e)
+JL_DLLEXPORT void MarkDeclarationsReferencedInExpr(C,clang::Expr *e)
 {
   clang::Sema &sema = Cxx->CI->getSema();
   sema.MarkDeclarationsReferencedInExpr(e, true);
 }
 
-DLLEXPORT void *getConstantFloat(llvm::Type *llvmt, double x)
+JL_DLLEXPORT void *getConstantFloat(llvm::Type *llvmt, double x)
 {
   return ConstantFP::get(llvmt,x);
 }
-DLLEXPORT void *getConstantInt(llvm::Type *llvmt, uint64_t x)
+JL_DLLEXPORT void *getConstantInt(llvm::Type *llvmt, uint64_t x)
 {
   return ConstantInt::get(llvmt,x);
 }
-DLLEXPORT void *getConstantStruct(llvm::Type *llvmt, llvm::Constant **vals, size_t nvals)
+JL_DLLEXPORT void *getConstantStruct(llvm::Type *llvmt, llvm::Constant **vals, size_t nvals)
 {
   return ConstantStruct::get(cast<StructType>(llvmt),ArrayRef<llvm::Constant*>(vals,nvals));
 }
 
-DLLEXPORT const clang::Type *canonicalType(clang::Type *t)
+JL_DLLEXPORT const clang::Type *canonicalType(clang::Type *t)
 {
   return t->getCanonicalTypeInternal().getTypePtr();
 }
 
-DLLEXPORT int builtinKind(clang::Type *t)
+JL_DLLEXPORT int builtinKind(clang::Type *t)
 {
     assert(isa<clang::BuiltinType>(t));
     return cast<clang::BuiltinType>(t)->getKind();
 }
 
-DLLEXPORT int isDeclInvalid(clang::Decl *D)
+JL_DLLEXPORT int isDeclInvalid(clang::Decl *D)
 {
   return D->isInvalidDecl();
 }
 
 // Test Support
-DLLEXPORT void *clang_get_cgt(C)
+JL_DLLEXPORT void *clang_get_cgt(C)
 {
   return (void*)&Cxx->CGM->getTypes();
 }
 
-DLLEXPORT void *clang_shadow_module(C)
+JL_DLLEXPORT void *clang_shadow_module(C)
 {
   return (void*)Cxx->shadow;
 }
 
-DLLEXPORT int RequireCompleteType(C,clang::Type *t)
+JL_DLLEXPORT int RequireCompleteType(C,clang::Type *t)
 {
   clang::Sema &sema = Cxx->CI->getSema();
   return sema.RequireCompleteType(getTrivialSourceLocation(Cxx),clang::QualType(t,0),0);
 }
 
-DLLEXPORT void *CreateTemplatedFunction(C, char *Name, clang::TemplateParameterList** args, size_t nargs)
+JL_DLLEXPORT void *CreateTemplatedFunction(C, char *Name, clang::TemplateParameterList** args, size_t nargs)
 {
   clang::DeclSpec DS(Cxx->Parser->getAttrFactory());
   clang::Declarator D(DS, clang::Declarator::PrototypeContext);
@@ -1994,7 +1994,7 @@ DLLEXPORT void *CreateTemplatedFunction(C, char *Name, clang::TemplateParameterL
   return sema.ActOnTemplateDeclarator(nullptr,clang::MultiTemplateParamsArg(args,nargs),D);
 }
 
-DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
+JL_DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
 {
   clang::Sema &sema = Cxx->CI->getSema();
   clang::ParsedType DefaultArg;
@@ -2007,12 +2007,12 @@ DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
   return ret;
 }
 
-DLLEXPORT void EnterParserScope(C)
+JL_DLLEXPORT void EnterParserScope(C)
 {
   Cxx->Parser->EnterScope(clang::Scope::TemplateParamScope);
 }
 
-DLLEXPORT void *ActOnTypeParameterParserScope(C, char *Name, unsigned Position)
+JL_DLLEXPORT void *ActOnTypeParameterParserScope(C, char *Name, unsigned Position)
 {
   clang::Sema &sema = Cxx->CI->getSema();
   clang::ParsedType DefaultArg;
@@ -2024,17 +2024,17 @@ DLLEXPORT void *ActOnTypeParameterParserScope(C, char *Name, unsigned Position)
   return ret;
 }
 
-DLLEXPORT void ExitParserScope(C)
+JL_DLLEXPORT void ExitParserScope(C)
 {
   Cxx->Parser->ExitScope();
 }
 
-DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t ND)
+JL_DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t ND)
 {
   return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(), clang::SourceLocation(), D, ND, clang::SourceLocation());
 }
 
-DLLEXPORT void *CreateFunctionTemplateDecl(C, clang::DeclContext *DC, clang::TemplateParameterList *Params, clang::FunctionDecl *FD)
+JL_DLLEXPORT void *CreateFunctionTemplateDecl(C, clang::DeclContext *DC, clang::TemplateParameterList *Params, clang::FunctionDecl *FD)
 {
   clang::FunctionTemplateDecl *FTD = clang::FunctionTemplateDecl::Create(
       Cxx->CI->getASTContext(), DC, clang::SourceLocation(),
@@ -2043,40 +2043,40 @@ DLLEXPORT void *CreateFunctionTemplateDecl(C, clang::DeclContext *DC, clang::Tem
   return (void*)FTD;
 }
 
-DLLEXPORT void *newFDVector() { return (void*)new std::vector<clang::FunctionDecl*>; }
-DLLEXPORT void deleteFDVector(void *v) { delete ((std::vector<clang::FunctionDecl*>*) v); }
-DLLEXPORT void copyFDVector(void *to, std::vector<clang::FunctionDecl*> *from)
+JL_DLLEXPORT void *newFDVector() { return (void*)new std::vector<clang::FunctionDecl*>; }
+JL_DLLEXPORT void deleteFDVector(void *v) { delete ((std::vector<clang::FunctionDecl*>*) v); }
+JL_DLLEXPORT void copyFDVector(void *to, std::vector<clang::FunctionDecl*> *from)
 {
   memcpy(to, from->data(), sizeof(clang::FunctionDecl*)*from->size());
 }
-DLLEXPORT size_t getFDVectorSize(std::vector<clang::FunctionDecl*> *v) {return v->size(); }
+JL_DLLEXPORT size_t getFDVectorSize(std::vector<clang::FunctionDecl*> *v) {return v->size(); }
 
-DLLEXPORT void getSpecializations(clang::FunctionTemplateDecl *FTD, std::vector<clang::FunctionDecl*> *specs) {
+JL_DLLEXPORT void getSpecializations(clang::FunctionTemplateDecl *FTD, std::vector<clang::FunctionDecl*> *specs) {
   for (auto it : FTD->specializations())
     specs->push_back(it);
 }
 
-DLLEXPORT const char *getMangledFunctionName(C,clang::FunctionDecl *D)
+JL_DLLEXPORT const char *getMangledFunctionName(C,clang::FunctionDecl *D)
 {
   return Cxx->CGM->getMangledName(clang::GlobalDecl(D)).data();
 }
 
-DLLEXPORT const void *getTemplateSpecializationArgs(clang::FunctionDecl *FD)
+JL_DLLEXPORT const void *getTemplateSpecializationArgs(clang::FunctionDecl *FD)
 {
   return (const void*)FD->getTemplateSpecializationArgs();
 }
 
-DLLEXPORT void *getLambdaCallOperator(clang::CXXRecordDecl *R)
+JL_DLLEXPORT void *getLambdaCallOperator(clang::CXXRecordDecl *R)
 {
   return R->getLambdaCallOperator();
 }
 
-DLLEXPORT bool isCxxDLambda(clang::CXXRecordDecl *R)
+JL_DLLEXPORT bool isCxxDLambda(clang::CXXRecordDecl *R)
 {
   return R->isLambda();
 }
 
-DLLEXPORT void *getFunctionTypeReturnType(void *T)
+JL_DLLEXPORT void *getFunctionTypeReturnType(void *T)
 {
   return ((clang::FunctionType*)T)->getReturnType().getAsOpaquePtr();
 }
@@ -2112,72 +2112,72 @@ CreateFunctionRefExpr(clang::Sema &S, clang::FunctionDecl *Fn, clang::NamedDecl 
   return E;
 }
 
-DLLEXPORT void *CreateCStyleCast(C, clang::Expr *E, clang::Type *T)
+JL_DLLEXPORT void *CreateCStyleCast(C, clang::Expr *E, clang::Type *T)
 {
   clang::QualType QT(T,0);
   return (void*)clang::CStyleCastExpr::Create (Cxx->CI->getASTContext(), QT, clang::VK_RValue, clang::CK_BitCast,
     E, nullptr, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(QT), clang::SourceLocation(), clang::SourceLocation());
 }
 
-DLLEXPORT void *CreateReturnStmt(C, clang::Expr *E)
+JL_DLLEXPORT void *CreateReturnStmt(C, clang::Expr *E)
 {
   return (void*)new (Cxx->CI->getASTContext()) clang::ReturnStmt(clang::SourceLocation(),E,nullptr);
 }
 
-DLLEXPORT void *CreateFunctionRefExprFD(C, clang::FunctionDecl *FD)
+JL_DLLEXPORT void *CreateFunctionRefExprFD(C, clang::FunctionDecl *FD)
 {
   return (void*)CreateFunctionRefExpr(Cxx->CI->getSema(),FD,FD,false).get();
 }
 
-DLLEXPORT void *CreateFunctionRefExprFDTemplate(C, clang::FunctionTemplateDecl *FTD)
+JL_DLLEXPORT void *CreateFunctionRefExprFDTemplate(C, clang::FunctionTemplateDecl *FTD)
 {
   return (void*)CreateFunctionRefExpr(Cxx->CI->getSema(),FTD->getTemplatedDecl(),FTD,false).get();
 }
 
 
-DLLEXPORT void SetFDBody(clang::FunctionDecl *FD, clang::Stmt *body)
+JL_DLLEXPORT void SetFDBody(clang::FunctionDecl *FD, clang::Stmt *body)
 {
   FD->setBody(body);
 }
 
-DLLEXPORT void ActOnFinishFunctionBody(C,clang::FunctionDecl *FD, clang::Stmt *Body)
+JL_DLLEXPORT void ActOnFinishFunctionBody(C,clang::FunctionDecl *FD, clang::Stmt *Body)
 {
   Cxx->CI->getSema().ActOnFinishFunctionBody(FD,Body,true);
 }
 
-DLLEXPORT void *CreateLinkageSpec(C, clang::DeclContext *DC, unsigned kind)
+JL_DLLEXPORT void *CreateLinkageSpec(C, clang::DeclContext *DC, unsigned kind)
 {
   return (void *)(clang::DeclContext *)clang::LinkageSpecDecl::Create(Cxx->CI->getASTContext(), DC,
     clang::SourceLocation(), clang::SourceLocation(), (clang::LinkageSpecDecl::LanguageIDs) kind,
     true);
 }
 
-DLLEXPORT const char *getLLVMValueName(llvm::Value *V)
+JL_DLLEXPORT const char *getLLVMValueName(llvm::Value *V)
 {
   return V->getName().data();
 }
 
-DLLEXPORT const char *getNDName(clang::NamedDecl *ND)
+JL_DLLEXPORT const char *getNDName(clang::NamedDecl *ND)
 {
   return ND->getName().data();
 }
 
-DLLEXPORT void *getParmVarDecl(clang::FunctionDecl *FD, unsigned i)
+JL_DLLEXPORT void *getParmVarDecl(clang::FunctionDecl *FD, unsigned i)
 {
   return (void *)FD->getParamDecl(i);
 }
 
-DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
+JL_DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
 {
   D->markUsed(Cxx->CI->getASTContext());
 }
 
-DLLEXPORT void *getPointerElementType(llvm::Type *T)
+JL_DLLEXPORT void *getPointerElementType(llvm::Type *T)
 {
   return (void*)T->getPointerElementType ();
 }
 
-DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
+JL_DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
 {
   clang::CXXRecordDecl *RD = T->getAsCXXRecordDecl();
   clang::CXXDestructorDecl *Destructor = Cxx->CI->getSema().LookupDestructor(RD);
@@ -2187,7 +2187,7 @@ DLLEXPORT void emitDestroyCXXObject(C, llvm::Value *x, clang::Type *T)
   Cxx->CGF->destroyCXXObject(*Cxx->CGF, clang::CodeGen::Address(x,clang::CharUnits::One()), clang::QualType(T,0));
 }
 
-DLLEXPORT bool hasTrivialDestructor(C, clang::CXXRecordDecl *RD)
+JL_DLLEXPORT bool hasTrivialDestructor(C, clang::CXXRecordDecl *RD)
 {
   clang::CXXScopeSpec spec;
   spec.setBeginLoc(getTrivialSourceLocation(Cxx));
@@ -2196,27 +2196,27 @@ DLLEXPORT bool hasTrivialDestructor(C, clang::CXXRecordDecl *RD)
   return RD->hasTrivialDestructor();
 }
 
-DLLEXPORT void setPersonality(llvm::Function *F, llvm::Function *PersonalityF)
+JL_DLLEXPORT void setPersonality(llvm::Function *F, llvm::Function *PersonalityF)
 {
   F->setPersonalityFn(PersonalityF);
 }
 
-DLLEXPORT void *getFunction(C, char *name, size_t length)
+JL_DLLEXPORT void *getFunction(C, char *name, size_t length)
 {
   return Cxx->shadow->getFunction(llvm::StringRef(name,length));
 }
 
-DLLEXPORT int hasFDBody(clang::FunctionDecl *FD)
+JL_DLLEXPORT int hasFDBody(clang::FunctionDecl *FD)
 {
   return FD->hasBody();
 }
 
-DLLEXPORT void *getUnderlyingTemplateDecl(clang::TemplateSpecializationType *TST)
+JL_DLLEXPORT void *getUnderlyingTemplateDecl(clang::TemplateSpecializationType *TST)
 {
   return (void*)TST->getTemplateName().getAsTemplateDecl();
 }
 
-DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl *FTD, void **T, size_t nargs)
+JL_DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl *FTD, void **T, size_t nargs)
 {
   clang::TemplateArgumentListInfo TALI;
   clang::sema::TemplateDeductionInfo Info(clang::SourceLocation{});
@@ -2232,30 +2232,30 @@ DLLEXPORT void *getOrCreateTemplateSpecialization(C, clang::FunctionTemplateDecl
   return FD;
 }
 
-DLLEXPORT void *CreateIntegerLiteral(C, uint64_t val, void *T)
+JL_DLLEXPORT void *CreateIntegerLiteral(C, uint64_t val, void *T)
 {
   clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
   return (void*)clang::IntegerLiteral::Create(Cxx->CI->getASTContext(),
     llvm::APInt(8*sizeof(uint64_t),val), QT, clang::SourceLocation());
 }
 
-DLLEXPORT void *desugarElaboratedType(clang::ElaboratedType *T)
+JL_DLLEXPORT void *desugarElaboratedType(clang::ElaboratedType *T)
 {
   return (void *)T->desugar().getAsOpaquePtr();
 }
 
-DLLEXPORT unsigned getTTPTIndex(clang::TemplateTypeParmType *TTPT)
+JL_DLLEXPORT unsigned getTTPTIndex(clang::TemplateTypeParmType *TTPT)
 {
   return TTPT->getIndex();
 }
 
-DLLEXPORT void *getTemplatedDecl(clang::TemplateDecl *TD)
+JL_DLLEXPORT void *getTemplatedDecl(clang::TemplateDecl *TD)
 {
   return TD->getTemplatedDecl();
 }
 
 extern void *jl_pchar_to_string(const char *str, size_t len);
-DLLEXPORT void *getTypeName(C, void *Ty)
+JL_DLLEXPORT void *getTypeName(C, void *Ty)
 {
   SmallString<256> OutName;
   llvm::raw_svector_ostream Out(OutName);
