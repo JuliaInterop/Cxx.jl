@@ -37,6 +37,7 @@ Base.getindex(it::StdVector,i) = icxx"($(it))[$i];"
 Base.length(it::StdVector) = icxx"$(it).size();"
 Base.deleteat!(v::StdVector,idxs::UnitRange) =
     icxx"$(v).erase($(v).begin()+$(first(idxs)),$(v).begin()+$(last(idxs)));"
+Base.push!(v::StdVector,i) = icxx"$v.push_back($i);"
 
 Base.start(map::StdMap) = icxx"$map.begin();"
 function Base.next(map::StdMap,i)
