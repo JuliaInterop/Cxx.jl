@@ -271,7 +271,15 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
           # Create a Clang function Decl to represent this julia function
           ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
-          JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), [PVoid for _ = 1:nargs]))
+          argtypes = [PVoid for _ = 1:nargs]
+          JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), argtypes))
+
+          params = pcpp"clang::ParmVarDecl"[]
+          for (i,argt) in enumerate(argtypes)
+            param = CreateParmVarDecl(C, argt, string("__juliavar",i))
+            push!(params,param)
+          end
+          SetFDParams(JFD,params)
 
           # Create the body for the instantiation
           JCE = CreateCallExpr(C,CreateFunctionRefExpr(C, JFD),
