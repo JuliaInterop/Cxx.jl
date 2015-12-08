@@ -68,3 +68,6 @@ function Base.show{T}(io::IO,
     ptr::Union{cxxt"std::shared_ptr<$T>",cxxt"std::shared_ptr<$T>&"})
     println(io,"shared_ptr<",typename(T),"> @",convert(UInt,icxx"(void*)$ptr.get();"))
 end
+
+#Cxx.cpptype{T<:Union{ASCIIString,UTF8String}}(C,::Type{T}) = Cxx.cpptype(C,Ptr{UInt8})
+Cxx.cxxtransform{T<:Union{ASCIIString,UTF8String}}(::Type{T},ex) = (Ptr{UInt8},:(pointer($ex)))

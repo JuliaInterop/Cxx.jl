@@ -373,12 +373,14 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
     callargs = Int[]
     llvmargs = Any[]
     argidxs = Int[]
+    symargs = Expr[]
     # Make a first part about the arguments
     # and replace __juliavar$i by __julia::type$i
     # for all types. Also remember all types and remove them
     # from `args`.
     for (i,arg) in enumerate(args)
         # We passed in an actual julia type
+        symarg = :(args[$i])
         if arg <: Type
             body = replace(body,"__juliavar$i","__juliatype$i")
             push!(typeargs,(i,cpptype(C,arg.parameters[1])))
@@ -388,12 +390,14 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
                 push!(callargs,i)
                 T = cpptype(C,pcpp"jl_function_t")
             else
+                arg, symarg = cxxtransform(arg,symarg)
                 T = cpptype(C,arg)
             end
             (arg <: CppValue) && (T = referenceTo(C,T))
             push!(argtypes,(i,T))
             push!(llvmargs,arg)
             push!(argidxs,i)
+            push!(symargs,symarg)
         end
     end
 
@@ -434,7 +438,7 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
 
     EmitTopLevelDecl(C,FD)
 
-    FD, llvmargs, argidxs
+    FD, llvmargs, argidxs, symargs
 end
 
 function CallDNE(C, dne, argt; kwargs...)
@@ -448,13 +452,13 @@ end
     id = sourceid(sourcebuf)
     buf, filename, line, col = sourcebuffers[id]
 
-    FD, llvmargs, argidxs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
+    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
 
     InstantiateLambdaType(C)
 
     dne = CreateDeclRefExpr(C,FD)
     argt = tuple(llvmargs...)
-    expr = CallDNE(C,dne,argt; argidxs = argidxs)
+    expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
     expr
 end
 

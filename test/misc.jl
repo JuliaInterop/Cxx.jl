@@ -279,3 +279,8 @@ struct foostruct {
 end
 
 @test icxx"foostruct{1}.Add1();" == 2
+
+# Issue #95
+@test icxx"""
+    std::string{$("foo bar")} == "foo bar";
+"""

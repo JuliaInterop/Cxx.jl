@@ -51,10 +51,10 @@ BuildNNS(C,cxxscope,part) = ccall((:BuildNNS,libcxxffi),Bool,(Ptr{ClangCompiler}
 
 function _lookup_name(C,fname::AbstractString, ctx::pcpp"clang::DeclContext")
     @assert ctx != C_NULL
-    if !isDCComplete(ctx)
-        dump(ctx)
-        error("Tried to look up names in incomplete context")
-    end
+    #if !isDCComplete(ctx)
+    #    dump(ctx)
+    #    error("Tried to look up names in incomplete context")
+    #end
     pcpp"clang::Decl"(
         ccall((:lookup_name,libcxxffi),Ptr{Void},
             (Ptr{ClangCompiler},Ptr{UInt8},Ptr{Void}),&C,bytestring(fname),ctx))

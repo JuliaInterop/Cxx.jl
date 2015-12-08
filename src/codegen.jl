@@ -369,6 +369,8 @@ function llvmargs(C, builder, f, argt)
     args
 end
 
+cxxtransform(T,ex) = (T,ex)
+
 function buildargexprs(C, argt; derefval = true)
     callargs = pcpp"clang::Expr"[]
     pvds = pcpp"clang::ParmVarDecl"[]
