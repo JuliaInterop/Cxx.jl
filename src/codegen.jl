@@ -270,6 +270,10 @@ function declfornns{nns}(C,::Type{CppNNS{nns}},cxxscope=C_NULL)
     d
 end
 
+function declfornns{T}(C,::Type{Val{T}})
+    return T
+end
+
 
 # # # Section 2: CodeGen
 #
@@ -573,8 +577,13 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
     ce = nE = ctce = C_NULL
 
     if thiscall # membercall
-        @assert expr <: CppNNS
-        fname = expr.parameters[1].parameters[1]
+        if expr <: CppNNS
+            fname = expr.parameters[1].parameters[1]
+        else
+            decl = declfornns(C,expr)
+            @assert decl != C_NULL
+            fname = symbol(getName(pcpp"clang::NamedDecl"(decl.ptr)))
+        end
         @assert isa(fname,Symbol)
 
         me = BuildMemberReference(C,callargs[1], cpptype(C, argt[1]),
@@ -610,7 +619,11 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
                 d = primary_decl
             end
             # Let's see if we're constructing something.
-            cxxd = dcastCXXRecordDecl(d)
+            if isaCXXConstructorDecl(pcpp"clang::Decl"(d.ptr))
+                cxxd = getParent(pcpp"clang::CXXMethodDecl"(d.ptr))
+            else
+                cxxd = dcastCXXRecordDecl(d)
+            end
             fname = symbol(_decl_name(d))
             cxxt = cxxtmplt(d)
             if cxxd != C_NULL || cxxt != C_NULL

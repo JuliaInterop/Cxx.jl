@@ -112,6 +112,7 @@ immutable CppPtr{T,CVR}
 end
 
 cconvert(::Type{Ptr{Void}},p::CppPtr) = p.ptr
+Base.convert(::Type{Int},p::CppPtr) = convert(Int,p.ptr)
 
 ==(p1::CppPtr,p2::Ptr) = p1.ptr == p2
 ==(p1::Ptr,p2::CppPtr) = p1 == p2.ptr

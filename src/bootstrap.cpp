@@ -182,7 +182,7 @@ JL_DLLEXPORT int _cxxparse(C)
     return 1;
 }
 
-JL_DLLEXPORT void *ParseDeclaration(C)
+JL_DLLEXPORT void *ParseDeclaration(C, clang::DeclContext *DCScope)
 {
   auto  *P = Cxx->Parser;
   auto  *S = &Cxx->CI->getSema();
@@ -195,7 +195,35 @@ JL_DLLEXPORT void *ParseDeclaration(C)
   clang::ParsingDeclarator D(*P, DS, clang::Declarator::FileContext);
   P->ParseDeclarator(D);
   D.setFunctionDefinitionKind(clang::FDK_Definition);
-  return S->HandleDeclarator(P->getCurScope(), D, clang::MultiTemplateParamsArg());
+  clang::Scope *TheScope = DCScope ? S->getScopeForContext(DCScope) : P->getCurScope();
+  assert(TheScope);
+  return S->HandleDeclarator(TheScope, D, clang::MultiTemplateParamsArg());
+}
+
+JL_DLLEXPORT void ParseParameterList(C, void **params, size_t nparams) {
+  auto  *P = Cxx->Parser;
+  auto  *S = &Cxx->CI->getSema();
+  if (P->getPreprocessor().isIncrementalProcessingEnabled() &&
+     P->getCurToken().is(clang::tok::eof))
+         P->ConsumeToken();
+  clang::ParsingDeclSpec DS(*P);
+  clang::AccessSpecifier AS;
+  clang::ParsingDeclarator D(*P, DS, clang::Declarator::FileContext);
+
+  clang::ParsedAttributes FirstArgAttrs(P->getAttrFactory());
+  SmallVector<clang::DeclaratorChunk::ParamInfo, 16> ParamInfo;
+  clang::SourceLocation EllipsisLoc;
+
+  clang::Parser::ParseScope PrototypeScope(P,
+                            clang::Scope::FunctionPrototypeScope |
+                            clang::Scope::FunctionDeclarationScope |
+                            clang::Scope::DeclScope);
+
+  P->ParseParameterDeclarationClause(D,FirstArgAttrs,ParamInfo,EllipsisLoc);
+
+  assert(ParamInfo.size() == nparams);
+  for (size_t i = 0; i < nparams; ++i)
+    params[i] = ParamInfo[i].Param;
 }
 
 JL_DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
@@ -1313,7 +1341,7 @@ JL_DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
 JL_DLLEXPORT void *CreateFunction(C, llvm::Type *rt, llvm::Type** argt, size_t nargs)
 {
   llvm::FunctionType *ft = llvm::FunctionType::get(rt,llvm::ArrayRef<llvm::Type*>(argt,nargs),false);
-  return (void*)llvm::Function::Create(ft, llvm::GlobalValue::ExternalLinkage, "", Cxx->shadow);
+  return (void*)llvm::Function::Create(ft, llvm::GlobalValue::ExternalLinkage, "cxxjl", Cxx->shadow);
 }
 
 JL_DLLEXPORT void *tovdecl(clang::Decl *D)
@@ -1637,6 +1665,12 @@ JL_DLLEXPORT void cdump(void *decl)
     ((clang::Decl*) decl)->dump();
 }
 
+
+JL_DLLEXPORT void dcdump(clang::DeclContext *DC)
+{
+    DC->dumpDeclContext();
+}
+
 JL_DLLEXPORT void exprdump(void *expr)
 {
     ((clang::Expr*) expr)->dump();
@@ -1731,6 +1765,7 @@ ISAD(clang,ValueDecl,clang::Decl)
 ISAD(clang,FunctionDecl,clang::Decl)
 ISAD(clang,TypeDecl,clang::Decl)
 ISAD(clang,CXXMethodDecl,clang::Decl)
+ISAD(clang,CXXConstructorDecl,clang::Decl)
 
 JL_DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
@@ -2335,6 +2370,10 @@ void RegisterType(C, clang::TagDecl *D, llvm::StructType *ST)
   llvm::StructType *FakeST = llvm::StructType::create(jl_LLVMContext);
   (Cxx->CGM->getTypes().*stowed<CodeGenTypes_CGRecordLayouts>::value)[Key] =
     Cxx->CGM->getTypes().ComputeRecordLayout(RD,FakeST);
+}
+
+JL_DLLEXPORT bool isDCComplete(clang::DeclContext *DC) {
+  return (!clang::isa<clang::TagDecl>(DC) || DC->isDependentContext() || clang::cast<clang::TagDecl>(DC)->isCompleteDefinition() || clang::cast<clang::TagDecl>(DC)->isBeingDefined());
 }
 
 }

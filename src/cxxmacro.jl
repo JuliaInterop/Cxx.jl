@@ -168,6 +168,7 @@ macro cxxnew(expr)
 end
 
 function extract_params(C,FD)
+    @assert FD != C_NULL
     params = Pair{Symbol,DataType}[]
     CxxMD = dcastCXXMethodDecl(pcpp"clang::Decl"(FD.ptr))
     if CxxMD != C_NULL
@@ -190,7 +191,7 @@ end
 
 function get_llvmf_for_FD(C,jf,FD)
     TT = Tuple{map(x->x[2],extract_params(C,FD))...}
-    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool), jf, TT, false))
+    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), jf, TT, false,true))
     @assert f != C_NULL
     f
 end

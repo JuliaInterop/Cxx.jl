@@ -51,6 +51,10 @@ BuildNNS(C,cxxscope,part) = ccall((:BuildNNS,libcxxffi),Bool,(Ptr{ClangCompiler}
 
 function _lookup_name(C,fname::AbstractString, ctx::pcpp"clang::DeclContext")
     @assert ctx != C_NULL
+    if !isDCComplete(ctx)
+        dump(ctx)
+        error("Tried to look up names in incomplete context")
+    end
     pcpp"clang::Decl"(
         ccall((:lookup_name,libcxxffi),Ptr{Void},
             (Ptr{ClangCompiler},Ptr{UInt8},Ptr{Void}),&C,bytestring(fname),ctx))
@@ -432,7 +436,8 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
                   (pcpp"clang::ValueDecl",pcpp"clang::Decl"),
                   (pcpp"clang::FunctionDecl",pcpp"clang::Decl"),
                   (pcpp"clang::TypeDecl",pcpp"clang::Decl"),
-                  (pcpp"clang::CXXMethodDecl",pcpp"clang::Decl"))
+                  (pcpp"clang::CXXMethodDecl",pcpp"clang::Decl"),
+                  (pcpp"clang::CXXConstructorDecl",pcpp"clang::Decl"))
     s = split(string(rt.parameters[1].parameters[1].parameters[1]),"::")[end]
     isas = symbol(string("isa",s))
     ds = symbol(string("dcast",s))
@@ -469,6 +474,8 @@ primary_ctx(p::pcpp"clang::DeclContext") =
 
 toctx(p::pcpp"clang::Decl") =
     pcpp"clang::DeclContext"(p == C_NULL ? C_NULL : ccall((:decl_context,libcxxffi),Ptr{Void},(Ptr{Void},),p))
+
+toctx(p::pcpp"clang::FunctionDecl") = toctx(pcpp"clang::Decl"(p.ptr))
 
 toctx(p::pcpp"clang::CXXRecordDecl") = toctx(pcpp"clang::Decl"(p.ptr))
 toctx(p::pcpp"clang::ClassTemplateSpecializationDecl") = toctx(pcpp"clang::Decl"(p.ptr))
@@ -615,10 +622,19 @@ getIncompleteArrayType(C, T) = QualType(ccall((:getIncompleteArrayType,libcxxffi
 
 getFunctionTypeReturnType(T::pcpp"clang::Type") = QualType(ccall((:getFunctionTypeReturnType,libcxxffi),Ptr{Void},(Ptr{Void},),T))
 
-ParseDeclaration(C) = pcpp"clang::NamedDecl"(ccall((:ParseDeclaration,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
+ParseDeclaration(C,scope=pcpp"clang::DeclContext"(C_NULL)) = pcpp"clang::NamedDecl"(ccall((:ParseDeclaration,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,scope))
 
 getOriginalType(PVD::pcpp"clang::ParmVarDecl") = QualType(ccall((:getOriginalType,libcxxffi),Ptr{Void},(Ptr{Void},),PVD))
 
 getParent(CxxMD::pcpp"clang::CXXMethodDecl") = pcpp"clang::CXXRecordDecl"(ccall((:getCxxMDParent,libcxxffi),Ptr{Void},(Ptr{Void},),CxxMD))
 
 decouple_pch(C) = ccall((:decouple_pch,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
+
+function ParseParameterList(C,nparams)
+    params = Array(Ptr{Void},nparams)
+    ccall((:ParseParameterList,Cxx.libcxxffi),Void,
+        (Ptr{Cxx.ClangCompiler},Ptr{Void},Csize_t),&C,params,length(params))
+    [pcpp"clang::ParmVarDecl"(p) for p in params]
+end
+
+isDCComplete(DC::pcpp"clang::DeclContext") = ccall((:isDCComplete,libcxxffi),Bool,(Ptr{Void},),DC)

@@ -9,10 +9,11 @@ cxxparse("""
 """)
 
 const StdString = cxxt"std::string"
+const StdStringR = cxxt"std::string&"
 typealias StdVector{T} cxxt"std::vector<$T>"
 typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 
-bytestring(str::StdString) = bytestring((@cxx str->data()),@cxx str->size())
+bytestring(str::Union{StdString,StdStringR}) = bytestring((@cxx str->data()),@cxx str->size())
 
 import Base: showerror
 import Cxx: CppValue

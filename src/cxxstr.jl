@@ -266,7 +266,7 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
           end
 
           # We can emit a direct llvm-level reference to this
-          f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool), F, C_NULL, false))
+          f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool,Bool), F, C_NULL, false, true))
           @assert f != C_NULL
 
           # Create a Clang function Decl to represent this julia function
@@ -310,7 +310,7 @@ end
 
 function ArgCleanup(C,e,sv)
     if isa(sv,pcpp"clang::FunctionDecl")
-        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool), e, C_NULL, false))
+        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool,Bool), e, C_NULL, false, true))
         ReplaceFunctionForDecl(C,sv,f)
     elseif !isa(e,Type) && !isa(e,TypeVar)
         SetDeclInitializer(C,sv,llvmconst(e))
