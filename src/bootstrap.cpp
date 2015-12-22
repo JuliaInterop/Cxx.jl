@@ -630,10 +630,18 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
       Cxx->CGF->EmitAggregateCopy(Cxx->CGF->ReturnValue,clang::CodeGen::Address(Call,clang::CharUnits::fromQuantity(sizeof(void*))),FD->getReturnType());
       Cxx->CGF->EmitFunctionEpilog(FI, false, clang::SourceLocation());
     } else {
+      Value *Ret = Call;
+      // Adjust the return value
+      if (F->getReturnType() != FTy->getReturnType()) {
+        assert(!F->hasStructRetAttr());
+        Value *A = builder.CreateAlloca(FTy->getReturnType());
+        builder.CreateStore(Call,builder.CreateBitCast(A,llvm::PointerType::get(Call->getType(),0)));
+        Ret = builder.CreateLoad(A);
+      }
       if (Call->getType()->isVoidTy())
         builder.CreateRetVoid();
       else
-        builder.CreateRet(Call);
+        builder.CreateRet(Ret);
     }
 
     cleanup_cpp_env(Cxx,state);
