@@ -283,8 +283,8 @@ end
 @test icxx"foostruct{1,0}.Add1();" == 2
 
 
-@cxxm "struct foostruct Add(struct foostruct other)" begin
-    icxx"return foostruct{$this->x+$other.x,$this.y+$other.y};"
+@cxxm "struct foostruct foostruct::Add(struct foostruct other)" begin
+    icxx"return foostruct{$this->x+$other.x,$this->y+$other.y};"
 end
 
 @test icxx"foostruct{1,2}.Add(foostruct{2,3}).Add1();" == 4

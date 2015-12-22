@@ -196,10 +196,11 @@ end
 
 function get_llvmf_for_FD(C,jf,FD)
     TT = Tuple{map(x->x[2],extract_params(C,FD))...}
-    specsig = all(map(Base.isbits,TT.parameters))
+    needsboxed = Bool[!isbits(x) for x in TT.parameters]
+    specsig = length(needsboxed) == 0 || !reduce(&,needsboxed)
     f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), jf, TT, false,true))
     @assert f != C_NULL
-    specsig, TT, f
+    needsboxed, specsig, TT, f
 end
 
 macro cxxm(str,expr)
@@ -216,10 +217,9 @@ macro cxxm(str,expr)
         e = Expr(:function,Cxx.DeclToJuliaPrototype(Cxx.instance(__current_compiler__),$FD,$(quot(f))),
             Expr(:(::),Expr(:call,:convert,$RT,$(quot(expr))),$RT))
         eval(e)
-        specsig, TT, llvmf = Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD)
-        @show TT.parameters
+        NeedsBoxed, specsig, TT, llvmf = Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD)
         Cxx.ReplaceFunctionForDecl(Cxx.instance(__current_compiler__),
             $FD,llvmf,
-            DoInline = false, NeedsBoxed = !specsig, jts = Any[TT.parameters...])
+            DoInline = false, specsig = specsig, NeedsBoxed = NeedsBoxed, jts = Any[TT.parameters...])
     end)
 end

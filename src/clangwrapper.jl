@@ -349,8 +349,8 @@ end
 AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
     ccall((:AddDeclToDeclCtx,libcxxffi),Void,(Ptr{Void},Ptr{Void}),DC,D)
 
-ReplaceFunctionForDecl(C,sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function"; DoInline = true,NeedsBoxed = false, jts = Any[]) =
-    ccall((:ReplaceFunctionForDecl,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Ptr{Void}),&C,sv,f,DoInline,NeedsBoxed,jts)
+ReplaceFunctionForDecl(C,sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function"; DoInline = true, specsig = false, NeedsBoxed = C_NULL, jts = C_NULL) =
+    ccall((:ReplaceFunctionForDecl,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Ptr{Bool},Ptr{Void}),&C,sv,f,DoInline,specsig,NeedsBoxed,jts)
 
 isDeclInvalid(D::pcpp"clang::Decl") = Bool(ccall((:isDeclInvalid,libcxxffi),Cint,(Ptr{Void},),D.ptr))
 
