@@ -29,6 +29,8 @@ function addLLVMIncludes(C, clangheaders = true, juliainclude = joinpath(JULIA_H
     if clangheaders
         cxxinclude(C,"lib/CodeGen/CGValue.h")
         cxxinclude(C,"lib/CodeGen/CodeGenTypes.h")
+        cxxinclude(C,"lib/CodeGen/CodeGenModule.h")
+        cxxinclude(C,"lib/CodeGen/CGBuilder.h")
         cxxinclude(C,"lib/Parse/RAIIObjectsForParser.h")
         cxxinclude(C,"clang/AST/DeclBase.h")
         cxxinclude(C,"clang/AST/Type.h")

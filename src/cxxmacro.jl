@@ -177,10 +177,15 @@ function extract_params(C,FD)
         push!(params,:this => T)
     end
     for i = 1:Cxx.getNumParams(FD)
-       PV = Cxx.getParmVarDecl(FD,i-1)
-       T = juliatype(Cxx.getOriginalType(PV))
-       name = getName(PV)
-       push!(params,symbol(name) => T)
+        PV = Cxx.getParmVarDecl(FD,i-1)
+        QT = Cxx.getOriginalType(PV)
+        T = juliatype(QT)
+        if T <: CppValue
+            # Want the sized version for specialization
+            T = T{cxxsizeof(C,QT) % Int64}
+        end
+        name = getName(PV)
+        push!(params,symbol(name) => T)
     end
     params
 end
@@ -191,9 +196,10 @@ end
 
 function get_llvmf_for_FD(C,jf,FD)
     TT = Tuple{map(x->x[2],extract_params(C,FD))...}
+    specsig = all(map(Base.isbits,TT.parameters))
     f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), jf, TT, false,true))
     @assert f != C_NULL
-    f
+    specsig, TT, f
 end
 
 macro cxxm(str,expr)
@@ -210,8 +216,10 @@ macro cxxm(str,expr)
         e = Expr(:function,Cxx.DeclToJuliaPrototype(Cxx.instance(__current_compiler__),$FD,$(quot(f))),
             Expr(:(::),Expr(:call,:convert,$RT,$(quot(expr))),$RT))
         eval(e)
+        specsig, TT, llvmf = Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD)
+        @show TT.parameters
         Cxx.ReplaceFunctionForDecl(Cxx.instance(__current_compiler__),
-            $FD,Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD),
-            DoInline = false)
+            $FD,llvmf,
+            DoInline = false, NeedsBoxed = !specsig, jts = Any[TT.parameters...])
     end)
 end

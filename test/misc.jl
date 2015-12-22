@@ -271,14 +271,24 @@ end
 cxx"""
 struct foostruct {
     int x;
+    int y;
     int Add1();
+    struct foostruct Add(struct foostruct other);
 };
 """
 @cxxm "int foostruct::Add1()" begin
     icxx"return $this->x;"+1
 end
 
-@test icxx"foostruct{1}.Add1();" == 2
+@test icxx"foostruct{1,0}.Add1();" == 2
+
+
+@cxxm "struct foostruct Add(struct foostruct other)" begin
+    icxx"return foostruct{$this->x+$other.x,$this.y+$other.y};"
+end
+
+@test icxx"foostruct{1,2}.Add(foostruct{2,3}).Add1();" == 4
+
 
 # Issue #95
 @test icxx"""

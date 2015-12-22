@@ -487,50 +487,165 @@ JL_DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
   return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
 
+static llvm::Value *constructGCFrame(C,llvm::IRBuilder<true> &builder, size_t n_roots) {
+    PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
+    Type *T_int32 = Type::getInt32Ty(jl_LLVMContext);
+    Function *Callee  =Cxx->shadow->getFunction("jl_get_ptls_states");
+    assert(Callee);
+    Value *calltls = builder.CreateBitCast(builder.CreateCall(Callee,{}),
+      PointerType::get(PointerType::get(T_pint8,0),0));
+    Value *gcframe = builder.CreateAlloca(T_pint8,
+      ConstantInt::get(T_int32, n_roots+2));
+    builder.CreateMemSet(gcframe,ConstantInt::get(T_pint8->getElementType(),0),n_roots*sizeof(void*),sizeof(void*));
+    builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),n_roots)), gcframe);
+    builder.CreateStore(builder.CreateBitCast(builder.CreateLoad(calltls),T_pint8),
+      builder.CreateConstGEP1_32(gcframe,1));
+    builder.CreateStore(gcframe, calltls);
+    return builder.CreateConstGEP1_32(gcframe, 2);
+}
+
+static void destructGCFrame(C,llvm::IRBuilder<true> &builder) {
+    PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
+    PointerType *T_ppint8 = PointerType::get(T_pint8,0);
+    Value *calltls = builder.CreateBitCast(
+      builder.CreateCall(Cxx->shadow->getFunction("jl_get_ptls_states"),{}),
+      PointerType::get(T_ppint8,0));
+    Value *gcframe = builder.CreateLoad(calltls);
+    builder.CreateStore(builder.CreateBitCast(
+      builder.CreateLoad(builder.CreateConstGEP1_32(gcframe, 1)),T_ppint8),
+      calltls);
+}
+
+size_t cxxsizeofType(C, void *t);
+typedef struct cppcall_state {
+    // Save previous globals
+    llvm::Module *module;
+    llvm::Function *func;
+    llvm::Function *CurFn;
+    llvm::BasicBlock *block;
+    llvm::BasicBlock::iterator point;
+    llvm::Instruction *prev_alloca_bb_ptr;
+    // Current state
+    llvm::Instruction *alloca_bb_ptr;
+} cppcall_state_t;
+
+void *setup_cpp_env(C, void *jlfunc);
+void cleanup_cpp_env(C, cppcall_state_t *);
+extern void jl_(void*);
 static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
                               bool ModuleLevelChanges,
-                              ClonedCodeInfo *CodeInfo) {
+                              ClonedCodeInfo *CodeInfo,
+                              const clang::CodeGen::CGFunctionInfo &FI,
+                              clang::FunctionDecl *FD,
+                              bool **needsbox, void **juliatypes) {
   std::vector<Type*> ArgTypes;
   llvm::ValueToValueMapTy VMap;
 
   // Create the new function...
   Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName(), Cxx->shadow);
-  llvm::BasicBlock *BB = BasicBlock::Create(NewF->getContext(), "entry", NewF);
-  llvm::IRBuilder<true> builder(BB);
+  llvm::IRBuilder<true> builder(jl_LLVMContext);
 
-  // Loop over the arguments, copying the names of the mapped arguments over...
-  std::vector<Value*> args;
-  Function::arg_iterator DestI = NewF->arg_begin();
-  for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
-       I != E; ++I) {
-    DestI->setName(I->getName()); // Copy the name over...
-    if (DestI->getType() != I->getType()) {
-      assert(I->getType()->isPointerTy());
-      llvm::Value *A = builder.CreateAlloca(cast<llvm::PointerType>(I->getType())->getElementType());
-      builder.CreateStore(&*DestI,builder.CreateBitCast(A,llvm::PointerType::get(DestI->getType(),0)));
-      args.push_back(A);
+  FTy->dump();
+  F->dump();
+
+  CallInst *Call;
+  PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
+  Type *T_int32 = Type::getInt32Ty(jl_LLVMContext);
+  Type *T_int64 = Type::getInt64Ty(jl_LLVMContext);
+
+  if (needsbox) {
+    // Ok, we need to go through and box the arguments.
+    // Let's first let's clang take care of the function prologue.
+    cppcall_state_t *state = (cppcall_state_t *)setup_cpp_env(Cxx,NewF);
+    builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+      Cxx->CGF->Builder.GetInsertPoint());
+    Cxx->CGF->CurGD = clang::GlobalDecl(FD);
+    clang::CodeGen::FunctionArgList Args;
+    const clang::CXXMethodDecl *MD = clang::dyn_cast<clang::CXXMethodDecl>(FD);
+    if (MD && MD->isInstance()) {
+      Cxx->CGM->getCXXABI().buildThisParam(*Cxx->CGF, Args);
     }
-    else {
-      args.push_back(&*DestI);
+    for (auto *PVD : FD->params()) {
+      Args.push_back(PVD);
     }
-    DestI++;
+    Cxx->CGF->EmitFunctionProlog(FI, NewF, Args);
+    builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+      Cxx->CGF->Builder.GetInsertBlock()->begin());
+    Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
+    llvm::Value *gcframe = constructGCFrame(Cxx,builder, Args.size());
+    size_t i = 0;
+    for (auto *PVD : Args) {
+      llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD).getPointer();
+      llvm::Function *AllocFunc = Cxx->shadow->getFunction("jl_gc_allocobj");
+      assert(AllocFunc);
+      llvm::Value *Box = builder.CreateBitCast(builder.CreateCall(AllocFunc,
+        {ConstantInt::get(T_int64,cxxsizeofType(Cxx,(void*)PVD->getType().getTypePtr()))}),
+        PointerType::get(T_pint8,0));
+      jl_(juliatypes[i]);
+      builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),(uint64_t)juliatypes[i])),
+        builder.CreateConstGEP1_32(Box,-1));
+      builder.CreateStore(builder.CreateBitCast(Box,T_pint8),builder.CreateConstGEP1_32(gcframe,i++));
+      llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
+      ArgPtr->replaceAllUsesWith(Replacement);
+    }
+    builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+      Cxx->CGF->Builder.GetInsertBlock()->end());
+
+    auto it = F->arg_begin();
+    llvm::Argument *First = &*(it++);
+    llvm::Argument *Second = &*(it++);
+    Call = builder.CreateCall(F,{builder.CreateBitCast(ConstantPointerNull::get(T_pint8),First->getType()),
+      builder.CreateBitCast(gcframe,Second->getType()), ConstantInt::get(T_int32,FD->getNumParams())});
+
+    destructGCFrame(Cxx,builder);
+
+    Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
+      builder.GetInsertPoint());
+    Cxx->CGF->EmitAggregateCopy(Cxx->CGF->ReturnValue,clang::CodeGen::Address(Call,clang::CharUnits::fromQuantity(sizeof(void*))),FD->getReturnType());
+    Cxx->CGF->EmitFunctionEpilog(FI, false, clang::SourceLocation());
+
+    cleanup_cpp_env(Cxx,state);
+  } else {
+    llvm::BasicBlock *BB = BasicBlock::Create(NewF->getContext(), "entry", NewF);
+    builder.SetInsertPoint(BB);
+    // Loop over the arguments, copying the names of the mapped arguments over...
+    std::vector<Value*> args;
+    Function::arg_iterator DestI = NewF->arg_begin();
+    for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
+         I != E; ++I) {
+      DestI->setName(I->getName()); // Copy the name over...
+      if (DestI->getType() != I->getType()) {
+        I->dump();
+        DestI->dump();
+        assert(I->getType()->isPointerTy());
+        llvm::Value *A = builder.CreateAlloca(cast<llvm::PointerType>(I->getType())->getElementType());
+        builder.CreateStore(&*DestI,builder.CreateBitCast(A,llvm::PointerType::get(DestI->getType(),0)));
+        args.push_back(A);
+      }
+      else {
+        args.push_back(&*DestI);
+      }
+      DestI++;
+    }
+
+    Call = builder.CreateCall(F,args);
+    Value *Ret = Call;
+
+    // Adjust the return value
+    if (F->getReturnType() != FTy->getReturnType()) {
+      assert(!F->hasStructRetAttr());
+      Value *A = builder.CreateAlloca(FTy->getReturnType());
+      builder.CreateStore(Call,builder.CreateBitCast(A,llvm::PointerType::get(Call->getType(),0)));
+      Ret = builder.CreateLoad(A);
+    }
+
+    if (Ret->getType()->isVoidTy())
+      builder.CreateRetVoid();
+    else
+      builder.CreateRet(Ret);
+
   }
 
-  CallInst *Call = builder.CreateCall(F,args);
-  Value *Ret = Call;
-
-  // Adjust the return value
-  if (F->getReturnType() != FTy->getReturnType()) {
-    assert(!F->hasStructRetAttr());
-    Value *A = builder.CreateAlloca(FTy->getReturnType());
-    builder.CreateStore(Call,builder.CreateBitCast(A,llvm::PointerType::get(Call->getType(),0)));
-    Ret = builder.CreateLoad(A);
-  }
-
-  if (Ret->getType()->isVoidTy())
-    builder.CreateRetVoid();
-  else
-    builder.CreateRet(Ret);
 
   llvm::verifyFunction(*NewF);
 
@@ -543,7 +658,7 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
 }
 
 
-JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline)
+JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool needsbox, void **juliatypes)
 {
   const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
   llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
@@ -554,7 +669,8 @@ JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Functio
   llvm::Function *OF = cast<llvm::Function>(Const);
   llvm::ValueToValueMapTy VMap;
   llvm::ClonedCodeInfo CCI;
-  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI);
+
+  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,needsbox,juliatypes);
   // TODO: Ideally we would delete the cloned function
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
@@ -783,19 +899,6 @@ JL_DLLEXPORT void *clang_parser(C)
 static llvm::Type *T_int32;
 
 static bool in_cpp = false;
-
-typedef struct cppcall_state {
-    // Save previous globals
-    llvm::Module *module;
-    llvm::Function *func;
-    llvm::Function *CurFn;
-    llvm::BasicBlock *block;
-    llvm::BasicBlock::iterator point;
-    llvm::Instruction *prev_alloca_bb_ptr;
-    // Current state
-    llvm::Instruction *alloca_bb_ptr;
-} cppcall_state_t;
-
 
 
 }

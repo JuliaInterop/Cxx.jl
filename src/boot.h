@@ -93,12 +93,15 @@ extern "C" {
     // This is not the definition of this in C, but it is the definition that
     // julia exposes to LLVM, so we need to stick to it.
     #define jl_pgcstack (*jl_get_ptls_states())
+    jl_value_t *jl_gc_allocobj(size_t sz);
 #endif
 
     extern int __cxxjl_personality_v0();
 }
-void *__hack() {
-    return (void*)&__cxxjl_personality_v0;
+void __hack() {
+    (void)&__cxxjl_personality_v0;
+    (void)jl_get_ptls_states;
+    (void)jl_gc_allocobj;
 }
 
 #ifndef JULIA_H

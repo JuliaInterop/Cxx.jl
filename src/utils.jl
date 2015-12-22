@@ -47,3 +47,29 @@ macro icxxdebug_str(str,args...)
     id = length(sourcebuffers)
     esc(build_icxx_expr(id, exprs, isexprs, Any[], compiler, dumpast_impl))
 end
+
+function collectSymbolsForExport(RD::pcpp"clang::CXXRecordDecl")
+    f = Cxx.CreateFunctionWithPersonality(C, Cxx.julia_to_llvm(Void),[Cxx.julia_to_llvm(Ptr{Ptr{Void}})])
+    builder = irbuilder(C)
+    nummethods = icxx"""
+    auto *CGM = $(Cxx.instance(Cxx.__default_compiler__).CGM);
+    CGM->EmitTopLevelDecl($RD);
+    llvm::SmallVector<llvm::Constant *, 0> addresses;
+    unsigned i = 0;
+    for (auto method : $RD->methods()) {
+      clang::GlobalDecl GD(method);
+      auto name = CGM->getMangledName(GD);
+      auto llvmf = $(Cxx.instance(Cxx.__default_compiler__).shadow)->getFunction(name);
+      llvm::IRBuilder *builder = $builder;
+      builder->CreateStore(
+        builder->CreateBitCast(llvmf,$(Cxx.julia_to_llvm(Ptr{Void}))),
+        builder->CreateConstGEP2_32($(Cxx.julia_to_llvm(Ptr{Ptr{Void}})),
+        $f->getArgumentList()[0], 0, i++));
+      )
+    }
+    i
+    """
+    addresses = zeros(Ptr{Ptr{Void}},nummethods)
+    eval(:(llvmcall($(f.ptr),Void,(Ptr{Ptr{Void}},),$(pointer(addresses)))))
+    addresses
+end
