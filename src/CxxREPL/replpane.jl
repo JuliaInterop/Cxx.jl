@@ -161,6 +161,8 @@ module CxxREPL
                 var = symbol(strip(var))
                 isAssignment = true
             end
+            # Strip trailing semicolon (since we add one on the next line) to avoid unused result warning
+            line = line[end] == ';' ? line[1:end-1] : line
             ret = Cxx.process_cxx_string(string(line,"\n;"), isToplevel, false, :REPL, 1, 1;
     compiler = C)
             if isAssignment

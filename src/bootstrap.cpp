@@ -773,7 +773,15 @@ JL_DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
   // the result of the last statement
   if (cast<clang::FunctionDecl>(D)->getReturnType()->isUndeducedType())
   {
-    clang::Stmt *last = Body->body_back();
+    clang::Stmt *last = nullptr;
+    // Ignore any trailing null statements in accordance with what
+    // julia does. This still triggers a warning in parsing above,
+    // but there isn't really a good way to get around that, so
+    // we'll live with the warning and have it work anyway
+    for (auto lit = Body->body_rbegin(); lit != Body->body_rend(); ++lit) {
+      if (!isa<clang::NullStmt>(*lit))
+        last = *lit;
+    }
     if (last && isa<clang::Expr>(last)) {
       clang::StmtResult RetStmt(sema.BuildReturnStmt(getTrivialSourceLocation(Cxx), cast<clang::Expr>(last)));
       if (!RetStmt.isUsable()) {
