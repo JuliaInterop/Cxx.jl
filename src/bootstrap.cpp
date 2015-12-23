@@ -779,8 +779,10 @@ JL_DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
     // but there isn't really a good way to get around that, so
     // we'll live with the warning and have it work anyway
     for (auto lit = Body->body_rbegin(); lit != Body->body_rend(); ++lit) {
-      if (!isa<clang::NullStmt>(*lit))
+      if (!isa<clang::NullStmt>(*lit)) {
         last = *lit;
+        break;
+      }
     }
     if (last && isa<clang::Expr>(last)) {
       clang::StmtResult RetStmt(sema.BuildReturnStmt(getTrivialSourceLocation(Cxx), cast<clang::Expr>(last)));
