@@ -274,6 +274,7 @@ struct foostruct {
     int y;
     int Add1();
     struct foostruct Add(struct foostruct other);
+    void *ReturnAPtr();
 };
 """
 @cxxm "int foostruct::Add1()" begin
@@ -288,6 +289,12 @@ end
 end
 
 @test icxx"foostruct{1,2}.Add(foostruct{2,3}).Add1();" == 4
+
+@cxxm "void *foostruct::ReturnAPtr()" begin
+    reinterpret(Ptr{Void},0xdeadbeef%UInt)
+end
+
+@test icxx"foostruct{1,2}.ReturnAPtr();" == reinterpret(Ptr{Void},0xdeadbeef%UInt)
 
 
 # Issue #95

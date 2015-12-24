@@ -624,7 +624,8 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
     if (gcframe)
       destructGCFrame(Cxx,builder);
 
-    if (Call->getType()->isPointerTy()) {
+    if (Call->getType()->isPointerTy() &&
+      cast<PointerType>(Call->getType())->getElementType()->isAggregateType()) {
       Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
         builder.GetInsertPoint());
       Cxx->CGF->EmitAggregateCopy(Cxx->CGF->ReturnValue,clang::CodeGen::Address(Call,clang::CharUnits::fromQuantity(sizeof(void*))),FD->getReturnType());
