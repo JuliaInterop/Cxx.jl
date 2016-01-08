@@ -36,7 +36,11 @@ LLDB_LIBS = -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialization \
     -llldbPluginSystemRuntimeMacOSX \
     -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyX86 -llldbTarget \
     -llldbPluginInstrumentationRuntimeAddressSanitizer -llldbPluginPlatformAndroid \
-    -llldbPluginRenderScriptRuntime -llldbPluginProcessUtility \
+    -llldbPluginRenderScriptRuntime \
+    $(call exec,$(LLVM_CONFIG) --system-libs)
+
+ifeq ($(LLVM_VER),svn)
+LLDB_LIBS += -llldbPluginProcessUtility \
     -llldbPluginScriptInterpreterNone \
     -llldbPluginObjCLanguage \
     -llldbPluginCPlusPlusLanguage \
@@ -45,6 +49,10 @@ LLDB_LIBS = -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialization \
     -llldbPluginOSGo -llldbPluginLanguageRuntimeGo -llldbPluginGoLanguage \
     -llldbPluginExpressionParserGo \
     $(call exec,$(LLVM_CONFIG) --system-libs)
+else
+LLDB_LIBS += -llldbPluginUtility
+endif
+
 LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginABIMacOSX_i386
 ifeq ($(OS), Darwin)
 LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols \

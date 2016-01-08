@@ -321,7 +321,7 @@ end
 
 function addClangHeaders(C)
     # Also add clang's intrinsic headers
-    addHeaderDir(C,joinpath(JULIA_HOME,"../lib/clang/3.8.0/include/"), kind = C_ExternCSystem)
+    addHeaderDir(C,joinpath(JULIA_HOME,"../lib/clang/$(Base.libllvm_version)/include/"), kind = C_ExternCSystem)
 end
 
 function initialize_instance!(C; register_boot = true)
