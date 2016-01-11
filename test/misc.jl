@@ -301,3 +301,39 @@ end
 @test icxx"""
     std::string{$("foo bar")} == "foo bar";
 """
+
+# Negative and very large integer template parameters
+cxx"""template <uint64_t T>
+class testLargeValue
+{
+    public:
+        testLargeValue(){}
+        uint64_t getT();
+};"""
+
+cxx"""template <uint64_t T>
+uint64_t testLargeValue<T>::getT()
+{
+    return T;
+};"""
+
+cxx"""template <int T>
+class testNegativeValue
+{
+    public:
+        testNegativeValue(){}
+        int getT();
+};"""
+
+cxx"""template <int T>
+int testNegativeValue<T>::getT()
+{
+    return T;
+};"""
+
+tmp = icxx"testLargeValue<0xffffffffffffffff>();"
+@test icxx"$(tmp).getT();" == 0xffffffffffffffff
+
+tmp = icxx"testNegativeValue<-1>();"
+@test icxx"$(tmp).getT();" == -1
+

@@ -143,7 +143,7 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
             ts[i] = cpptype(C,t)
         elseif isa(t,Integer) || isa(t,CppEnum)
             ts[i] = cpptype(C,typeof(t))
-            integralValues[i] = convert(UInt64,isa(t,CppEnum) ? t.val : t)
+            integralValues[i] = unsigned(isa(t,CppEnum) ? t.val : t)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
         else
@@ -167,7 +167,7 @@ function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
             ts[i] = QualType(t)
         elseif isa(t,Integer) || isa(t,CppEnum)
             ts[i] = cpptype(C, typeof(t))
-            integralValues[i] = convert(UInt64,isa(t,CppEnum) ? t.val : t)
+            integralValues[i] = unsigned(isa(t,CppEnum) ? t.val : t)
             integralValuesPresent[i] = 1
             bitwidths[i] = isa(t,Bool) ? 8 : sizeof(typeof(t))
         else
@@ -354,7 +354,7 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}()
         elseif kind == KindIntegral
             val = getTargAsIntegralAtIdx(targs,i)
             t = getTargIntegralTypeAtIdx(targs,i)
-            push!(args,convert(juliatype(t,quoted,typeargs),val))
+            push!(args,reinterpret(juliatype(t,quoted,typeargs),[val])[1])
         else
             error("Unhandled template argument kind ($kind)")
         end

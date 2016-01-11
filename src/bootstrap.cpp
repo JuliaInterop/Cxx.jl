@@ -379,7 +379,7 @@ JL_DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **ty
     if (integralValuePresent[i] == 1) {
       clang::QualType IntT = clang::QualType::getFromOpaquePtr(types[i]);
       size_t BitWidth = Cxx->CI->getASTContext().getTypeSize(IntT);
-      llvm::APSInt Value(llvm::APInt(8,integralValues[i]));
+      llvm::APSInt Value(llvm::APInt(64,integralValues[i]));
       if (Value.getBitWidth() != BitWidth)
         Value = Value.extOrTrunc(BitWidth);
       Value.setIsSigned(IntT->isSignedIntegerOrEnumerationType());
