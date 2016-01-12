@@ -20,25 +20,18 @@ In addition to the [system requirements](https://github.com/JuliaLang/julia#requ
 
 Get the latest git checkout from https://github.com/JuliaLang/julia.git then add (or add to) a ```Make.user``` file at the top level with the following lines:
 ```sh
-override LLDB_VER=master
-override LLVM_VER=svn
+override LLVM_VER=3.7.1
 override LLVM_ASSERTIONS=1
 override BUILD_LLVM_CLANG=1
 override BUILD_LLDB=1
 override USE_LLVM_SHLIB=1
-override LLDB_DISABLE_PYTHON=1
+# For LLDB support also
+# override BUILD_LLDB=1
+# override LLDB_DISABLE_PYTHON=1
 ```
 
-In addition, you may also add the following lines to obtain the latest version of LLVM that has been confirmed to work
-with Cxx.jl/Gallium.jl:
-```
-override LLVM_GIT_URL_LLVM=https://github.com/JuliaLang/llvm.git
-override LLVM_GIT_URL_LLDB=https://github.com/JuliaLang/lldb.git
-override LLVM_GIT_URL_CLANG=https://github.com/JuliaLang/clang.git
-override LLVM_GIT_VER=kf/gallium
-override LLVM_GIT_VER_LLDB=kf/gallium
-override LLVM_GIT_VER_CLANG=kf/gallium
-```
+If you're feeling adventure adventurous, you may also use `LLVM_VER=svn` instead, directly pulls in the latest LLVM version.
+This configuration may have more features (and is the development version), but may break unexpectedly if upstream makes changes.
 
 Then build simply with `make`. 
 
