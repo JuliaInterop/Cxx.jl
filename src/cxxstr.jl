@@ -33,6 +33,7 @@ function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constan
     ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,decl,val)
 end
 
+const specTypes = 7
 function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs=Dict{Void,Void}())
     if isa(e,Expr) || isa(e,Symbol)
         T = typeof(e)
@@ -41,10 +42,11 @@ function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs=Dict{Void,Void}())
         (tree, ty) = Core.Inference.typeinf(linfo,Tuple{},svec())
         T = ty
         thunk.code.ast = tree
+        thunk.code.rettype = T
         # Pretend we're a specialized generic function
         # to get the good calling convention. The compiler
         # will never know :)
-        setfield!(thunk.code,6,Tuple{})
+        setfield!(thunk.code,specTypes,Tuple{})
         if T === Union{}
             T = Void
         end
@@ -254,7 +256,8 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
           # Pretend we're a specialized generic function
           # to get the good calling convention. The compiler
           # will never know :)
-          setfield!(F.code,6,ST)
+          F.code.rettype = T
+          setfield!(F.code,specTypes,ST)
           if T === Union{}
               T = Void
           end
