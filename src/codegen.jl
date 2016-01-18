@@ -433,7 +433,7 @@ function check_args(argt,f)
                 !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
                 !(t <: CppDeref) && !(t <: CppAddr) && !(t <: Ptr) &&
                 !(t <: JLCppCast) &&
-                !in(t,[Bool, UInt8, Int32, UInt32, Int64, UInt64, Float32, Float64]))
+                !isa(t, CxxBuiltinTypes))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
     end
