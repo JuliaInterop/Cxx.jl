@@ -99,6 +99,13 @@ ifneq ($(LLVM_ASSERTIONS),1)
 LLVM_EXTRA_CPPFLAGS += -DLLVM_NDEBUG
 endif
 
+ifneq ($(BUILD_LLVM_CLANG),1)
+$(error Cxx.jl requires Clang to be built with julia - Set BUILD_LLVM_CLANG in Make.user)
+endif
+ifneq ($(USE_LLVM_SHLIB),1)
+$(error Cxx.jl currently requires LLVM to be built as a shared library - Set USE_LLVM_SHLIB in Make.user)
+endif
+
 build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build
 	@$(call PRINT_CC, $(CXX) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
 
