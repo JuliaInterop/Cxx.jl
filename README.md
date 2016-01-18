@@ -23,7 +23,6 @@ Get the latest git checkout from https://github.com/JuliaLang/julia.git then add
 override LLVM_VER=3.7.1
 override LLVM_ASSERTIONS=1
 override BUILD_LLVM_CLANG=1
-override BUILD_LLDB=1
 override USE_LLVM_SHLIB=1
 # For LLDB support also
 # override BUILD_LLDB=1
