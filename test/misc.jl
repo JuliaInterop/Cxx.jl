@@ -171,6 +171,10 @@ cxx""" enum { kFalse118 = 0, kTrue118 = 1 }; """
 cxx""" void foo119(char value) {} """
 @cxx foo119(UInt8(0))
 
+# UInt16 builtin (#119)
+cxx""" void foo119b(unsigned short value) {} """
+@cxx foo119b(UInt16(0))
+
 # Enums should be comparable with integers
 cxx""" enum myCoolEnum { OneValue = 1 }; """
 @assert icxx" OneValue; " == 1
