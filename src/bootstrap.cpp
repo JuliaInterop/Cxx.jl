@@ -86,7 +86,6 @@
 
 // From julia
 using namespace llvm;
-extern ExecutionEngine *jl_ExecutionEngine;
 extern llvm::LLVMContext &jl_LLVMContext;
 
 class JuliaCodeGenerator;
@@ -1863,11 +1862,6 @@ JL_DLLEXPORT void *BuildDeclarationNameExpr(C, char *name, clang::DeclContext *c
 JL_DLLEXPORT void *clang_get_builder(C)
 {
     return (void*)&Cxx->CGF->Builder;
-}
-
-JL_DLLEXPORT void *jl_get_llvm_ee()
-{
-    return jl_ExecutionEngine;
 }
 
 JL_DLLEXPORT void *jl_get_llvmc()
