@@ -20,6 +20,8 @@ In addition to the [system requirements](https://github.com/JuliaLang/julia#requ
 
 Get the latest git checkout from https://github.com/JuliaLang/julia.git then add (or add to) a ```Make.user``` file at the top level with the following lines:
 ```sh
+#GCC >= 5 will not work
+#override USECLANG=1
 override LLVM_VER=3.7.1
 override LLVM_ASSERTIONS=1
 override BUILD_LLVM_CLANG=1
