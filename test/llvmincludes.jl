@@ -1,11 +1,12 @@
 function addLLVMIncludes(C, clangheaders = true, juliainclude = joinpath(JULIA_HOME,"../include"),
-    llvmdir = joinpath(Cxx.depspath,"llvm-svn"), ver = v"3.7.0-svn")
+    llvmdir = joinpath(Cxx.depspath,"llvm-3.7.1"), ver = v"3.7.1")
 
     # LLVM Headers
 
     addHeaderDir(C,juliainclude)
     if clangheaders
         addHeaderDir(C,joinpath(llvmdir,"tools/clang/"))
+        addHeaderDir(C,joinpath(llvmdir,"tools/clang/lib"))
         addHeaderDir(C,joinpath(llvmdir,"tools/clang/include/"))
     end
 

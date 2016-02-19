@@ -46,5 +46,5 @@ end
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,x)
     name = typename(QT)
-    :( println(io,"(",$name,") @0x", hex(convert(UInt,x.ptr),Base.WORD_SIZE>>2) ))
+    :( println(io,"(",$name,") @0x", hex(convert(UInt,convert(Ptr{Void},x)),Base.WORD_SIZE>>2) ))
 end

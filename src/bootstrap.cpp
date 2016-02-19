@@ -3,6 +3,7 @@
 #define __STDC_CONSTANT_MACROS
 
 #include <iostream>
+#include <dlfcn.h>
 
 #ifdef NDEBUG
 #define OLD_NDEBUG
@@ -87,6 +88,8 @@
 // From julia
 using namespace llvm;
 extern llvm::LLVMContext &jl_LLVMContext;
+static llvm::Type *T_pvalue_llvmt;
+
 
 class JuliaCodeGenerator;
 
@@ -140,6 +143,8 @@ clang::SourceLocation getTrivialSourceLocation(C)
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
     return sm.getLocForStartOfFile(sm.getMainFileID());
 }
+
+static Type *(*f_julia_type_to_llvm)(void *jt, bool *isboxed);
 
 extern "C" {
 
@@ -486,35 +491,6 @@ JL_DLLEXPORT void *GetAddrOfFunction(C, clang::FunctionDecl *D)
   return (void*)Cxx->CGM->GetAddrOfFunction(D);
 }
 
-static llvm::Value *constructGCFrame(C,llvm::IRBuilder<true> &builder, size_t n_roots) {
-    PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
-    Type *T_int32 = Type::getInt32Ty(jl_LLVMContext);
-    Function *Callee  =Cxx->shadow->getFunction("jl_get_ptls_states");
-    assert(Callee);
-    Value *calltls = builder.CreateBitCast(builder.CreateCall(Callee,{}),
-      PointerType::get(PointerType::get(T_pint8,0),0));
-    Value *gcframe = builder.CreateAlloca(T_pint8,
-      ConstantInt::get(T_int32, n_roots+2));
-    builder.CreateMemSet(gcframe,ConstantInt::get(T_pint8->getElementType(),0),n_roots*sizeof(void*),sizeof(void*));
-    builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),n_roots)), gcframe);
-    builder.CreateStore(builder.CreateBitCast(builder.CreateLoad(calltls),T_pint8),
-      builder.CreateConstGEP1_32(gcframe,1));
-    builder.CreateStore(gcframe, calltls);
-    return builder.CreateConstGEP1_32(gcframe, 2);
-}
-
-static void destructGCFrame(C,llvm::IRBuilder<true> &builder) {
-    PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
-    PointerType *T_ppint8 = PointerType::get(T_pint8,0);
-    Value *calltls = builder.CreateBitCast(
-      builder.CreateCall(Cxx->shadow->getFunction("jl_get_ptls_states"),{}),
-      PointerType::get(T_ppint8,0));
-    Value *gcframe = builder.CreateLoad(calltls);
-    builder.CreateStore(builder.CreateBitCast(
-      builder.CreateLoad(builder.CreateConstGEP1_32(gcframe, 1)),T_ppint8),
-      calltls);
-}
-
 size_t cxxsizeofType(C, void *t);
 typedef struct cppcall_state {
     // Save previous globals
@@ -536,7 +512,7 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
                               ClonedCodeInfo *CodeInfo,
                               const clang::CodeGen::CGFunctionInfo &FI,
                               clang::FunctionDecl *FD,
-                              bool specsig,
+                              bool specsig, bool firstIsEnv,
                               bool *needsbox, void **juliatypes) {
   std::vector<Type*> ArgTypes;
   llvm::ValueToValueMapTy VMap;
@@ -567,14 +543,34 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
     }
     size_t n_roots = 0;
     for (size_t i = 0; i < Args.size(); ++i)
-      n_roots += needsbox[i];
+      n_roots += needsbox[i] | !specsig;
     Cxx->CGF->EmitFunctionProlog(FI, NewF, Args);
     builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
       Cxx->CGF->Builder.GetInsertBlock()->begin());
     Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
-    llvm::Value *gcframe = nullptr;
-    if (n_roots != 0)
-      gcframe = constructGCFrame(Cxx, builder, n_roots);
+    llvm::Value *gcframe = nullptr, *envroot = nullptr, *envptr = nullptr;
+    bool first = true;
+
+    // Construct the GC frame
+    Function *ConstructFrame = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.jlcall_frame_decl",
+      FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{T_int32},false)));
+    Function *RootDecl = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.gc_root_decl",
+      FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{})));
+    Function *PTLSStates = cast<Function>(Cxx->shadow->getOrInsertFunction("jl_get_ptls_states",
+      FunctionType::get(PointerType::get(PointerType::get(T_pvalue_llvmt,0),0),{})));
+    assert(ConstructFrame);
+    BasicBlock *InsertBlock = builder.GetInsertBlock();
+    if (n_roots != 0) {
+      envroot = builder.CreateCall(RootDecl, {});
+      if (n_roots-firstIsEnv != 0)
+        gcframe = builder.CreateCall(ConstructFrame, {ConstantInt::get(T_int32,n_roots-firstIsEnv)});
+      builder.CreateCall(PTLSStates, {});
+      builder.SetInsertPoint(InsertBlock);
+      InsertBlock = BasicBlock::Create(Cxx->shadow->getContext(), "main", InsertBlock->getParent());
+      builder.CreateBr(InsertBlock);
+      builder.SetInsertPoint(InsertBlock);
+    }
+
     size_t i = 0;
     std::vector<llvm::Value*> CallArgs;
     Function::arg_iterator DestI = F->arg_begin();
@@ -595,25 +591,40 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
         jl_(juliatypes[i]);
         builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),(uint64_t)juliatypes[i++])),
           builder.CreateConstGEP1_32(Box,-1));
-        builder.CreateStore(builder.CreateBitCast(Box,T_pint8),builder.CreateConstGEP1_32(gcframe,cur_root++));
+        builder.CreateStore(builder.CreateBitCast(Box,T_pvalue_llvmt),builder.CreateConstGEP1_32(gcframe,cur_root++));
         llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
         ArgPtr->replaceAllUsesWith(Replacement);
         CallArgs.push_back(Replacement);
       } else {
+        bool isboxed;
+        if (f_julia_type_to_llvm(juliatypes[i], &isboxed)->isVoidTy())
+          continue;
         llvm::IRBuilderBase::InsertPoint IP = builder.saveIP();
         // Go to end of block
         builder.SetInsertPoint(builder.GetInsertBlock());
-        assert(specsig);
-        if (DestI->getType()->isPointerTy())
-          CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
-        else
-          CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
+        if (specsig) {
+          if (DestI->getType()->isPointerTy() && !cast<PointerType>(ArgPtr->getType())->getElementType()->isPointerTy())
+            CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
+          else
+            CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
+        } else {
+          // Assume this is already a box. All we need to do is store it in the callframe
+          if (first && firstIsEnv) {
+            envptr = builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt);
+            builder.CreateStore(envptr, envroot);
+          } else {
+            assert(gcframe);
+            builder.CreateStore(builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt),
+              builder.CreateConstGEP1_32(gcframe,cur_root++));
+          }
+          first = false;
+        }
         builder.restoreIP(IP);
       }
       DestI++;
     }
-    builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
-      Cxx->CGF->Builder.GetInsertBlock()->end());
+    builder.SetInsertPoint(InsertBlock,
+      InsertBlock->end());
 
     if (specsig) {
       Call = builder.CreateCall(F,CallArgs);
@@ -621,17 +632,17 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
       auto it = F->arg_begin();
       llvm::Argument *First = &*(it++);
       llvm::Argument *Second = &*(it++);
-      Call = builder.CreateCall(F,{builder.CreateBitCast(ConstantPointerNull::get(T_pint8),First->getType()),
-        builder.CreateBitCast(gcframe,Second->getType()), ConstantInt::get(T_int32,FD->getNumParams())});
+      Call = builder.CreateCall(F,{
+        envroot ? envptr :
+        builder.CreateBitCast(ConstantPointerNull::get(T_pint8),First->getType()),
+        cur_root == 0 ? ConstantPointerNull::get(cast<PointerType>(Second->getType())) :
+        builder.CreateBitCast(gcframe,Second->getType()), ConstantInt::get(T_int32,cur_root)});
     }
 
-    if (gcframe)
-      destructGCFrame(Cxx,builder);
-
+    Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
+        builder.GetInsertPoint());
     if (Call->getType()->isPointerTy() &&
       cast<PointerType>(Call->getType())->getElementType()->isAggregateType()) {
-      Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
-        builder.GetInsertPoint());
       Cxx->CGF->EmitAggregateCopy(Cxx->CGF->ReturnValue,
 #ifdef LLVM38
                                   clang::CodeGen::Address(Call,clang::CharUnits::fromQuantity(sizeof(void*))),
@@ -661,6 +672,8 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
     builder.SetInsertPoint(BB);
     // Loop over the arguments, copying the names of the mapped arguments over...
     std::vector<Value*> args;
+    assert(NewF->getFunctionType()->getNumParams() ==
+      F->getFunctionType()->getNumParams());
     Function::arg_iterator DestI = NewF->arg_begin();
     for (Function::const_arg_iterator I = F->arg_begin(), E = F->arg_end();
          I != E; ++I) {
@@ -702,7 +715,7 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
 }
 
 
-JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool *needsbox, void **juliatypes)
+JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool firstIsEnv, bool *needsbox, void **juliatypes)
 {
   const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
   llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
@@ -714,7 +727,7 @@ JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Functio
   llvm::ValueToValueMapTy VMap;
   llvm::ClonedCodeInfo CCI;
 
-  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,specsig,needsbox,juliatypes);
+  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,specsig,firstIsEnv,needsbox,juliatypes);
   // TODO: Ideally we would delete the cloned function
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
@@ -951,7 +964,6 @@ JL_DLLEXPORT void *clang_parser(C)
   return (void*)Cxx->Parser;
 }
 
-
 // Legacy
 
 static llvm::Type *T_int32;
@@ -1176,7 +1188,9 @@ extern "C" {
 
 
 JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
-  const char *UsePCH) {
+  const char *UsePCH, Type *_T_pvalue_llvmt) {
+    T_pvalue_llvmt = _T_pvalue_llvmt;
+
     //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
     Cxx->CI = new clang::CompilerInstance;
     Cxx->CI->getDiagnosticOpts().ShowColors = 1;
@@ -1308,6 +1322,10 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot
 
     sema.getPreprocessor().EnterMainSourceFile();
     Cxx->Parser->Initialize();
+
+    f_julia_type_to_llvm = (llvm::Type *(*)(void *, bool *))
+      dlsym(RTLD_DEFAULT, "julia_type_to_llvm");
+    assert(f_julia_type_to_llvm);
 }
 
 void decouple_pch(C)
@@ -1632,6 +1650,15 @@ JL_DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *a
     return builder->CreateInsertValue(agg,val,ArrayRef<unsigned>((unsigned)idx));
 }
 
+JL_DLLEXPORT void *CreateIntToPtr(llvm::IRBuilder<false> *builder, Value *TheInt, Type *Ty)
+{
+    return builder->CreateIntToPtr(TheInt, Ty);
+}
+
+JL_DLLEXPORT void *CreatePtrToInt(llvm::IRBuilder<false> *builder, Value *TheInt, Type *Ty)
+{
+    return builder->CreatePtrToInt(TheInt, Ty);
+}
 JL_DLLEXPORT void *tu_decl(C)
 {
     return Cxx->CI->getASTContext().getTranslationUnitDecl();
@@ -1975,6 +2002,11 @@ ISAD(clang,TypeDecl,clang::Decl)
 ISAD(clang,CXXMethodDecl,clang::Decl)
 ISAD(clang,CXXConstructorDecl,clang::Decl)
 
+JL_DLLEXPORT int isVoidTy(llvm::Type *t)
+{
+  return t->isVoidTy();
+}
+
 JL_DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
   return (void*)llvm::UndefValue::get(t);
@@ -2257,6 +2289,45 @@ JL_DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
   //sema.ActOnPopScope(clang::SourceLocation(),&S);
   return ret;
 }
+
+JL_DLLEXPORT void *CreateAnonymousClass(C, clang::Decl *Scope)
+{
+  return clang::CXXRecordDecl::CreateLambda(
+    Cxx->CI->getASTContext(),
+    clang::dyn_cast<clang::DeclContext>(Scope),
+    nullptr,clang::SourceLocation(),false,false,clang::LCD_None);
+}
+
+JL_DLLEXPORT void *AddCallOpToClass(C, clang::CXXRecordDecl *TheClass, void *QT)
+{
+
+  clang::DeclarationName MethodName
+    = Cxx->CI->getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Call);
+  clang::DeclarationNameLoc MethodNameLoc;
+  clang::CXXMethodDecl *Method
+    = clang::CXXMethodDecl::Create(Cxx->CI->getASTContext(), TheClass,
+                            clang::SourceLocation(),
+                            clang::DeclarationNameInfo(MethodName,
+                                                clang::SourceLocation(),
+                                                MethodNameLoc),
+                            clang::QualType::getFromOpaquePtr(QT), nullptr,
+                            clang::SC_None,
+                            /*isInline=*/true,
+                            /*isConstExpr=*/false,
+                            clang::SourceLocation());
+  Method->setAccess(clang::AS_public);
+  TheClass->addDecl(Method);
+  return Method;
+}
+
+JL_DLLEXPORT void FinalizeAnonClass(C, clang::CXXRecordDecl *TheClass)
+{
+  llvm::SmallVector<clang::Decl *, 0> Fields;
+  Cxx->CI->getSema().ActOnFields(nullptr, clang::SourceLocation(), TheClass,
+                       Fields, clang::SourceLocation(), clang::SourceLocation(), nullptr);
+  Cxx->CI->getSema().CheckCompletedCXXClass(TheClass);
+}
+
 
 JL_DLLEXPORT void EnterParserScope(C)
 {
@@ -2596,6 +2667,40 @@ void RegisterType(C, clang::TagDecl *D, llvm::StructType *ST)
 
 JL_DLLEXPORT bool isDCComplete(clang::DeclContext *DC) {
   return (!clang::isa<clang::TagDecl>(DC) || DC->isDependentContext() || clang::cast<clang::TagDecl>(DC)->isCompleteDefinition() || clang::cast<clang::TagDecl>(DC)->isBeingDefined());
+}
+
+#include <signal.h>
+static void jl_unblock_signal(int sig)
+{
+    // Put in a separate function to save some stack space since
+    // sigset_t can be pretty big.
+    sigset_t sset;
+    sigemptyset(&sset);
+    sigaddset(&sset, sig);
+    sigprocmask(SIG_UNBLOCK, &sset, NULL);
+}
+
+extern "C" {
+void *theexception;
+extern void jl_throw(void *);
+void abrt_handler(int sig, siginfo_t *info, void *)
+{
+  jl_unblock_signal(sig);
+  jl_throw(theexception);
+}
+
+JL_DLLEXPORT void InstallSIGABRTHandler(void *exception)
+{
+  theexception = exception;
+  struct sigaction act;
+  memset(&act, 0, sizeof(struct sigaction));
+  sigemptyset(&act.sa_mask);
+  act.sa_sigaction = abrt_handler;
+  act.sa_flags = SA_ONSTACK | SA_SIGINFO;
+  if (sigaction(SIGABRT, &act, NULL) < 0) {
+    abort(); // hah
+  }
+}
 }
 
 }

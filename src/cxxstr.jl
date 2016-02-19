@@ -33,20 +33,14 @@ function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constan
     ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,decl,val)
 end
 
-const specTypes = 7
+const specTypes = 8
 function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs=Dict{Void,Void}())
     if isa(e,Expr) || isa(e,Symbol)
         T = typeof(e)
         # Create a thunk that contains this expression
-        linfo = thunk.code
-        (tree, ty) = Core.Inference.typeinf(linfo,Tuple{},svec())
+        linfo = first(methods(thunk)).func
+        (tree, ty) = Core.Inference.typeinf(linfo,Tuple{typeof(thunk)},svec())
         T = ty
-        thunk.code.ast = tree
-        thunk.code.rettype = T
-        # Pretend we're a specialized generic function
-        # to get the good calling convention. The compiler
-        # will never know :)
-        setfield!(thunk.code,specTypes,Tuple{})
         if T === Union{}
             T = Void
         end
@@ -72,7 +66,7 @@ function ssv(C,e::ANY,ctx,varnum,thunk,sourcebuf,typeargs=Dict{Void,Void}())
         name = string("var",varnum)
         sv = CreateVarDecl(C,ctx,name,cpptype(C,T))
     end
-    AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(sv.ptr))
+    AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Void}, sv)))
     e, sv
 end
 
@@ -94,7 +88,7 @@ function CreateTemplatedLambdaCall(C,DC,callnum,nargs)
         CreateParmVarDecl(C, argt,string("__juliavar",i)) for (i,argt) in enumerate(argts)]
     SetFDParams(FD,params)
     D = CreateFunctionTemplateDecl(C,DC,Params,FD)
-    AddDeclToDeclCtx(DC,pcpp"clang::Decl"(D.ptr))
+    AddDeclToDeclCtx(DC,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
     D
 end
 
@@ -130,9 +124,9 @@ end
 function createLambdaTypeSpecialization(C, lambda_typeD, T)
     haskey(lambdaIndxes, T) && return
     julia_type = lambdaForType(T)
-    spec = specialize_template_clang(C, pcpp"clang::ClassTemplateDecl"(lambda_typeD.ptr), [T])
-    d = pcpp"clang::Decl"(spec.ptr)
-    result = pcpp"clang::VarDecl"(_lookup_name(C, "type", toctx(d)).ptr)
+    spec = specialize_template_clang(C, pcpp"clang::ClassTemplateDecl"(convert(Ptr{Void}, lambda_typeD)), [T])
+    d = pcpp"clang::Decl"(convert(Ptr{Void}, spec))
+    result = pcpp"clang::VarDecl"(convert(Ptr{Void}, _lookup_name(C, "type", toctx(d))))
     SetDeclInitializer(C, result, llvmconst(pointer_from_objref(julia_type)))
 end
 
@@ -191,13 +185,17 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         PVoid = cpptype(C,Ptr{Void})
         tpvds = pcpp"clang::ParmVarDecl"[]
+        specTypes = Type[]
 
         useBoxed = false
         types = pcpp"clang::Type"[]
         for i = 1:nargs
             T = getTargTypeAtIdx(TP,i-1)
+            @show T
+            push!(specTypes, juliatype(pointerTo(C,T)))
             push!(types, canonicalType(extractTypePtr(T)))
             push!(tpvds, getParmVarDecl(x,i-1))
+            continue
 
             # The reason for this split is that the first code is older and
             # more narrow, not being able to handle lambdacalls with captured
@@ -221,25 +219,9 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
         end
 
         # Step 2: Create the instantiated julia function
-        F = deepcopy(expr)
+        F = first(methods(expr))
 
         # Collect substitutions
-        substs = Dict{Symbol,Any}()
-        hasSubstitutions = false
-        for (i,(j,)) in enumerate(icxxs)
-            if bodies[i].head == :thisisnotavalidexprdontlookatthis
-              continue
-            end
-            substs[j] = bodies[i]
-            hasSubstitutions = true
-        end
-
-        # Apply them
-        if hasSubstitutions
-          ast = Base.uncompressed_ast(F.code)
-          substitute_lambdacalls!(ast,substs)
-          F.code.ast = ast
-        end
 
         for pvd in tpvds
             SetDeclUsed(C,pvd)
@@ -247,17 +229,12 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
 
         if !useBoxed
           # Perform type inference
-          linfo = F.code
-          ST = Tuple{[Ptr{Void} for _ in 1:nargs]...}
+          linfo = F.func
+          @show Base.uncompressed_ast(linfo)
+          ST = Tuple{typeof(expr), specTypes...}
           (tree, ty) = Core.Inference.typeinf(linfo,ST,svec())
           T = ty
-          F.code.ast = tree
 
-          # Pretend we're a specialized generic function
-          # to get the good calling convention. The compiler
-          # will never know :)
-          F.code.rettype = T
-          setfield!(F.code,specTypes,ST)
           if T === Union{}
               T = Void
           end
@@ -269,7 +246,7 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
           end
 
           # We can emit a direct llvm-level reference to this
-          f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool,Bool), F, C_NULL, false, true))
+          f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), F, ST, false, true))
           @assert f != C_NULL
 
           # Create a Clang function Decl to represent this julia function
@@ -287,16 +264,16 @@ function InstantiateSpecializations(C,DC,D,expr,syms,icxxs)
           # Create the body for the instantiation
           JCE = CreateCallExpr(C,CreateFunctionRefExpr(C, JFD),
                   [ createCast(C,CreateAddrOfExpr(C,CreateDeclRefExpr(C,pvd)),PVoid,CK_BitCast) for pvd in tpvds ])
-
         else
+          @assert false
           # Root the function in the above array. Not that we don't care about
           # that in the other branch of this if statement, because there we
           # generate IR, which never ever goes away
           hasSubstitutions && push!(lambda_roots,F)
           # Forward this to jl_calln
-          CFD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["jl_calln"]).ptr)
-          forwardD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["std","forward"]).ptr)
-          lambda_typeD = pcpp"clang::FunctionTemplateDecl"(lookup_name(C,["lambda_type"]).ptr)
+          CFD = pcpp"clang::FunctionTemplateDecl"(convert(Ptr{Void},lookup_name(C,["jl_calln"])))
+          forwardD = pcpp"clang::FunctionTemplateDecl"(convert(Ptr{Void},lookup_name(C,["std","forward"])))
+          lambda_typeD = pcpp"clang::FunctionTemplateDecl"(convert(Ptr{Void},lookup_name(C,["lambda_type"])))
           FExpr = createCast(C,
             CreateIntegerLiteral(C,
               convert(UInt,pointer_from_objref(F)),cpptype(C,UInt)),
@@ -321,7 +298,9 @@ end
 
 function ArgCleanup(C,e,sv)
     if isa(sv,pcpp"clang::FunctionDecl")
-        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Ptr{Void},Bool,Bool), e, C_NULL, false, true))
+        tt = Tuple{typeof(e)}
+        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), e, tt, false, true))
+        @assert f != C_NULL
         ReplaceFunctionForDecl(C,sv,f)
     elseif !isa(e,Type) && !isa(e,TypeVar)
         SetDeclInitializer(C,sv,llvmconst(e))
@@ -359,10 +338,11 @@ function EmitTopLevelDecl(C, D::pcpp"clang::Decl")
         error("Tried to Emit Invalid Decl")
     end
 end
-EmitTopLevelDecl(C,D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(C,pcpp"clang::Decl"(D.ptr))
+EmitTopLevelDecl(C,D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(C,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
 
 SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =
-    ccall((:SetFDParams,libcxxffi),Void,(Ptr{Void},Ptr{Ptr{Void}},Csize_t),FD,[p.ptr for p in params],length(params))
+    ccall((:SetFDParams,libcxxffi),Void,(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
+        FD,[convert(Ptr{Void},p) for p in params],length(params))
 
 #
 # Create a clang FunctionDecl with the given body and
@@ -388,14 +368,8 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
             body = replace(body,"__juliavar$i","__juliatype$i")
             push!(typeargs,(i,cpptype(C,arg.parameters[1])))
         else
-            # This is temporary until we can find a better solution
-            if arg <: Function
-                push!(callargs,i)
-                T = cpptype(C,pcpp"jl_function_t")
-            else
-                arg, symarg = cxxtransform(arg,symarg)
-                T = cpptype(C,arg)
-            end
+            arg, symarg = cxxtransform(arg,symarg)
+            T = cpptype(C,arg)
             (arg <: CppValue) && (T = referenceTo(C,T))
             push!(argtypes,(i,T))
             push!(llvmargs,arg)
@@ -426,10 +400,10 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         end
         for (i,T) in typeargs
             D = CreateTypeDefDecl(C,ctx,"__juliatype$i",T)
-            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(D.ptr))
+            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
         end
         SetFDParams(FD,params)
-        FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(FD.ptr))
+        FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(convert(Ptr{Void}, FD)))
         try
             ParseFunctionStatementBody(C,FD)
         finally
@@ -611,10 +585,18 @@ end
 
 @generated function lambdacall(CT, l, args...)
     C = instance(CT)
-    T = typeForLambda(l)
-    ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
-    body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
-        symargs = (:(l.captureData),[:(args[$i]) for i = 1:length(args)]...))
+    if l <: CppPtr
+        l = l.parameters[1].parameters[1]
+        T = typeForLambda(l)
+        ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
+        body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
+            symargs = (:(convert(Ptr{Void},l)),[:(args[$i]) for i = 1:length(args)]...))
+    else
+        T = typeForLambda(l)
+        ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
+        body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
+            symargs = (:(l.captureData),[:(args[$i]) for i = 1:length(args)]...))
+    end
     body
 end
 
@@ -631,8 +613,8 @@ end
     mapping = Dict{Int,Any}()
     jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
     ns = Cxx.createNamespace(C,"julia")
-    ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
-    unsafe_store!(jns,ns.ptr)
+    ctx = Cxx.toctx(pcpp"clang::Decl"(convert(Ptr{Void},ns)))
+    unsafe_store!(jns,convert(Ptr{Void},ns))
     Cxx.EnterParserScope(C)
     for (i,arg) in enumerate(args)
         if arg == TypeVar || arg <: Integer
@@ -645,7 +627,7 @@ end
             QT = cpptype(C,arg.parameters[1])
             name = string("var",i)
             sv = CreateTypeDefDecl(C,ctx,name,QT)
-            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(sv.ptr))
+            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Void},sv)))
         end
     end
     x = Cxx.ParseVirtual(C, typename,
@@ -755,8 +737,8 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
             let
                 jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
                 ns = Cxx.createNamespace($instance,"julia")
-                $ctx = Cxx.toctx(pcpp"clang::Decl"(ns.ptr))
-                unsafe_store!(jns,ns.ptr)
+                $ctx = Cxx.toctx(pcpp"clang::Decl"(convert(Ptr{Void},ns)))
+                unsafe_store!(jns,convert(Ptr{Void},ns))
                 $argsetup
                 $argcleanup
                 $x = $parsecode

@@ -44,7 +44,7 @@ immutable CppExpr{T,targs}; end
 immutable JLCppCast{T,JLT}
     data::JLT
 end
-@generated function call{T,JLT}(::Type{JLCppCast{T}},data::JLT)
+@generated function (::Type{JLCppCast{T}}){T,JLT}(data::JLT)
     JLT.mutable ||
         error("Can only pass pointers to mutable values. " *
               "To pass immutables, use an array instead.")
@@ -72,13 +72,11 @@ cast{T,To}(from::T,::Type{To}) = CppCast{T,To}(from)
 immutable CppDeref{T}
     val::T
 end
-CppDeref{T}(val::T) = CppDeref{T}(val)
 
 # Represent a C++ addrof (&foo)
 immutable CppAddr{T}
     val::T
 end
-CppAddr{T}(val::T) = CppAddr{T}(val)
 
 # On base types, don't do anything for stripmodifer/resolvemodifier. Since,
 # we'll be dealing with these directly
@@ -90,10 +88,11 @@ stripmodifier{T <: CppValue}(p::Type{T}) = p
 stripmodifier{s}(p::Type{CppEnum{s}}) = p
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier(p::CxxBuiltinTypes) = p
-stripmodifier(p::Type{Function}) = p
+stripmodifier{T<:Function}(p::Type{T}) = p
 stripmodifier{T}(p::Type{Ptr{T}}) = p
 stripmodifier{T<:Ref}(p::Type{T}) = p
 stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
+stripmodifier{T}(p::Type{T}) = p
 
 resolvemodifier{T,CVR}(C,p::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T <: CppValue}(C, p::Type{T}, e::pcpp"clang::Expr") = e
@@ -104,7 +103,7 @@ resolvemodifier{s}(C,p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
 resolvemodifier{base,fptr}(C,p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
 resolvemodifier{f}(C,cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T,JLT}(C,p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
-resolvemodifier(C,p::Type{Function}, e::pcpp"clang::Expr") = e
+resolvemodifier{T}(C,p::Type{T}, e::pcpp"clang::Expr") = e
 
 # For everything else, perform the appropriate transformation
 stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
@@ -129,18 +128,21 @@ resolvemodifier_llvm{ptr}(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") =
 resolvemodifier_llvm{T<:Ref}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
 resolvemodifier_llvm(C, builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 
-# Functions are also simple (for now) since we're just passing them through
-# as an jl_function_t*
-resolvemodifier_llvm(C, builder, t::Type{Function}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm{T}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
 
 
 function resolvemodifier_llvm{T,CVR}(C, builder,
-    t::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, v::pcpp"llvm::Value")
-    # CppPtr and CppRef are julia immutables with one field, so at the LLVM
+    t::Type{CppRef{T,CVR}}, v::pcpp"llvm::Value")
+    # CppRef is a julia immutable with one field, so at the LLVM
     # level they are represented as LLVM structrs with one (pointer) field.
     # To get at the pointer itself, we simply need to emit an extract
     # instruction
     ExtractValue(C,v,0)
+end
+
+function resolvemodifier_llvm{T,CVR}(C, builder, t::Type{CppPtr{T, CVR}}, v::pcpp"llvm::Value")
+    ty = cpptype(C, t)
+    IntToPtr(builder,v,getPointerTo(toLLVM(C,ty)))
 end
 
 # Same situation as the pointer case
@@ -428,12 +430,7 @@ end
 # error.
 function check_args(argt,f)
     for (i,t) in enumerate(argt)
-        if isa(t,Union) || (isa(t,DataType) && t.abstract) ||
-            (!(t <: CppPtr) && !(t <: CppRef) && !(t <: CppValue) && !(t <: CppCast) &&
-                !(t <: CppFptr) && !(t <: CppMFptr) && !(t <: CppEnum) &&
-                !(t <: CppDeref) && !(t <: CppAddr) && !(t <: Ptr) &&
-                !(t <: JLCppCast) &&
-                !isa(t, CxxBuiltinTypes))
+        if isa(t,Union) || (isa(t,DataType) && t.abstract) || !isCxxEquivalentType(t)
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
     end
@@ -481,7 +478,7 @@ end
 
     cxxscope = newCXXScopeSpec(C)
     d = declfornns(C,expr,cxxscope)
-    @assert d.ptr != C_NULL
+    @assert d != C_NULL
 
     # If this is a typedef or something we'll try to get the primary one
     primary_decl = to_decl(primary_ctx(toctx(d)))
@@ -584,7 +581,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
         else
             decl = declfornns(C,expr)
             @assert decl != C_NULL
-            fname = symbol(getName(pcpp"clang::NamedDecl"(decl.ptr)))
+            fname = symbol(getName(pcpp"clang::NamedDecl"(convert(Ptr{Void},decl))))
         end
         @assert isa(fname,Symbol)
 
@@ -614,15 +611,15 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
             ce = CreateBinOp(C, C_NULL,cxx_binops[op],callargs...)
         else
             d = declfornns(C,expr)
-            @assert d.ptr != C_NULL
+            @assert d != C_NULL
             # If this is a typedef or something we'll try to get the primary one
             primary_decl = to_decl(primary_ctx(toctx(d)))
             if primary_decl != C_NULL
                 d = primary_decl
             end
             # Let's see if we're constructing something.
-            if isaCXXConstructorDecl(pcpp"clang::Decl"(d.ptr))
-                cxxd = getParent(pcpp"clang::CXXMethodDecl"(d.ptr))
+            if isaCXXConstructorDecl(pcpp"clang::Decl"(convert(Ptr{Void},d)))
+                cxxd = getParent(pcpp"clang::CXXMethodDecl"(convert(Ptr{Void},d)))
             else
                 cxxd = dcastCXXRecordDecl(d)
             end
@@ -672,7 +669,8 @@ end
 
 function CreateFunctionWithPersonality(C, args...)
     f = CreateFunction(C, args...)
-    PersonalityF = pcpp"llvm::Function"(GetAddrOfFunction(C,lookup_name(C,["__cxxjl_personality_v0"])).ptr)
+    PersonalityF = pcpp"llvm::Function"(convert(Ptr{Void},GetAddrOfFunction(C,
+        lookup_name(C,["__cxxjl_personality_v0"]))))
     @assert PersonalityF != C_NULL
     setPersonality(f, PersonalityF)
     f
@@ -682,6 +680,10 @@ end
 # one is non-NULL
 function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     builder = irbuilder(C)
+    argt = Type[argt...]
+    map!(argt) do x
+        isCxxEquivalentType(x) ? x : Ref{x}
+    end
     llvmargt = [argt...]
     issret = false
     rslot = C_NULL
@@ -755,22 +757,24 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         jlrt = Void
         CreateRetVoid(builder)
     else
-        if rett == Void
+        if rett == Void || isVoidTy(llvmrt)
             CreateRetVoid(builder)
         else
-            if rett <: CppPtr || rett <: CppRef || rett <: CppEnum || rett <: CppFptr
+            if rett <: CppRef || rett <: CppEnum || rett <: CppFptr
                 undef = getUndefValue(llvmrt)
                 elty = getStructElementType(llvmrt,0)
                 ret = CreateBitCast(builder,ret,elty)
                 ret = InsertValue(builder, undef, ret, 0)
+            elseif rett <: CppPtr
+                ret = PtrToInt(builder, ret, llvmrt)
             elseif rett <: CppMFptr
                 undef = getUndefValue(llvmrt)
                 i1 = InsertValue(builder,undef,CreateBitCast(builder,
                         ExtractValue(C,ret,0),getStructElementType(llvmrt,0)),0)
                 ret = InsertValue(builder,i1,CreateBitCast(builder,
                         ExtractValue(C,ret,1),getStructElementType(llvmrt,1)),1)
-            elseif rett == Any
-                ret = CreateBitCast(builder,ret,julia_to_llvm(Any))
+            else
+                ret = CreateBitCast(builder,ret,julia_to_llvm(rett))
             end
             CreateRet(builder,ret)
         end
@@ -798,7 +802,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         size = cxxsizeof(C,rt)
         B = Expr(:block,
             :( r = ($(rett){$(Int(size))})() ),
-                Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{llvmargt...},arguments...))
+                Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),Void,Tuple{llvmargt...},arguments...))
         T = cpptype(C, rett)
         D = getAsCXXRecordDecl(T)
         if D != C_NULL && !hasTrivialDestructor(C,D)
@@ -808,7 +812,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         push!(B.args,:r)
         return B
     else
-        return Expr(:call,Core.Intrinsics.llvmcall,f.ptr,rett,Tuple{argt...},args2...)
+        return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),rett,Tuple{argt...},args2...)
     end
 end
 
@@ -839,5 +843,5 @@ end
     emitDestroyCXXObject(C, args[1], T)
     CreateRetVoid(builder)
     cleanup_cpp_env(C, state)
-    return Expr(:call,Core.Intrinsics.llvmcall,f.ptr,Void,Tuple{x},:x)
+    return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),Void,Tuple{x},:x)
 end

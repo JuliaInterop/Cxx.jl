@@ -9,6 +9,7 @@ immutable ClangCompiler
     JCodeGen::pcpp"JuliaCodeGenerator"
     PCHGenerator::pcpp"clang::PCHGenerator"
 end
+@assert Base.isbits(ClangCompiler)
 
 active_instances = ClangCompiler[]
 destructs = Dict{ClangCompiler,Function}()

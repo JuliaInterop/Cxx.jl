@@ -88,7 +88,12 @@ extern "C" {
         // actual roots go here
     } jl_gcframe_t;
 
+#ifndef JULIA_ENABLE_THREADING
+    extern jl_value_t **jl_tls_states;
+    #define jl_get_ptls_states() (&jl_tls_states)
+#else
     extern jl_value_t ***(jl_get_ptls_states)(void);
+#endif
 
     // This is not the definition of this in C, but it is the definition that
     // julia exposes to LLVM, so we need to stick to it.
@@ -100,7 +105,9 @@ extern "C" {
 }
 void __hack() {
     (void)&__cxxjl_personality_v0;
+#ifdef JULIA_ENABLE_THREADING
     (void)jl_get_ptls_states;
+#endif
     (void)jl_gc_allocobj;
 }
 

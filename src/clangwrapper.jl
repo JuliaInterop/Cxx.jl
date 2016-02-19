@@ -5,12 +5,12 @@
 # contains everything else that's just a thin wrapper of ccalls around the
 # C++ routine
 
-Base.convert(::Type{QualType},p::pcpp"clang::Type") = QualType(p.ptr)
-cppconvert(T::QualType) = vcpp"clang::QualType"{sizeof(Ptr{Void})}(tuple(reinterpret(UInt8, [T.ptr])...))
+Base.convert(::Type{QualType},p::pcpp"clang::Type") = QualType(convert(Ptr{Void},p))
+cppconvert(T::QualType) = vcpp"clang::QualType"{sizeof(Ptr{Void})}(tuple(reinterpret(UInt8, [T])...))
 
 # Construct a QualType from a Type* pointer. This works, because the unused
 # bits, when set to 0, indicate that none of the qualifier are set.
-QualType(p::pcpp"clang::Type") = QualType(p.ptr)
+QualType(p::pcpp"clang::Type") = QualType(convert(Ptr{Void},p))
 
 # For convenience, we also have a QualType constructor that does nothing when
 # passed a QualType.
@@ -42,9 +42,9 @@ function RValueRefernceTo(C,t::QualType)
 end
 
 
-tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p.ptr))
-tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(p.ptr)
-tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(p.ptr)
+tovdecl(p::pcpp"clang::Decl") = pcpp"clang::ValueDecl"(ccall((:tovdecl,libcxxffi),Ptr{Void},(Ptr{Void},),p))
+tovdecl(p::pcpp"clang::ParmVarDecl") = pcpp"clang::ValueDecl"(convert(Ptr{Void},p))
+tovdecl(p::pcpp"clang::FunctionDecl") = pcpp"clang::ValueDecl"(convert(Ptr{Void},p))
 
 # For typetranslation.jl
 BuildNNS(C,cxxscope,part) = ccall((:BuildNNS,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8}),&C,cxxscope,part)
@@ -66,7 +66,7 @@ translation_unit(C) = pcpp"clang::Decl"(ccall((:tu_decl,libcxxffi),Ptr{Void},(Pt
 function CreateDeclRefExpr(C,p::pcpp"clang::ValueDecl"; islvalue=true, cxxscope=C_NULL)
     @assert p != C_NULL
     pcpp"clang::Expr"(ccall((:CreateDeclRefExpr,libcxxffi),Ptr{Void},
-        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Cint),&C,p.ptr,cxxscope,islvalue))
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Cint),&C,p,cxxscope,islvalue))
 end
 
 function CreateDeclRefExpr(C, p; cxxscope=C_NULL, islvalue=true)
@@ -79,12 +79,12 @@ function CreateDeclRefExpr(C, p; cxxscope=C_NULL, islvalue=true)
     CreateDeclRefExpr(C, vd;islvalue=islvalue,cxxscope=cxxscope)
 end
 
-cptrarr(a) = [x.ptr for x in a]
+cptrarr(a) = [convert(Ptr{Void}, x) for x in a]
 
 function CreateParmVarDecl(C, p::QualType,name="dummy")
     pcpp"clang::ParmVarDecl"(
         ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8}),&C,p.ptr,name))
+            (Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8}),&C,p,name))
 end
 
 function CreateVarDecl(C, DC::pcpp"clang::DeclContext",name,T::QualType)
@@ -107,7 +107,7 @@ end
 function BuildCallToMemberFunction(C, me::pcpp"clang::Expr", args::Vector{pcpp"clang::Expr"})
     ret = pcpp"clang::Expr"(ccall((:build_call_to_member,libcxxffi),Ptr{Void},
         (Ptr{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Csize_t),
-        &C, me.ptr,[arg.ptr for arg in args],length(args)))
+        &C, me, cptrarr(args), length(args)))
     if ret == C_NULL
         error("Failed to call member")
     end
@@ -132,11 +132,22 @@ end
 
 function ExtractValue(C,v::pcpp"llvm::Value",idx)
     pcpp"llvm::Value"(ccall((:create_extract_value,libcxxffi),Ptr{Void},
-        (Ptr{ClangCompiler},Ptr{Void},Csize_t),&C,v.ptr,idx))
+        (Ptr{ClangCompiler},Ptr{Void},Csize_t),&C,v,idx))
 end
 InsertValue(builder, into::pcpp"llvm::Value", v::pcpp"llvm::Value", idx) =
     pcpp"llvm::Value"(ccall((:create_insert_value,libcxxffi),Ptr{Void},
         (Ptr{Void},Ptr{Void},Ptr{Void},Csize_t),builder,into,v,idx))
+
+function IntToPtr(builder, from::pcpp"llvm::Value", to::pcpp"llvm::Type")
+    pcpp"llvm::Value"(ccall((:CreateIntToPtr,libcxxffi),Ptr{Void},
+        (Ptr{Void},Ptr{Void},Ptr{Void}), builder, from, to))
+end
+
+function PtrToInt(builder, from::pcpp"llvm::Value", to::pcpp"llvm::Type")
+    pcpp"llvm::Value"(ccall((:CreatePtrToInt,libcxxffi),Ptr{Void},
+        (Ptr{Void},Ptr{Void},Ptr{Void}), builder, from, to))
+end
+
 
 getTemplateArgs(tmplt::pcpp"clang::ClassTemplateSpecializationDecl") =
     rcpp"clang::TemplateArgumentList"(ccall((:getTemplateArgs,libcxxffi),Ptr{Void},(Ptr{Void},),tmplt))
@@ -226,7 +237,7 @@ end
 
 function EmitCallExpr(C,ce,rslot)
     pcpp"llvm::Value"(ccall((:emitcallexpr,libcxxffi),Ptr{Void},
-        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,ce.ptr,rslot))
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,ce,rslot))
 end
 
 function cxxsizeof(C,t::pcpp"clang::CXXRecordDecl")
@@ -237,11 +248,11 @@ function cxxsizeof(C,t::QualType)
 end
 
 function createDerefExpr(C,e::pcpp"clang::Expr")
-    pcpp"clang::Expr"(ccall((:createDerefExpr,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,e.ptr))
+    pcpp"clang::Expr"(ccall((:createDerefExpr,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,e))
 end
 
 function CreateAddrOfExpr(C,e::pcpp"clang::Expr")
-    pcpp"clang::Expr"(ccall((:createAddrOfExpr,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,e.ptr))
+    pcpp"clang::Expr"(ccall((:createAddrOfExpr,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,e))
 end
 
 function MarkDeclarationsReferencedInExpr(C,e)
@@ -257,7 +268,7 @@ function getPointerTo(t::pcpp"llvm::Type")
     pcpp"llvm::Type"(ccall((:getLLVMPointerTo,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 end
 
-CreateLoad(builder,val::pcpp"llvm::Value") = pcpp"llvm::Value"(ccall((:createLoad,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),builder.ptr,val.ptr))
+CreateLoad(builder,val::pcpp"llvm::Value") = pcpp"llvm::Value"(ccall((:createLoad,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),builder,val))
 
 function BuildDeclarationNameExpr(C,name, ctx::pcpp"clang::DeclContext")
     pcpp"clang::Expr"(ccall((:BuildDeclarationNameExpr,libcxxffi),Ptr{Void},
@@ -349,10 +360,19 @@ end
 AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
     ccall((:AddDeclToDeclCtx,libcxxffi),Void,(Ptr{Void},Ptr{Void}),DC,D)
 
-ReplaceFunctionForDecl(C,sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function"; DoInline = true, specsig = false, NeedsBoxed = C_NULL, jts = C_NULL) =
-    ccall((:ReplaceFunctionForDecl,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Ptr{Bool},Ptr{Void}),&C,sv,f,DoInline,specsig,NeedsBoxed,jts)
+function ReplaceFunctionForDecl(C,sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function";
+        DoInline = true, specsig = false, FirstIsEnv = false, NeedsBoxed = C_NULL, jts = C_NULL)
+    @assert sv != C_NULL
+    ccall((:ReplaceFunctionForDecl,libcxxffi),Void,
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Bool,Ptr{Bool},Ptr{Void}),
+        &C,sv,f,DoInline,specsig,FirstIsEnv,NeedsBoxed,jts)
+end
 
-isDeclInvalid(D::pcpp"clang::Decl") = Bool(ccall((:isDeclInvalid,libcxxffi),Cint,(Ptr{Void},),D.ptr))
+function ReplaceFunctionForDecl(C,sv::pcpp"clang::CXXMethodDecl",f::pcpp"llvm::Function"; kwargs...)
+    ReplaceFunctionForDecl(C,pcpp"clang::FunctionDecl"(convert(Ptr{Void}, sv)),f; kwargs...)
+end
+
+isDeclInvalid(D::pcpp"clang::Decl") = Bool(ccall((:isDeclInvalid,libcxxffi),Cint,(Ptr{Void},),D))
 
 builtinKind(t::pcpp"clang::Type") = ccall((:builtinKind,libcxxffi),Cint,(Ptr{Void},),t)
 
@@ -465,7 +485,7 @@ end
 
 getAsCXXRecordDecl(t::QualType) = getAsCXXRecordDecl(extractTypePtr(t))
 getAsCXXRecordDecl(d::pcpp"clang::TemplateDecl") = getAsCXXRecordDecl(getTemplatedDecl(d))
-getAsCXXRecordDecl(d::pcpp"clang::NamedDecl") = dcastCXXRecordDecl(pcpp"clang::Decl"(d.ptr))
+getAsCXXRecordDecl(d::pcpp"clang::NamedDecl") = dcastCXXRecordDecl(pcpp"clang::Decl"(convert(Ptr{Void},d)))
 
 # Access to clang decls
 
@@ -475,12 +495,12 @@ primary_ctx(p::pcpp"clang::DeclContext") =
 toctx(p::pcpp"clang::Decl") =
     pcpp"clang::DeclContext"(p == C_NULL ? C_NULL : ccall((:decl_context,libcxxffi),Ptr{Void},(Ptr{Void},),p))
 
-toctx(p::pcpp"clang::FunctionDecl") = toctx(pcpp"clang::Decl"(p.ptr))
+toctx(p::pcpp"clang::FunctionDecl") = toctx(pcpp"clang::Decl"(convert(Ptr{Void},p)))
 
-toctx(p::pcpp"clang::CXXRecordDecl") = toctx(pcpp"clang::Decl"(p.ptr))
-toctx(p::pcpp"clang::ClassTemplateSpecializationDecl") = toctx(pcpp"clang::Decl"(p.ptr))
+toctx(p::pcpp"clang::CXXRecordDecl") = toctx(pcpp"clang::Decl"(convert(Ptr{Void},p)))
+toctx(p::pcpp"clang::ClassTemplateSpecializationDecl") = toctx(pcpp"clang::Decl"(convert(Ptr{Void},p)))
 
-
+isVoidTy(p::pcpp"llvm::Type") = ccall((:isVoidTy,libcxxffi),Cint,(Ptr{Void},),p) != 0
 
 to_decl(p::pcpp"clang::DeclContext") =
     pcpp"clang::Decl"(p == C_NULL ? C_NULL : ccall((:to_decl,libcxxffi),Ptr{Void},(Ptr{Void},),p))
@@ -562,7 +582,7 @@ end
 
 getName(x::pcpp"llvm::Function") = bytestring(ccall((:getLLVMValueName,libcxxffi),Ptr{UInt8},(Ptr{Void},),x))
 getName(ND::pcpp"clang::NamedDecl") = bytestring(ccall((:getNDName,libcxxffi),Ptr{UInt8},(Ptr{Void},),ND))
-getName(ND::pcpp"clang::ParmVarDecl") = getName(pcpp"clang::NamedDecl"(ND.ptr))
+getName(ND::pcpp"clang::ParmVarDecl") = getName(pcpp"clang::NamedDecl"(convert(Ptr{Void}, ND)))
 
 getParmVarDecl(x::pcpp"clang::FunctionDecl",i) = pcpp"clang::ParmVarDecl"(ccall((:getParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Cuint),x,i))
 
@@ -638,3 +658,17 @@ function ParseParameterList(C,nparams)
 end
 
 isDCComplete(DC::pcpp"clang::DeclContext") = ccall((:isDCComplete,libcxxffi),Bool,(Ptr{Void},),DC)
+
+function CreateAnonymousClass(C, Scope::pcpp"clang::Decl")
+    pcpp"clang::CXXRecordDecl"(ccall((:CreateAnonymousClass, libcxxffi), Ptr{Void},
+        (Ptr{ClangCompiler}, Ptr{Void}), &C, Scope))
+end
+
+function AddCallOpToClass(C, Class::pcpp"clang::CXXRecordDecl", MethodType::QualType)
+    pcpp"clang::CXXMethodDecl"(ccall((:AddCallOpToClass, libcxxffi), Ptr{Void},
+        (Ptr{ClangCompiler}, Ptr{Void}, Ptr{Void}), &C, Class, MethodType))
+end
+
+function FinalizeAnonClass(C, Class::pcpp"clang::CXXRecordDecl")
+    ccall((:FinalizeAnonClass, libcxxffi), Void, (Ptr{ClangCompiler}, Ptr{Void}), &C, Class)
+end

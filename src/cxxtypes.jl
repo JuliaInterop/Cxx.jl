@@ -5,6 +5,7 @@
 immutable QualType
     ptr::Ptr{Void}
 end
+Base.convert(::Type{Ptr{Void}}, QT::QualType) = QT.ptr
 
 # All types that are recgonized as builtins
 const CxxBuiltinTypes = Union{Type{Bool},
@@ -107,15 +108,19 @@ Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
 # T can be a CppValue, CppPtr, etc. depending on the pointed to type,
 # but is never a CppBaseType or CppTemplate directly
 # TODO: Maybe use Ptr{CppValue} and Ptr{CppFunc} instead?
-immutable CppPtr{T,CVR}
-    ptr::Ptr{Void}
-end
+# immutable CppPtr{T,CVR}
+#    ptr::Ptr{Void}
+# end
+# Make CppPtr and Ptr the same in the julia calling convention
+bitstype 8*sizeof(Ptr{Void}) CppPtr{T,CVR}
+(::Type{CppPtr{T,CVR}}){T,CVR}(p::Ptr{Void}) = reinterpret(CppPtr{T,CVR}, p)
 
-cconvert(::Type{Ptr{Void}},p::CppPtr) = p.ptr
-Base.convert(::Type{Int},p::CppPtr) = convert(Int,p.ptr)
+cconvert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
+Base.convert(::Type{Int},p::CppPtr) = convert(Int,reinterpret(Ptr{Void}, p))
+Base.convert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 
-==(p1::CppPtr,p2::Ptr) = p1.ptr == p2
-==(p1::Ptr,p2::CppPtr) = p1 == p2.ptr
+==(p1::CppPtr,p2::Ptr) = convert(Ptr{Void}, p1) == p2
+==(p1::Ptr,p2::CppPtr) = p1 == convert(Ptr{Void}, p2)
 
 # Provides a common type for CppFptr and CppMFptr
 immutable CppFunc{rt, argt}; end
