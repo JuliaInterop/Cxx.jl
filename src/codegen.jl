@@ -430,7 +430,8 @@ end
 # error.
 function check_args(argt,f)
     for (i,t) in enumerate(argt)
-        if isa(t,Union) || (isa(t,DataType) && t.abstract) || !isCxxEquivalentType(t)
+        if isa(t,Union) || (isa(t,DataType) && t.abstract) || (!isCxxEquivalentType(t) &&
+            !(t <: CxxBuiltinTs))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
     end
@@ -682,7 +683,7 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     builder = irbuilder(C)
     argt = Type[argt...]
     map!(argt) do x
-        isCxxEquivalentType(x) ? x : Ref{x}
+        (isCxxEquivalentType(x) || x <: CxxBuiltinTs) ? x : Ref{x}
     end
     llvmargt = [argt...]
     issret = false

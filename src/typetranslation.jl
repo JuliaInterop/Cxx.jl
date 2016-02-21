@@ -279,6 +279,8 @@ cpptype{f}(C,p::Type{CppFptr{f}}) = pointerTo(C,cpptype(C,f))
 const MappedTypes = Dict{Type, QualType}()
 const InverseMappedTypes = Dict{QualType, Type}()
 function cpptype{T}(C,::Type{T})
+    (!is(T,Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
+    try
     if !haskey(MappedTypes, T)
         AnonClass = CreateAnonymousClass(C, translation_unit(C))
         MappedTypes[T] = typeForDecl(AnonClass)
@@ -286,19 +288,53 @@ function cpptype{T}(C,::Type{T})
         # For callable julia types, also add an operator() method to the anonymous
         # class
         if !isempty(T.name.mt)
-            Method = AddCallOpToClass(C, AnonClass, makeFunctionType(C, cpptype(C, Void), QualType[]))
             tt = Tuple{T}
             linfo = first(T.name.mt).func
             (tree, retty) = Core.Inference.typeinf(linfo,tt,svec())
-            f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), T, tt, false, true))
-            @assert f != C_NULL
-            ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = !isbits(T) || !isbits(retty),
-                NeedsBoxed = [false], FirstIsEnv = true, jts = Any[T])
+            if isa(retty,Union) || retty.abstract
+              error("Inferred Union or abstract type $retty for return value of lambda")
+            end
+            # Ok, now we need to figure out what arguments we need to declare to C++. For that purpose,
+            # go through the list of defined arguments. Any type that's concrete will be declared as such
+            # to C++, anything else will get a template parameter.
+            tparamnum = 1
+            TPs = Any[]
+            argtQTs = QualType[]
+            for argt in first(T.name.mt).sig.parameters[2:end]
+                if argt.abstract
+                    TP = ActOnTypeParameter(C,string("param",tparamnum),tparamnum-1)
+                    push!(argtQTs,RValueRefernceTo(C,QualType(typeForDecl(TP))))
+                    push!(TPs, TP)
+                    tparamnum += 1
+                else
+                    push!(argtQTs, cpptype(C, argt))
+                end
+            end
+            if isempty(TPs)
+                Method = CreateCxxCallMethodDecl(C, AnonClass, makeFunctionType(C, cpptype(C, retty), argtQTs))
+                AddCallOpToClass(AnonClass, Method)
+                f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), T, tt, false, true))
+                @assert f != C_NULL
+                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = isbits(T) || isbits(retty),
+                    NeedsBoxed = [false], FirstIsEnv = true, jts = Any[T])
+            else
+                Params = CreateTemplateParameterList(C,TPs)
+                Method = CreateCxxCallMethodDecl(C, AnonClass, makeFunctionType(C, cpptype(C, retty), argtQTs))
+                params = pcpp"clang::ParmVarDecl"[
+                    CreateParmVarDecl(C, argt,string("__juliavar",i)) for (i,argt) in enumerate(argtQTs)]
+                SetFDParams(Method,params)
+                D = CreateFunctionTemplateDecl(C,toctx(AnonClass),Params,Method)
+                AddDeclToDeclCtx(toctx(AnonClass),pcpp"clang::Decl"(convert(Ptr{Void}, D)))
+            end
         end
         FinalizeAnonClass(C, AnonClass)
 
         # Anything that you want C++ to be able to do with a julia object
         # needs to be declared here.
+    end
+    catch err
+        delete!(MappedTypes,T)
+        rethrow(err)
     end
     referenceTo(C, MappedTypes[T])
 end
@@ -497,7 +533,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isReferenceType(t)
         t = getPointeeType(t)
         pointeeT = juliatype(t,quoted,typeargs; wrapvalue = false, valuecvr = false)
-        if !isa(pointeeT, Type) || isCxxEquivalentType(pointeeT)
+        if !isa(pointeeT, Type) || isCxxEquivalentType(pointeeT) || pointeeT <: CxxBuiltinTs
             return quoted ? :( CppRef{$pointeeT,$CVR} ) : CppRef{pointeeT,CVR}
         else
             return quoted ? :( $pointeeT ) : pointeeT

@@ -31,10 +31,10 @@ cconvert(::Type{Ptr{Void}},p::QualType) = p.ptr
 
 # Bootstrap definitions
 function pointerTo(C,t::QualType)
-    QualType(ccall((:getPointerTo,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,t.ptr))
+    QualType(ccall((:getPointerTo,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,t))
 end
 function referenceTo(C,t::QualType)
-    QualType(ccall((:getReferenceTo,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,t.ptr))
+    QualType(ccall((:getReferenceTo,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,t))
 end
 
 function RValueRefernceTo(C,t::QualType)
@@ -514,11 +514,11 @@ CreateTemplateParameterList(C, decls) =
     pcpp"clang::TemplateParameterList"(ccall((:CreateTemplateParameterList,libcxxffi),
         Ptr{Void},(Ptr{ClangCompiler},Ptr{Ptr{Void}},Csize_t),&C,decls,length(decls)))
 
-CreateFunctionTemplateDecl(C, DC, Params, FD) =
+CreateFunctionTemplateDecl(C, DC::pcpp"clang::DeclContext", Params, FD) =
     pcpp"clang::FunctionTemplateDecl"(ccall((:CreateFunctionTemplateDecl,libcxxffi),
         Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{Void}), &C, DC, Params, FD))
 
-function getSpecializations(FTD)
+function getSpecializations(FTD::pcpp"clang::FunctionTemplateDecl")
     v = ccall((:newFDVector,libcxxffi),Ptr{Void},())
     ccall((:getSpecializations,libcxxffi),Void,(Ptr{Void},Ptr{Void}),FTD,v)
     ret = Array(pcpp"clang::FunctionDecl",ccall((:getFDVectorSize,libcxxffi),Csize_t,(Ptr{Void},),v))
@@ -564,6 +564,13 @@ end
 function SetFDBody(FD,body)
     ccall((:SetFDBody,libcxxffi),Void,(Ptr{Void},Ptr{Void}),FD,body)
 end
+
+SetFDParams(FD::pcpp"clang::FunctionDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =
+    ccall((:SetFDParams,libcxxffi),Void,(Ptr{Void},Ptr{Ptr{Void}},Csize_t),
+        FD,[convert(Ptr{Void},p) for p in params],length(params))
+
+SetFDParams(FD::pcpp"clang::CXXMethodDecl",params::Vector{pcpp"clang::ParmVarDecl"}) =
+    SetFDParams(pcpp"clang::FunctionDecl"(convert(Ptr{Void}, FD)), params)
 
 function CreateFunctionRefExpr(C,FD::pcpp"clang::FunctionDecl")
     pcpp"clang::Expr"(ccall((:CreateFunctionRefExprFD,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
@@ -664,11 +671,23 @@ function CreateAnonymousClass(C, Scope::pcpp"clang::Decl")
         (Ptr{ClangCompiler}, Ptr{Void}), &C, Scope))
 end
 
-function AddCallOpToClass(C, Class::pcpp"clang::CXXRecordDecl", MethodType::QualType)
+function AddCallOpToClass(Class::pcpp"clang::CXXRecordDecl", Method::pcpp"clang::CXXMethodDecl")
     pcpp"clang::CXXMethodDecl"(ccall((:AddCallOpToClass, libcxxffi), Ptr{Void},
-        (Ptr{ClangCompiler}, Ptr{Void}, Ptr{Void}), &C, Class, MethodType))
+        (Ptr{Void}, Ptr{Void}), Class, Method))
 end
 
 function FinalizeAnonClass(C, Class::pcpp"clang::CXXRecordDecl")
     ccall((:FinalizeAnonClass, libcxxffi), Void, (Ptr{ClangCompiler}, Ptr{Void}), &C, Class)
+end
+
+getEmptyStructType() = pcpp"llvm::Type"(ccall((:getEmptyStructType, libcxxffi), Ptr{Void}, ()))
+
+function CreateCxxCallMethodDecl(C, Class::pcpp"clang::CXXRecordDecl", MethodType::QualType)
+    pcpp"clang::CXXMethodDecl"(ccall((:CreateCxxCallMethodDecl, libcxxffi), Ptr{Void},
+        (Ptr{ClangCompiler}, Ptr{Void}, Ptr{Void}), &C, Class, MethodType))
+end
+
+function GetDescribedFunctionTemplate(FD)
+    pcpp"clang::FunctionTemplateDecl"(ccall((:GetDescribedFunctionTemplate, libcxxffi), Ptr{Void},
+        (Ptr{Void},), FD))
 end

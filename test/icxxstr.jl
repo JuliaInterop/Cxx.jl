@@ -47,9 +47,9 @@ function inlineexpr()
     icxx"""
         for (int i = 0; i < 10; ++i) {
             if (i < 5)
-                $:(a[1] += 1);
+                $:(a[1] += 1; nothing);
             else
-                $:(b[1] += 1);
+                $:(b[1] += 1; nothing);
         }
     """
     @assert a[1] == 5

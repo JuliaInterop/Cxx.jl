@@ -40,6 +40,7 @@ end
         """
         push!(ret.args,:(println(io,"}")))
     end
+    @show macroexpand(ret)
     ret
 end
 @generated function Base.show(io::IO, x::Cxx.CppPtr)

@@ -1478,6 +1478,26 @@ JL_DLLEXPORT void *CreateFunctionDecl(C, void *DC, char* name, void *type, int i
   return D;
 }
 
+JL_DLLEXPORT void *CreateCxxCallMethodDecl(C, clang::CXXRecordDecl *TheClass, void *QT)
+{
+  clang::DeclarationName MethodName
+    = Cxx->CI->getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Call);
+  clang::DeclarationNameLoc MethodNameLoc;
+  clang::QualType T = clang::QualType::getFromOpaquePtr(QT);
+  clang::CXXMethodDecl *Method
+    = clang::CXXMethodDecl::Create(Cxx->CI->getASTContext(), TheClass,
+                            clang::SourceLocation(),
+                            clang::DeclarationNameInfo(MethodName,
+                                                clang::SourceLocation(),
+                                                MethodNameLoc),
+                            T, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T),
+                            clang::SC_None,
+                            /*isInline=*/true,
+                            /*isConstExpr=*/false,
+                            clang::SourceLocation());
+  Method->setAccess(clang::AS_public);
+  return Method;
+}
 
 JL_DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
 {
@@ -2298,24 +2318,8 @@ JL_DLLEXPORT void *CreateAnonymousClass(C, clang::Decl *Scope)
     nullptr,clang::SourceLocation(),false,false,clang::LCD_None);
 }
 
-JL_DLLEXPORT void *AddCallOpToClass(C, clang::CXXRecordDecl *TheClass, void *QT)
+JL_DLLEXPORT void *AddCallOpToClass(clang::CXXRecordDecl *TheClass, clang::CXXMethodDecl *Method)
 {
-
-  clang::DeclarationName MethodName
-    = Cxx->CI->getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Call);
-  clang::DeclarationNameLoc MethodNameLoc;
-  clang::CXXMethodDecl *Method
-    = clang::CXXMethodDecl::Create(Cxx->CI->getASTContext(), TheClass,
-                            clang::SourceLocation(),
-                            clang::DeclarationNameInfo(MethodName,
-                                                clang::SourceLocation(),
-                                                MethodNameLoc),
-                            clang::QualType::getFromOpaquePtr(QT), nullptr,
-                            clang::SC_None,
-                            /*isInline=*/true,
-                            /*isConstExpr=*/false,
-                            clang::SourceLocation());
-  Method->setAccess(clang::AS_public);
   TheClass->addDecl(Method);
   return Method;
 }
@@ -2362,7 +2366,13 @@ JL_DLLEXPORT void *CreateFunctionTemplateDecl(C, clang::DeclContext *DC, clang::
       Cxx->CI->getASTContext(), DC, clang::SourceLocation(),
       FD->getNameInfo().getName(), Params, FD);
   FD->setDescribedFunctionTemplate(FTD);
+  FTD->setAccess(clang::AS_public);
   return (void*)FTD;
+}
+
+JL_DLLEXPORT void *GetDescribedFunctionTemplate(clang::FunctionDecl *FD)
+{
+  return (void*)FD->getDescribedFunctionTemplate();
 }
 
 JL_DLLEXPORT void *newFDVector() { return (void*)new std::vector<clang::FunctionDecl*>; }
@@ -2580,6 +2590,11 @@ JL_DLLEXPORT unsigned getTTPTIndex(clang::TemplateTypeParmType *TTPT)
 JL_DLLEXPORT void *getTemplatedDecl(clang::TemplateDecl *TD)
 {
   return TD->getTemplatedDecl();
+}
+
+JL_DLLEXPORT void *getEmptyStructType()
+{
+  return (void*)StructType::get(jl_LLVMContext);
 }
 
 extern void *jl_pchar_to_string(const char *str, size_t len);

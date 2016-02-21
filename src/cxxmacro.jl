@@ -170,7 +170,7 @@ end
 function extract_params(C,FD)
     @assert FD != C_NULL
     params = Pair{Symbol,DataType}[]
-    CxxMD = dcastCXXMethodDecl(pcpp"clang::Decl"(FD.ptr))
+    CxxMD = dcastCXXMethodDecl(pcpp"clang::Decl"(convert(Ptr{Void},FD)))
     if CxxMD != C_NULL
         RD = getParent(CxxMD)
         T = juliatype(pointerTo(C, QualType(typeForDecl(RD))))
@@ -195,12 +195,12 @@ function DeclToJuliaPrototype(C,FD,f)
 end
 
 function get_llvmf_for_FD(C,jf,FD)
-    TT = Tuple{map(x->x[2],extract_params(C,FD))...}
+    TT = Tuple{typeof(jf), map(x->x[2],extract_params(C,FD))...}
     needsboxed = Bool[!isbits(x) for x in TT.parameters]
     specsig = length(needsboxed) == 0 || !reduce(&,needsboxed)
     f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), jf, TT, false,true))
     @assert f != C_NULL
-    needsboxed, specsig, TT, f
+    needsboxed, specsig, Tuple{TT.parameters[2:end]...}, f
 end
 
 macro cxxm(str,expr)
@@ -209,7 +209,7 @@ macro cxxm(str,expr)
     RT = gensym()
     esc(quote
         Cxx.EnterBuffer(Cxx.instance(__current_compiler__),$str)
-        $FD = pcpp"clang::FunctionDecl"(Cxx.ParseDeclaration(Cxx.instance(__current_compiler__)).ptr)
+        $FD = pcpp"clang::FunctionDecl"(convert(Ptr{Void},Cxx.ParseDeclaration(Cxx.instance(__current_compiler__))))
         if $FD == C_NULL
             error("Failed to obtain declarator (see Clang Errors)")
         end

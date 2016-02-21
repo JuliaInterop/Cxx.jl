@@ -70,6 +70,6 @@ function collectSymbolsForExport(RD::pcpp"clang::CXXRecordDecl")
     i
     """
     addresses = zeros(Ptr{Ptr{Void}},nummethods)
-    eval(:(llvmcall($(f.ptr),Void,(Ptr{Ptr{Void}},),$(pointer(addresses)))))
+    eval(:(llvmcall($(convert(Ptr{Void},f)),Void,(Ptr{Ptr{Void}},),$(pointer(addresses)))))
     addresses
 end
