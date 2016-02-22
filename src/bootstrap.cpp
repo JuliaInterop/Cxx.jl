@@ -2312,10 +2312,14 @@ JL_DLLEXPORT void *ActOnTypeParameter(C, char *Name, unsigned Position)
 
 JL_DLLEXPORT void *CreateAnonymousClass(C, clang::Decl *Scope)
 {
-  return clang::CXXRecordDecl::CreateLambda(
-    Cxx->CI->getASTContext(),
+  clang::CXXRecordDecl *RD = clang::CXXRecordDecl::Create(
+    Cxx->CI->getASTContext(), clang::TTK_Class,
     clang::dyn_cast<clang::DeclContext>(Scope),
-    nullptr,clang::SourceLocation(),false,false,clang::LCD_None);
+    clang::SourceLocation(), clang::SourceLocation(),
+    nullptr);
+  RD->setImplicit(true);
+  RD->startDefinition();
+  return (void*)RD;
 }
 
 JL_DLLEXPORT void *AddCallOpToClass(clang::CXXRecordDecl *TheClass, clang::CXXMethodDecl *Method)
@@ -2403,6 +2407,23 @@ JL_DLLEXPORT void *getLambdaCallOperator(clang::CXXRecordDecl *R)
   return R->getLambdaCallOperator();
 }
 
+JL_DLLEXPORT void *getCallOperator(C, clang::CXXRecordDecl *R)
+{
+  clang::DeclarationName Name =
+    Cxx->CI->getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Call);
+  clang::DeclContext::lookup_result Calls = R->lookup(Name);
+
+  assert(!Calls.empty() && "Missing lambda call operator!");
+  assert(Calls.size() == 1 && "More than one lambda call operator!");
+
+  clang::NamedDecl *CallOp = Calls.front();
+  if (clang::FunctionTemplateDecl *CallOpTmpl =
+                    dyn_cast<clang::FunctionTemplateDecl>(CallOp))
+    return cast<clang::CXXMethodDecl>(CallOpTmpl->getTemplatedDecl());
+
+  return cast<clang::CXXMethodDecl>(CallOp);
+}
+
 JL_DLLEXPORT bool isCxxDLambda(clang::CXXRecordDecl *R)
 {
   return R->isLambda();
@@ -2454,6 +2475,13 @@ JL_DLLEXPORT void *CreateCStyleCast(C, clang::Expr *E, clang::Type *T)
 JL_DLLEXPORT void *CreateReturnStmt(C, clang::Expr *E)
 {
   return (void*)new (Cxx->CI->getASTContext()) clang::ReturnStmt(clang::SourceLocation(),E,nullptr);
+}
+
+JL_DLLEXPORT void *CreateThisExpr(C, void *T)
+{
+  return (void*)new (Cxx->CI->getASTContext()) clang::CXXThisExpr(
+    clang::SourceLocation(), clang::QualType::getFromOpaquePtr(T),
+    false);
 }
 
 JL_DLLEXPORT void *CreateFunctionRefExprFD(C, clang::FunctionDecl *FD)

@@ -341,3 +341,22 @@ tmp = icxx"testLargeValue<0xffffffffffffffff>();"
 tmp = icxx"testNegativeValue<-1>();"
 @test icxx"$(tmp).getT();" == -1
 
+# Broken Testcase while porting to jb/functions
+# The problematic case was both a Julia and a C++ side capture
+
+function fooTheLambda()
+    ret = Expr(:block)
+    f = (arg1,)->begin
+            @assert Cxx.lambdacall(Cxx.__default_compiler__,arg1) == 1
+            @assert pointer_from_objref(ret) != C_NULL
+            @assert ret.head == :block
+        end
+    icxx"""
+        int x = 1;
+        auto &f = $f;
+        f([&](){ return x; });
+        return;
+    """
+end
+fooTheLambda()
+

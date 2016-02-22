@@ -2,23 +2,23 @@ using Cxx
 cxx"""
 #include <iostream>
 """
-function foo()
+function ifoo()
     for i = 1:10
         icxx"""
             std::cout << "foo\n";
         """
     end
 end
-foo()
+ifoo()
 
-function bar()
+function ibar()
     for i = 1:10
         icxx"""
            std::cout << $i << "\n";
         """
    end
 end
-bar()
+ibar()
 
 function baz()
     for i = 1:10

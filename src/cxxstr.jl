@@ -168,7 +168,7 @@ const lambda_roots = Function[]
 # a template.
 function InstantiateSpecializationsForType(C, DC, LambdaT)
     TheClass = Cxx.getAsCXXRecordDecl(Cxx.MappedTypes[LambdaT])
-    Method = Cxx.getLambdaCallOperator(TheClass)
+    Method = Cxx.getCallOperator(C, TheClass)
     FTD = Cxx.GetDescribedFunctionTemplate(Method)
     if FTD == C_NULL
         return
@@ -222,6 +222,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         # Create a Clang function Decl to represent this julia function
         ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
         argtypes = [xT <: CxxBuiltinTs ? getTargTypeAtIdx(TP,i-1) : PVoid for (i,xT) in enumerate(specTypes)]
+        sizeof(LambdaT) == 0 || unshift!(argtypes, pointerTo(C, getPointeeType(cpptype(C,LambdaT))))
         JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), argtypes))
 
         params = pcpp"clang::ParmVarDecl"[]
@@ -233,6 +234,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
 
         # Create the body for the instantiation
         callargs = pcpp"clang::Expr"[]
+        sizeof(LambdaT) == 0 || push!(callargs, CreateThisExpr(C, pointerTo(C, getPointeeType(cpptype(C, LambdaT)))))
         for (i,pvd) in enumerate(tpvds)
             e = dre = CreateDeclRefExpr(C,pvd)
             if !(specTypes[i] <: CxxBuiltinTs)

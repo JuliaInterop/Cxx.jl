@@ -542,6 +542,11 @@ function getLambdaCallOperator(R::pcpp"clang::CXXRecordDecl")
     pcpp"clang::CXXMethodDecl"(ccall((:getLambdaCallOperator,libcxxffi),Ptr{Void},(Ptr{Void},),R))
 end
 
+function getCallOperator(C, R::pcpp"clang::CXXRecordDecl")
+    pcpp"clang::CXXMethodDecl"(ccall((:getCallOperator,libcxxffi),
+        Ptr{Void}, (Ptr{ClangCompiler}, Ptr{Void}), &C, R))
+end
+
 function isLambda(R::pcpp"clang::CXXRecordDecl")
     ccall((:isCxxDLambda,libcxxffi),Bool,(Ptr{Void},),R)
 end
@@ -688,6 +693,12 @@ function CreateCxxCallMethodDecl(C, Class::pcpp"clang::CXXRecordDecl", MethodTyp
 end
 
 function GetDescribedFunctionTemplate(FD)
+    @assert FD != C_NULL
     pcpp"clang::FunctionTemplateDecl"(ccall((:GetDescribedFunctionTemplate, libcxxffi), Ptr{Void},
         (Ptr{Void},), FD))
+end
+
+function CreateThisExpr(C, QT::QualType)
+    pcpp"clang::Expr"(ccall((:CreateThisExpr, libcxxffi), Ptr{Void},
+        (Ptr{ClangCompiler}, Ptr{Void}), &C, QT))
 end

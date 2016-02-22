@@ -15,7 +15,7 @@ class Test195 {
 };
 """
 
-#sprint(show, icxx"std::unique_ptr<int>{nullptr};")
+sprint(show, icxx"std::unique_ptr<int>{nullptr};")
 sprint(show, icxx"X184{};")
 sprint(show, icxx"new X184{};")
 sprint(show, icxx"Test195{};")

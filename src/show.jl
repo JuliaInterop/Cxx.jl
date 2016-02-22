@@ -21,7 +21,7 @@ end
     if RD == C_NULL && x <: Cxx.CppRef
         push!(ret.args,:(print(io,unsafe_load(x))))
     else
-	push!(ret.args,:(println(io,"{")))
+	    push!(ret.args,:(println(io,"{")))
         @assert RD != C_NULL
         icxx"""
         for (auto field : $RD->fields()) {
@@ -40,7 +40,6 @@ end
         """
         push!(ret.args,:(println(io,"}")))
     end
-    @show macroexpand(ret)
     ret
 end
 @generated function Base.show(io::IO, x::Cxx.CppPtr)
