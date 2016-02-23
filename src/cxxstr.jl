@@ -459,8 +459,8 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
             push!(argtypes,(i,T))
             push!(llvmargs,arg)
             push!(argidxs,i)
-            push!(symargs,symarg)
         end
+        push!(symargs,symarg)
     end
 
     if filename == symbol("")

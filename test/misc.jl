@@ -360,3 +360,6 @@ function fooTheLambda()
 end
 fooTheLambda()
 
+# 217
+T217 = Cdouble; arg217 = 1;
+icxx"std::vector<$T217>($arg217);";
