@@ -85,7 +85,7 @@ stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
 stripmodifier{T,CVR}(p::Union{Type{CppPtr{T,CVR}},
     Type{CppRef{T,CVR}}}) = p
 stripmodifier{T <: CppValue}(p::Type{T}) = p
-stripmodifier{s}(p::Type{CppEnum{s}}) = p
+stripmodifier{T<:CppEnum}(p::Type{T}) = p
 stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
 stripmodifier(p::CxxBuiltinTypes) = p
 stripmodifier{T<:Function}(p::Type{T}) = p
@@ -99,7 +99,7 @@ resolvemodifier{T <: CppValue}(C, p::Type{T}, e::pcpp"clang::Expr") = e
 resolvemodifier(C,p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
 resolvemodifier{T}(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T<:Ref}(C,p::Type{T}, e::pcpp"clang::Expr") = e
-resolvemodifier{s}(C,p::Type{CppEnum{s}}, e::pcpp"clang::Expr") = e
+resolvemodifier{T<:CppEnum}(C,p::Type{T}, e::pcpp"clang::Expr") = e
 resolvemodifier{base,fptr}(C,p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
 resolvemodifier{f}(C,cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
 resolvemodifier{T,JLT}(C,p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
@@ -146,7 +146,7 @@ function resolvemodifier_llvm{T,CVR}(C, builder, t::Type{CppPtr{T, CVR}}, v::pcp
 end
 
 # Same situation as the pointer case
-resolvemodifier_llvm{s}(C, builder, t::Type{CppEnum{s}}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm{T<:CppEnum}(C, builder, t::Type{T}, v::pcpp"llvm::Value") =
     ExtractValue(C,v,0)
 resolvemodifier_llvm{f}(C, builder, t::Type{CppFptr{f}}, v::pcpp"llvm::Value") =
     ExtractValue(C,v,0)

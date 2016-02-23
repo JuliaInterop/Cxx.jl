@@ -189,7 +189,7 @@ function cppdecl{fname}(C,T::Type{CppBaseType{fname}})
     # Let's get a clang level representation of this type
     lookup_ctx(C,fname)
 end
-cppdecl{s}(C,::Type{CppEnum{s}}) = lookup_ctx(C,s)
+cppdecl{T<:CppEnum}(C,p::Type{T}) = lookup_ctx(C,p.parameters[1])
 
 function cppdecl{T,targs}(C,TT::Type{CppTemplate{T,targs}})
     ctx = cppdecl(C,T)
@@ -244,7 +244,7 @@ addQualifiers(clangT::pcpp"clang::Type",CVR) = addQualifiers(QualType(clangT),CV
 # And finally the actual definition of cpptype
 
 cpptype{T<:CppTemplate}(C,::Type{T}) = QualType(typeForDecl(cppdecl(C,T)))
-cpptype{s}(C,p::Type{CppEnum{s}}) = QualType(typeForDecl(cppdecl(C,p)))
+cpptype{T<:CppEnum}(C,p::Type{T}) = QualType(typeForDecl(cppdecl(C,p)))
 cpptype{T}(C,p::Type{CxxArrayType{T}}) = getIncompleteArrayType(C,cpptype(C,T))
 function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
     addQualifiers(pointerTo(C,cpptype(C,T)),CVR)
