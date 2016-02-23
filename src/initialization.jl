@@ -336,7 +336,6 @@ end
 function register_booth(C)
     C = Cxx.instance(C)
     cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
-    RegisterType(C,lookup_name(C,["jl_value_t"]),getPointerElementType(julia_to_llvm(Any)))
 end
 
 
