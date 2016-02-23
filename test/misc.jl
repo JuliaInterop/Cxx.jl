@@ -363,3 +363,6 @@ fooTheLambda()
 # 217
 T217 = Cdouble; arg217 = 1;
 icxx"std::vector<$T217>($arg217);";
+
+cxx"enum  X197:char {A197,B197};"
+@assert icxx"A197;" == 0

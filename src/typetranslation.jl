@@ -541,10 +541,9 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isCharType(t)
         T = UInt8
     elseif isEnumeralType(t)
-        if isAnonymous(t)
-            T = Int32
-        else
-            T = CppEnum{symbol(get_name(t))}
+        T = juliatype(getUnderlyingTypeOfEnum(t))
+        if !isAnonymous(t)
+            T = CppEnum{symbol(get_name(t)),T}
         end
     elseif isIntegerType(t)
         kind = builtinKind(t)

@@ -137,10 +137,10 @@ immutable CppMFptr{base, fptr}
     adj::UInt64
 end
 
-# Represent a C/C++ Enum. `T` is a symbol, representing the fully qualified name
-# of the enum
-immutable CppEnum{T}
-    val::Int32
+# Represent a C/C++ Enum. `S` is a symbol, representing the fully qualified name
+# of the enum, `T` the underlying type
+immutable CppEnum{S, T}
+    val::T
 end
 ==(p1::CppEnum,p2::Integer) = p1.val == p2
 ==(p1::Integer,p2::CppEnum) = p1 == p2.val

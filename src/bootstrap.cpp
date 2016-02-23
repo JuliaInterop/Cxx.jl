@@ -2625,6 +2625,11 @@ JL_DLLEXPORT void *getEmptyStructType()
   return (void*)StructType::get(jl_LLVMContext);
 }
 
+JL_DLLEXPORT void *getUnderlyingTypeOfEnum(clang::Type *T)
+{
+  return (void*)clang::cast<clang::EnumType>(T)->getDecl()->getIntegerType().getAsOpaquePtr();
+}
+
 extern void *jl_pchar_to_string(const char *str, size_t len);
 JL_DLLEXPORT void *getTypeName(C, void *Ty)
 {

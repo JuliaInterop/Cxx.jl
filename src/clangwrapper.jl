@@ -702,3 +702,8 @@ function CreateThisExpr(C, QT::QualType)
     pcpp"clang::Expr"(ccall((:CreateThisExpr, libcxxffi), Ptr{Void},
         (Ptr{ClangCompiler}, Ptr{Void}), &C, QT))
 end
+
+function getUnderlyingTypeOfEnum(T::pcpp"clang::Type")
+    QualType(ccall((:getUnderlyingTypeOfEnum, libcxxffi), Ptr{Void},
+        (Ptr{Void},), T))
+end
