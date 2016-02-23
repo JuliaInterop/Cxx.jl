@@ -533,7 +533,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isReferenceType(t)
         t = getPointeeType(t)
         pointeeT = juliatype(t,quoted,typeargs; wrapvalue = false, valuecvr = false)
-        if !isa(pointeeT, Type) || isCxxEquivalentType(pointeeT) || pointeeT <: CxxBuiltinTs
+        if !isa(pointeeT, Type) || !haskey(MappedTypes, pointeeT)
             return quoted ? :( CppRef{$pointeeT,$CVR} ) : CppRef{pointeeT,CVR}
         else
             return quoted ? :( $pointeeT ) : pointeeT

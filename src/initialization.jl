@@ -338,8 +338,6 @@ function register_booth(C)
     cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
 end
 
-
-
 # As an optimzation, create a generic function per compiler instance,
 # to avoid having to create closures at the call site
 function __init__()

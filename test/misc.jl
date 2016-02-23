@@ -362,3 +362,15 @@ icxx"std::vector<$T217>($arg217);";
 
 cxx"enum  X197:char {A197,B197};"
 @assert icxx"A197;" == 0
+
+# #232
+
+cxx"""
+struct PointXYZ232 {
+   PointXYZ232(int x, int y, int z) : x_(x), y_(y), z_(z) {}
+int x_,y_,z_;
+};
+""";
+v232 = icxx"std::vector<PointXYZ232>();";
+icxx"""$v232.push_back(PointXYZ232(0,0,0));""";
+@assert typeof(icxx"$v232[0];") <: Cxx.CppRef
