@@ -22,9 +22,10 @@ Get the latest git checkout from https://github.com/JuliaLang/julia.git then add
 ```sh
 #GCC >= 5 will not work
 #override USECLANG=1
-override LLVM_ASSERTIONS=1 # Optional, but recommended
 override BUILD_LLVM_CLANG=1
 override USE_LLVM_SHLIB=1
+# Optional, but recommended
+override LLVM_ASSERTIONS=1
 # For LLDB support also
 # override BUILD_LLDB=1
 # override LLDB_DISABLE_PYTHON=1
