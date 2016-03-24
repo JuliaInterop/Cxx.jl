@@ -1,4 +1,5 @@
-function addLLVMIncludes(C, clangheaders = true, juliainclude = joinpath(JULIA_HOME,"../include"),
+inc("../src/path.jl")
+function addLLVMIncludes(C, clangheaders = true, juliainclude = joinpath(BASE_JULIA_HOME,"../include"),
     llvmdir = joinpath(Cxx.depspath,"llvm-3.7.1"), ver = v"3.7.1")
 
     # LLVM Headers

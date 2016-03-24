@@ -48,7 +48,7 @@ module CxxREPL
 
     # Load Clang Headers
 
-    addHeaderDir(joinpath(JULIA_HOME,"../include"))
+    addHeaderDir(joinpath(BASE_JULIA_HOME,"../include"))
 
     cxx"""
     #define __STDC_LIMIT_MACROS

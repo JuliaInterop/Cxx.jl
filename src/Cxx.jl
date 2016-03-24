@@ -139,6 +139,7 @@
 #
 __precompile__(false)
 module Cxx
+include("path.jl")
 
 using Base.Meta
 using Base: svec
