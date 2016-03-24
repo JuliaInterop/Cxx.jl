@@ -1,4 +1,4 @@
-JULIAHOME := $(subst \,/,$(JULIA_HOME))/../..
+JULIAHOME := $(subst \,/,$(BASE_JULIA_HOME))/../..
 include $(JULIAHOME)/deps/Versions.make
 include $(JULIAHOME)/Make.inc
 

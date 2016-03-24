@@ -4,7 +4,7 @@
 # adding header search directories is done in this file.
 
 # Paths
-basepath = joinpath(JULIA_HOME, "../../")
+basepath = joinpath(BASE_JULIA_HOME, "../../")
 depspath = joinpath(basepath, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
@@ -322,7 +322,7 @@ end
 
 function addClangHeaders(C)
     # Also add clang's intrinsic headers
-    addHeaderDir(C,joinpath(JULIA_HOME,"../lib/clang/$(Base.libllvm_version)/include/"), kind = C_ExternCSystem)
+    addHeaderDir(C,joinpath(BASE_JULIA_HOME,"../lib/clang/$(Base.libllvm_version)/include/"), kind = C_ExternCSystem)
 end
 
 function initialize_instance!(C; register_boot = true)
