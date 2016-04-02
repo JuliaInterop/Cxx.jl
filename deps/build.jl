@@ -21,7 +21,7 @@ s = """
 const BASE_JULIA_HOME=\"$BASE_JULIA_HOME\"
 export BASE_JULIA_HOME
 """
-f = open(joinpath(Pkg.dir(),"Cxx/src/path.jl"), "w")
+f = open(joinpath(dirname(@__FILE__),"path.jl"), "w")
 write(f, s)
 close(f)
 

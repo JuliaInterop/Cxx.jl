@@ -139,7 +139,9 @@
 #
 __precompile__(false)
 module Cxx
-include("path.jl")
+pathfile = joinpath(dirname(@__FILE__),"../deps/path.jl")
+isfile(pathfile) || error("path.jl not generated. Try running Pkg.build(\"Cxx\")")
+include(pathfile)
 
 using Base.Meta
 using Base: svec
