@@ -2630,6 +2630,29 @@ JL_DLLEXPORT void *getUnderlyingTypeOfEnum(clang::Type *T)
   return (void*)clang::cast<clang::EnumType>(T)->getDecl()->getIntegerType().getAsOpaquePtr();
 }
 
+JL_DLLEXPORT void InsertIntoShadowModule(C, llvm::Function *F)
+{
+  // Copy the declaration characteristics of the Function (not the body)
+  Function *NewF = Function::Create(F->getFunctionType(),
+                                    Function::ExternalLinkage,
+                                    F->getName(), Cxx->shadow);
+  // FunctionType does not include any attributes. Copy them over manually
+  // as codegen may make decisions based on the presence of certain attributes
+  NewF->copyAttributesFrom(F);
+
+#ifdef LLVM37
+  // Declarations are not allowed to have personality routines, but
+  // copyAttributesFrom sets them anyway, so clear them again manually
+  NewF->setPersonalityFn(nullptr);
+#endif
+
+#ifdef LLVM35
+  // DLLImport only needs to be set for the shadow module
+  // it just gets annoying in the JIT
+  NewF->setDLLStorageClass(GlobalValue::DefaultStorageClass);
+#endif
+}
+
 extern void *jl_pchar_to_string(const char *str, size_t len);
 JL_DLLEXPORT void *getTypeName(C, void *Ty)
 {

@@ -79,7 +79,7 @@ function CreateDeclRefExpr(C, p; cxxscope=C_NULL, islvalue=true)
     CreateDeclRefExpr(C, vd;islvalue=islvalue,cxxscope=cxxscope)
 end
 
-cptrarr(a) = [convert(Ptr{Void}, x) for x in a]
+cptrarr(a) = Ptr{Void}[convert(Ptr{Void}, x) for x in a]
 
 function CreateParmVarDecl(C, p::QualType,name="dummy")
     pcpp"clang::ParmVarDecl"(
@@ -706,4 +706,8 @@ end
 function getUnderlyingTypeOfEnum(T::pcpp"clang::Type")
     QualType(ccall((:getUnderlyingTypeOfEnum, libcxxffi), Ptr{Void},
         (Ptr{Void},), T))
+end
+
+function InsertIntoShadowModule(C, llvmf::pcpp"llvm::Function")
+    ccall((:InsertIntoShadowModule, libcxxffi), Void, (Ptr{ClangCompiler}, Ptr{Void},), &C, llvmf)
 end

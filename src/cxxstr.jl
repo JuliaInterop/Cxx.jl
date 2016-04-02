@@ -136,6 +136,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
         argtypes = [xT <: CxxBuiltinTs ? getTargTypeAtIdx(TP,i-1) : PVoid for (i,xT) in enumerate(specTypes)]
         sizeof(LambdaT) == 0 || unshift!(argtypes, pointerTo(C, getPointeeType(cpptype(C,LambdaT))))
+        InsertIntoShadowModule(C, f)
         JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), argtypes))
 
         params = pcpp"clang::ParmVarDecl"[]
