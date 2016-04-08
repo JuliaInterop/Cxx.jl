@@ -133,11 +133,8 @@ resolvemodifier_llvm{T}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
 
 function resolvemodifier_llvm{T,CVR}(C, builder,
     t::Type{CppRef{T,CVR}}, v::pcpp"llvm::Value")
-    # CppRef is a julia immutable with one field, so at the LLVM
-    # level they are represented as LLVM structrs with one (pointer) field.
-    # To get at the pointer itself, we simply need to emit an extract
-    # instruction
-    ExtractValue(C,v,0)
+    ty = cpptype(C, t)
+    IntToPtr(builder,v,toLLVM(C,ty))
 end
 
 function resolvemodifier_llvm{T,CVR}(C, builder, t::Type{CppPtr{T, CVR}}, v::pcpp"llvm::Value")
@@ -761,12 +758,12 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         if rett == Void || isVoidTy(llvmrt)
             CreateRetVoid(builder)
         else
-            if rett <: CppRef || rett <: CppEnum || rett <: CppFptr
+            if  rett <: CppEnum || rett <: CppFptr
                 undef = getUndefValue(llvmrt)
                 elty = getStructElementType(llvmrt,0)
                 ret = CreateBitCast(builder,ret,elty)
                 ret = InsertValue(builder, undef, ret, 0)
-            elseif rett <: CppPtr
+            elseif rett <: CppRef || rett <: CppPtr
                 ret = PtrToInt(builder, ret, llvmrt)
             elseif rett <: CppMFptr
                 undef = getUndefValue(llvmrt)

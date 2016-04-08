@@ -374,3 +374,20 @@ int x_,y_,z_;
 v232 = icxx"std::vector<PointXYZ232>();";
 icxx"""$v232.push_back(PointXYZ232(0,0,0));""";
 @assert typeof(icxx"$v232[0];") <: Cxx.CppRef
+
+# #243
+counter243 = 0
+let body243 = i->(@assert 1 == unsafe_load(i); global counter243; counter243 += 1; nothing)
+    icxx"int x = 1; $body243(x);"
+    icxx"int x = 1; $body243(&x);"
+end
+@assert counter243 == 2
+cxx"""
+struct foo243 {
+    int x;
+};
+"""
+let body243b = i->(@assert 1 == icxx"$i->x;"; global counter243; counter243 += 1; nothing)
+    icxx"foo243 x{1}; $body243b(&x);"
+end
+@assert counter243 == 3

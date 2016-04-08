@@ -96,13 +96,17 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         PVoid = cpptype(C,Int)
         tpvds = pcpp"clang::ParmVarDecl"[]
         specTypes = Type[]
+        byPtrList = Bool[]
 
         useBoxed = false
         types = pcpp"clang::Type"[]
         for i = 1:nargs
             T = getTargTypeAtIdx(TP,i-1)
             specT = juliatype(T)
-            push!(specTypes, specT <: CxxBuiltinTs ? specT : juliatype(pointerTo(C,T)))
+            byPtr = !(specT <: Union{CxxBuiltinTs, CppRef, CppPtr} ||
+                (specT <: Ptr && specT.parameters[1] <: CxxBuiltinTs))
+            push!(specTypes, byPtr ? juliatype(pointerTo(C,T)) : specT)
+            push!(byPtrList, byPtr)
             push!(types, canonicalType(extractTypePtr(T)))
             push!(tpvds, getParmVarDecl(x,i-1))
         end
@@ -134,7 +138,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
 
         # Create a Clang function Decl to represent this julia function
         ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
-        argtypes = [xT <: CxxBuiltinTs ? getTargTypeAtIdx(TP,i-1) : PVoid for (i,xT) in enumerate(specTypes)]
+        argtypes = [byPtr ? PVoid : getTargTypeAtIdx(TP,i-1) for (i,byPtr) in enumerate(byPtrList)]
         sizeof(LambdaT) == 0 || unshift!(argtypes, pointerTo(C, getPointeeType(cpptype(C,LambdaT))))
         InsertIntoShadowModule(C, f)
         JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), argtypes))
@@ -151,7 +155,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         sizeof(LambdaT) == 0 || push!(callargs, CreateThisExpr(C, pointerTo(C, getPointeeType(cpptype(C, LambdaT)))))
         for (i,pvd) in enumerate(tpvds)
             e = dre = CreateDeclRefExpr(C,pvd)
-            if !(specTypes[i] <: CxxBuiltinTs)
+            if byPtrList[i]
                 e = createCast(C,CreateAddrOfExpr(C,dre),PVoid,CK_PointerToIntegral)
             end
             push!(callargs, e)

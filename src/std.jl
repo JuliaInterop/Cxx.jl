@@ -10,7 +10,7 @@ cxxparse("""
 
 const StdString = cxxt"std::string"
 const StdStringR = cxxt"std::string&"
-typealias StdVector{T} cxxt"std::vector<$T>"
+typealias StdVector{T} Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
 typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 
 bytestring(str::Union{StdString,StdStringR}) = bytestring((@cxx str->data()),@cxx str->size())

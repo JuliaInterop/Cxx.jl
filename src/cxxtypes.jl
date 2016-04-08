@@ -95,13 +95,12 @@ end
 
 # The equivalent of a C++ reference
 # T can be any valid C++ type other than CppRef
-# See note on CVR above
-immutable CppRef{T,CVR}
-    ptr::Ptr{Void}
-end
+# See note on CVR above and note on bitstype below
+bitstype 8*sizeof(Ptr{Void}) CppRef{T,CVR}
+(::Type{CppRef{T,CVR}}){T,CVR}(p::Ptr{Void}) = reinterpret(CppRef{T,CVR}, p)
 
-cconvert(::Type{Ptr{Void}},p::CppRef) = p.ptr
-Base.unsafe_load{T<:Union{CxxBuiltinTs,Ptr}}(p::CppRef{T}) = unsafe_load(convert(Ptr{T},p.ptr))
+cconvert(::Type{Ptr{Void}},p::CppRef) = reinterpret(Ptr{Void}, p)
+Base.unsafe_load{T<:Union{CxxBuiltinTs,Ptr}}(p::CppRef{T}) = unsafe_load(reinterpret(Ptr{T}, p))
 Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
 
 # The equivalent of a C++ pointer.
@@ -121,6 +120,8 @@ Base.convert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 
 ==(p1::CppPtr,p2::Ptr) = convert(Ptr{Void}, p1) == p2
 ==(p1::Ptr,p2::CppPtr) = p1 == convert(Ptr{Void}, p2)
+
+Base.unsafe_load{T<:CppPtr}(p::CppRef{T}) = unsafe_load(reinterpret(Ptr{T}, p))
 
 # Provides a common type for CppFptr and CppMFptr
 immutable CppFunc{rt, argt}; end
@@ -145,7 +146,7 @@ end
 ==(p1::CppEnum,p2::Integer) = p1.val == p2
 ==(p1::Integer,p2::CppEnum) = p1 == p2.val
 
-Base.unsafe_load{T<:CppEnum}(p::CppRef{T}) = unsafe_load(convert(Ptr{Cint},p.ptr))
+Base.unsafe_load{T<:CppEnum}(p::CppRef{T}) = unsafe_load(reinterpret(Ptr{Cint}, p))
 
 # Representa a C++ Lambda. Since they are not nameable, we need to number them
 # and record the corresponding type

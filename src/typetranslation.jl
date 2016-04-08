@@ -288,8 +288,9 @@ function cpptype{T}(C,::Type{T})
         # For callable julia types, also add an operator() method to the anonymous
         # class
         if !isempty(T.name.mt)
-            tt = Tuple{T}
             linfo = first(T.name.mt).func
+            nargt = length(first(T.name.mt).sig.parameters)-1
+            tt = Tuple{T,(Any for _ in 1:nargt)...}
             (tree, retty) = Core.Inference.typeinf(linfo,tt,svec())
             if isa(retty,Union) || retty.abstract
               error("Inferred Union or abstract type $retty for return value of lambda")
@@ -490,24 +491,23 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isBooleanType(t)
         T = Bool
     elseif isPointerType(t)
-        @assert !quoted
         pt = getPointeeType(t)
         tt = juliatype(pt,quoted,typeargs)
         if tt <: CppFunc
-            return CppFptr{tt}
+            return quoted ? :(CppFptr{$tt}) : CppFptr{tt}
         elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
             if tt <: CppValue
                 tt = tt.parameters[1]
             end
-            T = CppPtr{tt,CVR}
+            xT = quoted ? :(CppPtr{$tt,$CVR}) : CppPtr{tt, CVR}
             # As a special case, if we're returning a jl_value_t *, interpret it
             # as a julia type.
-            if T == pcpp"jl_value_t"
-                return Any
+            if !quoted && xT == pcpp"jl_value_t"
+                return quoted ? :(Any) : Any
             end
-            return T
+            return xT
         else
-            return Ptr{tt}
+            return quoted ? :(Ptr{$tt}) : Ptr{tt}
         end
     elseif isFunctionPointerType(t)
         error("Is Function Pointer")
