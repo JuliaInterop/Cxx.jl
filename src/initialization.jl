@@ -224,8 +224,7 @@ function ScanLibDirForGCCTriple(base,triple)
             end
             InstallPath = path * "/" * dir
             IncPath = InstallPath * isuffix * "/../include"
-            if
-               ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
+            if ( !isdir( IncPath * "/" * triple * "/c++/" * dir ) ||
                   !isdir( IncPath * "/c++/" * dir ) )  &&
                ( !isdir( IncPath * "/c++/" * dir * "/" * triple ) ||
                   !isdir( IncPath * "/c++/" * dir ) )  &&
