@@ -1,6 +1,8 @@
 ##Cxx.jl
 
-The Julia C++ Foreign Function Interface (FFI).
+The Julia C++ Foreign Function Interface (FFI) and REPL.
+
+![REPL Screenshot](doc/screenshot.png "C++ REPL Screenshot")
 
 
 ### Installation
