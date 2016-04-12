@@ -7,9 +7,7 @@ The Julia C++ Foreign Function Interface (FFI) and REPL.
 
 ### Installation
 
-You will need to install Julia v0.4-dev with some special options.
-
-Cxx.jl requires "staged functions" amongst other things available only in v0.4. It also requires the development version of LLVM, which is currently targeting version 3.7.
+You will need to install Julia v0.5-dev with some special options.
 
 #### Build requirements
 
