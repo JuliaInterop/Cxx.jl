@@ -179,7 +179,7 @@ julia> @cxx Klassy::exec(@cxx(Klassy::Baz))
 CppEnum{symbol("Klassy::Foo")}(1)
 ```
 #### Example 7: C++ Hello World class
-```
+```julia
 julia> using Cxx
 julia> cxx"""#include <iostream>
        class Hello
