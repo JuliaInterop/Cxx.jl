@@ -1210,6 +1210,7 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot
     Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
     Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
     Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
+    Cxx->CI->getLangOpts().CXXOperatorNames = 1;
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
