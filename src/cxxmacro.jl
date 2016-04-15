@@ -198,7 +198,7 @@ function get_llvmf_for_FD(C,jf,FD)
     TT = Tuple{typeof(jf), map(x->x[2],extract_params(C,FD))...}
     needsboxed = Bool[!isbits(x) for x in TT.parameters]
     specsig = length(needsboxed) == 0 || !reduce(&,needsboxed)
-    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), jf, TT, false,true))
+    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), TT, false,true))
     @assert f != C_NULL
     needsboxed, specsig, Tuple{TT.parameters[2:end]...}, f
 end

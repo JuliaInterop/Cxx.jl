@@ -20,7 +20,7 @@ size = cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(Cxx.instance(__curre
     ["llvm","ExecutionEngine"]).ptr))
 @assert size >= 144
 
-code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), f, Tuple{t...}, false, false))
+code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), Tuple{t...}, false, false))
 function code_graph(f,args)
     v = @cxx std::string()
     os = @cxx llvm::raw_string_ostream(v)

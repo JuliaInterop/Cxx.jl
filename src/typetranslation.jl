@@ -314,7 +314,7 @@ function cpptype{T}(C,::Type{T})
             if isempty(TPs)
                 Method = CreateCxxCallMethodDecl(C, AnonClass, makeFunctionType(C, cpptype(C, retty), argtQTs))
                 AddCallOpToClass(AnonClass, Method)
-                f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), T, tt, false, true))
+                f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), tt, false, true))
                 @assert f != C_NULL
                 ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = isbits(T) || isbits(retty),
                     NeedsBoxed = [false], FirstIsEnv = true, jts = Any[T])

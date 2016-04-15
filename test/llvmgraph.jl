@@ -74,7 +74,7 @@ vertex_index(v,g) = reinterpret(UInt64, v.ptr)
 
 buf = IOBuffer()
 
-code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Any,Bool,Bool), f, Tuple{t...}, false, false))
+code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), Tuple{t...}, false, false))
 function code_graph(f,args)
     v = @cxx std::string()
     os = @cxx llvm::raw_string_ostream(v)
