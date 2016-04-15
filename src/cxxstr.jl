@@ -263,6 +263,9 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
                 body = replace(body,"__juliavar$i","__juliatype$i")
                 push!(typeargs,(i,cpptype(C,arg.parameters[1])))
             end
+        elseif arg <: Val
+            body = replace(body,"__juliavar$i","__juliaconst$i")
+            push!(typeargs,(i,arg.parameters[1]))
         else
             arg, symarg = cxxtransform(arg,symarg)
             T = cpptype(C,arg)

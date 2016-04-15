@@ -400,3 +400,4 @@ public:
 };
 """
 @assert icxx"Template246<$(Val{5})>().getI();" == 5
+@assert icxx"Template246<$(Val{5}())>().getI();" == 5
