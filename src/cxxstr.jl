@@ -298,7 +298,7 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
             push!(params,param)
         end
         for (i,T) in typeargs
-            if isa(T, Type)
+            if isa(T, QualType)
                 D = CreateTypeDefDecl(C,ctx,"__juliatype$i",T)
             else
                 D = CreateVarDecl(C,ctx,"__juliaconst$i",constQualified(cpptype(C,typeof(T))))
