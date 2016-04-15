@@ -227,6 +227,14 @@ function EmitTopLevelDecl(C, D::pcpp"clang::Decl")
 end
 EmitTopLevelDecl(C,D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(C,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
 
+function cppconst(C, Val)
+    if isa(Val, Integer)
+        return CreateIntegerLiteral(C, (Val%UInt64), cpptype(C, typeof(Val)))
+    else
+        error("Don't know how to make this a C++ constant")
+    end
+end
+
 #
 # Create a clang FunctionDecl with the given body and
 # and the given types for embedded __juliavars
@@ -235,7 +243,7 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
     global icxxcounter
 
     argtypes = Tuple{Int,QualType}[]
-    typeargs = Tuple{Int,QualType}[]
+    typeargs = Tuple{Int,Any}[]
     callargs = Int[]
     llvmargs = Any[]
     argidxs = Int[]
@@ -248,8 +256,13 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         # We passed in an actual julia type
         symarg = :(args[$i])
         if arg <: Type
-            body = replace(body,"__juliavar$i","__juliatype$i")
-            push!(typeargs,(i,cpptype(C,arg.parameters[1])))
+            if arg.parameters[1] <: Val
+                body = replace(body,"__juliavar$i","__juliaconst$i")
+                push!(typeargs,(i,arg.parameters[1].parameters[1]))
+            else
+                body = replace(body,"__juliavar$i","__juliatype$i")
+                push!(typeargs,(i,cpptype(C,arg.parameters[1])))
+            end
         else
             arg, symarg = cxxtransform(arg,symarg)
             T = cpptype(C,arg)
@@ -282,7 +295,13 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
             push!(params,param)
         end
         for (i,T) in typeargs
-            D = CreateTypeDefDecl(C,ctx,"__juliatype$i",T)
+            if isa(T, Type)
+                D = CreateTypeDefDecl(C,ctx,"__juliatype$i",T)
+            else
+                D = CreateVarDecl(C,ctx,"__juliaconst$i",constQualified(cpptype(C,typeof(T))))
+                SetVarDeclInit(D, cppconst(C, T))
+                SetConstexpr(D)
+            end
             AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
         end
         SetFDParams(FD,params)

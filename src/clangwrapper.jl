@@ -25,6 +25,9 @@ function extractCVR(T::QualType)
     quals = ccall((:extractCVR,libcxxffi),Cuint,(Ptr{Void},),T)
     ((quals&0x1)!=0,(quals&0x2)!=0,(quals&0x4)!=0)
 end
+function constQualified(T::QualType)
+    QualType(UInt(T.ptr) | 0x1)
+end
 
 # Pass a qual type via the opaque pointer
 cconvert(::Type{Ptr{Void}},p::QualType) = p.ptr
@@ -710,4 +713,12 @@ end
 
 function InsertIntoShadowModule(C, llvmf::pcpp"llvm::Function")
     ccall((:InsertIntoShadowModule, libcxxffi), Void, (Ptr{ClangCompiler}, Ptr{Void},), &C, llvmf)
+end
+
+function SetVarDeclInit(D::pcpp"clang::VarDecl", init)
+    ccall((:SetVarDeclInit, libcxxffi), Void, (Ptr{Void}, Ptr{Void}), D, init)
+end
+
+function SetConstexpr(VD::pcpp"clang::VarDecl")
+    ccall((:SetVarDeclInit, libcxxffi), Void, (Ptr{Void},), VD)
 end

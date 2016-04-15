@@ -2631,6 +2631,16 @@ JL_DLLEXPORT void *getUnderlyingTypeOfEnum(clang::Type *T)
   return (void*)clang::cast<clang::EnumType>(T)->getDecl()->getIntegerType().getAsOpaquePtr();
 }
 
+JL_DLLEXPORT void SetVarDeclInit(clang::VarDecl *VD, clang::Expr *Init)
+{
+  return VD->setInit(Init);
+}
+
+JL_DLLEXPORT void SetConstexpr(clang::VarDecl *VD)
+{
+  VD->setConstexpr(true);
+}
+
 JL_DLLEXPORT void InsertIntoShadowModule(C, llvm::Function *F)
 {
   // Copy the declaration characteristics of the Function (not the body)

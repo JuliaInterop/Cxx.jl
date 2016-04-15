@@ -391,3 +391,12 @@ let body243b = i->(@assert 1 == icxx"$i->x;"; global counter243; counter243 += 1
     icxx"foo243 x{1}; $body243b(&x);"
 end
 @assert counter243 == 3
+
+# #246
+cxx"""
+template <int i> class Template246 {
+public:
+    int getI() { return i; }
+};
+"""
+@assert icxx"Template246<$(Val{5})>().getI();" == 5
