@@ -257,7 +257,9 @@ function AddLinuxHeaderPaths(C)
                         "i486-slackware-linux", "i686-montavista-linux", "i686-linux-android",
                         "i586-linux-gnu"]
 
-    const Prefixes = ["/usr"]
+
+    CXXJL_ROOTDIR = get(ENV, "CXXJL_ROOTDIR", "") * "/usr"
+    const Prefixes = [ CXXJL_ROOTDIR ]
 
     LibDirs = (Int === Int64 ? X86_64LibDirs : X86LibDirs)
     Triples = (Int === Int64 ? X86_64Triples : X86Triples)
@@ -285,8 +287,6 @@ function AddLinuxHeaderPaths(C)
     end
 
     found = false
-
-    incpath = Path * "/../include"
 
     incpath = Path * "/../include"
 
