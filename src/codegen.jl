@@ -190,7 +190,7 @@ function resolvemodifier_llvm{T,jlt}(C, builder,
 end
 
 # This used to be a lot more complicated before the pointer and tuple reworks
-# Luckily for us, not it's just:
+# Luckily for us, now it's just:
 #
 #    +-----------------+
 #    |   CppValue      |

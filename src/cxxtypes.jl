@@ -78,13 +78,6 @@ immutable CxxArrayType{T}
 end
 
 # The equivalent of a C++ on-stack value.
-# The representation of this is important and subject to change.
-# The current implementation is inefficient, because it puts the object on the
-# heap (ouch). A better implementation would use fixed-size arrays, ideally
-# coupled with the necessary escape analysis to be able to put it on the stack
-# in the common case. However, this will require (planned, but not yet
-# implemented) improvements in core Julia.
-#
 # T is a CppBaseType or a CppTemplate
 # See note on CVR above
 type CppValue{T,N}
