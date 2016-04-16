@@ -112,7 +112,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         end
 
         # Step 2: Create the instantiated julia function
-        F = first(LambdaT.name.mt)
+        F = LambdaT.name.mt.defs
         for pvd in tpvds
             SetDeclUsed(C,pvd)
         end

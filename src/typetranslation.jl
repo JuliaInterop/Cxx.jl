@@ -288,8 +288,9 @@ function cpptype{T}(C,::Type{T})
         # For callable julia types, also add an operator() method to the anonymous
         # class
         if !isempty(T.name.mt)
-            linfo = first(T.name.mt).func
-            nargt = length(first(T.name.mt).sig.parameters)-1
+            linfo = T.name.mt.defs.func
+            sig = T.name.mt.defs.sig
+            nargt = length(sig.parameters)-1
             tt = Tuple{T,(Any for _ in 1:nargt)...}
             (tree, retty) = Core.Inference.typeinf(linfo,tt,svec())
             if isa(retty,Union) || retty.abstract
@@ -301,7 +302,7 @@ function cpptype{T}(C,::Type{T})
             tparamnum = 1
             TPs = Any[]
             argtQTs = QualType[]
-            for argt in first(T.name.mt).sig.parameters[2:end]
+            for argt in sig.parameters[2:end]
                 if argt.abstract
                     TP = ActOnTypeParameter(C,string("param",tparamnum),tparamnum-1)
                     push!(argtQTs,RValueRefernceTo(C,QualType(typeForDecl(TP))))
