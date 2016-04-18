@@ -1,14 +1,5 @@
-# First verify that this Version of julia is compatible
-# with this package.
-
-if !isdefined(first(methods(sin)),:isstaged)
-    error("This version of julia does not have staged functions.\n
-           CXX.jl will not work!")
-end
-
-if !isdefined(Base,:llvmcall)
-    error("This version of julia does not support llvmcall.\n
-           CXX.jl will not work!")
+if VERSION < v"0.5-dev"
+    error("Cxx requires Julia 0.5")
 end
 
 #in case we have specified the path to the julia installation
