@@ -80,6 +80,12 @@
 #if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 6
 #define LLVM36 1
 #endif
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 8
+#define LLVM38 1
+#endif
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 9
+#define LLVM39 1
+#endif
 
 #ifndef OLD_NDEBUG
 #undef NDEBUG
@@ -87,9 +93,12 @@
 
 // From julia
 using namespace llvm;
+#ifdef LLVM39
+extern llvm::LLVMContext jl_LLVMContext;
+#else
 extern llvm::LLVMContext &jl_LLVMContext;
+#endif
 static llvm::Type *T_pvalue_llvmt;
-
 
 class JuliaCodeGenerator;
 
@@ -264,6 +273,12 @@ JL_DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
     return _cxxparse(Cxx);
 }
 
+#ifdef LLVM39
+typedef llvm::IRBuilder<> CxxIRBuilder;
+#else
+typedef llvm::IRBuilder<true> CxxIRBuilder;
+#endif
+
 /*
  * Collect all global initializers into one llvm::Function, which
  * we can then call.
@@ -284,7 +299,7 @@ JL_DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
       "",
       Cxx->shadow
       );
-    llvm::IRBuilder<true> builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
+    CxxIRBuilder builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
 
     for (auto ctor : ctors) {
         builder.CreateCall(ctor.Initializer, {});
@@ -519,7 +534,7 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
 
   // Create the new function...
   Function *NewF = Function::Create(FTy, F->getLinkage(), F->getName(), Cxx->shadow);
-  llvm::IRBuilder<true> builder(jl_LLVMContext);
+  CxxIRBuilder builder(jl_LLVMContext);
 
   CallInst *Call;
   PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
@@ -831,6 +846,9 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
 {
   Cxx->Parser->EnterScope(clang::Scope::DeclScope);
   clang::ParsedAttributes attrs(Cxx->Parser->getAttrFactory());
+#ifdef LLVM39
+  clang::UsingDirectiveDecl *UsingDecl = nullptr;
+#endif
   return Cxx->CI->getSema().ActOnStartNamespaceDef(
       Cxx->Parser->getCurScope(),
       getTrivialSourceLocation(Cxx),
@@ -838,8 +856,11 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
       getTrivialSourceLocation(Cxx),
       Cxx->Parser->getPreprocessor().getIdentifierInfo(name),
       getTrivialSourceLocation(Cxx),
-      attrs.getList()
-      );
+      attrs.getList(),
+#ifdef LLVM39
+      UsingDecl
+#endif
+    );
 }
 
 JL_DLLEXPORT void ActOnFinishNamespaceDef(C, clang::Decl *D)
@@ -1158,12 +1179,12 @@ public:
   JuliaPCHGenerator(
     const clang::Preprocessor &PP, StringRef OutputFile,
     clang::Module *Module, StringRef isysroot,
-    std::shared_ptr<clang::PCHBuffer> Buffer,
+    std::shared_ptr<clang::PCHBuffer> Buffer
 #ifdef LLVM38
-    ArrayRef<llvm::IntrusiveRefCntPtr<clang::ModuleFileExtension>> Extensions,
+    ,ArrayRef<llvm::IntrusiveRefCntPtr<clang::ModuleFileExtension>> Extensions,
     bool IncludeTimestamps = true
 #endif
-    bool AllowASTWithErrors = false) :
+    ,bool AllowASTWithErrors = false) :
   PCHGenerator(PP,OutputFile,Module,isysroot,Buffer,
 #ifdef LLVM38
                Extensions,
@@ -1221,7 +1242,13 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot
     Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
     if (SysRoot)
       Cxx->CI->getHeaderSearchOpts().Sysroot = SysRoot;
-    Cxx->CI->getCodeGenOpts().setDebugInfo(clang::CodeGenOptions::NoDebugInfo);
+    Cxx->CI->getCodeGenOpts().setDebugInfo(
+#ifdef LLVM39
+      clang::codegenoptions::NoDebugInfo
+#else
+      clang::CodeGenOptions::NoDebugInfo
+#endif
+    );
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
     Cxx->CI->getCodeGenOpts().StackRealignment = 1;
     Cxx->CI->getTargetOpts().Triple = Triple == NULL ? llvm::Triple::normalize(llvm::sys::getProcessTriple()) : Triple;
@@ -1243,7 +1270,9 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot
     Cxx->CI->createPreprocessor(clang::TU_Prefix);
     Cxx->CI->createASTContext();
     Cxx->shadow = new llvm::Module("clangShadow",jl_LLVMContext);
-#ifdef LLVM38
+#ifdef LLVM39
+    Cxx->shadow->setDataLayout(tin.getDataLayout());
+#elif defined(LLVM38)
     Cxx->shadow->setDataLayout(tin.getDataLayoutString());
 #else
     Cxx->shadow->setDataLayout(tin.getTargetDescription());
@@ -1666,17 +1695,17 @@ JL_DLLEXPORT void *create_extract_value(C, Value *agg, size_t idx)
     return Cxx->CGF->Builder.CreateExtractValue(agg,ArrayRef<unsigned>((unsigned)idx));
 }
 
-JL_DLLEXPORT void *create_insert_value(llvm::IRBuilder<false> *builder, Value *agg, Value *val, size_t idx)
+JL_DLLEXPORT void *create_insert_value(CxxIRBuilder *builder, Value *agg, Value *val, size_t idx)
 {
     return builder->CreateInsertValue(agg,val,ArrayRef<unsigned>((unsigned)idx));
 }
 
-JL_DLLEXPORT void *CreateIntToPtr(llvm::IRBuilder<false> *builder, Value *TheInt, Type *Ty)
+JL_DLLEXPORT void *CreateIntToPtr(CxxIRBuilder *builder, Value *TheInt, Type *Ty)
 {
     return builder->CreateIntToPtr(TheInt, Ty);
 }
 
-JL_DLLEXPORT void *CreatePtrToInt(llvm::IRBuilder<false> *builder, Value *TheInt, Type *Ty)
+JL_DLLEXPORT void *CreatePtrToInt(CxxIRBuilder *builder, Value *TheInt, Type *Ty)
 {
     return builder->CreatePtrToInt(TheInt, Ty);
 }
@@ -1947,12 +1976,12 @@ JL_DLLEXPORT void llvmtdump(void *t)
     ((llvm::Type*) t)->dump();
 }
 
-JL_DLLEXPORT void *createLoad(llvm::IRBuilder<false> *builder, llvm::Value *val)
+JL_DLLEXPORT void *createLoad(CxxIRBuilder *builder, llvm::Value *val)
 {
     return builder->CreateLoad(val);
 }
 
-JL_DLLEXPORT void *CreateConstGEP1_32(llvm::IRBuilder<false> *builder, llvm::Value *val, uint32_t idx)
+JL_DLLEXPORT void *CreateConstGEP1_32(CxxIRBuilder *builder, llvm::Value *val, uint32_t idx)
 {
     return (void*)builder->CreateConstGEP1_32(val,idx);
 }
@@ -2038,17 +2067,17 @@ JL_DLLEXPORT void *getStructElementType(llvm::Type *t, uint32_t i)
   return (void*)t->getStructElementType(i);
 }
 
-JL_DLLEXPORT void *CreateRet(llvm::IRBuilder<false> *builder, llvm::Value *ret)
+JL_DLLEXPORT void *CreateRet(CxxIRBuilder *builder, llvm::Value *ret)
 {
   return (void*)builder->CreateRet(ret);
 }
 
-JL_DLLEXPORT void *CreateRetVoid(llvm::IRBuilder<false> *builder)
+JL_DLLEXPORT void *CreateRetVoid(CxxIRBuilder *builder)
 {
   return (void*)builder->CreateRetVoid();
 }
 
-JL_DLLEXPORT void *CreateBitCast(llvm::IRBuilder<false> *builder, llvm::Value *val, llvm::Type *type)
+JL_DLLEXPORT void *CreateBitCast(CxxIRBuilder *builder, llvm::Value *val, llvm::Type *type)
 {
   return (void*)builder->CreateBitCast(val,type);
 }
@@ -2362,7 +2391,12 @@ JL_DLLEXPORT void ExitParserScope(C)
 
 JL_DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t ND)
 {
+#ifdef LLVM39
+  return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(),
+    clang::SourceLocation(), ArrayRef<clang::NamedDecl*>(D, ND), clang::SourceLocation());
+#else
   return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(), clang::SourceLocation(), D, ND, clang::SourceLocation());
+#endif
 }
 
 JL_DLLEXPORT void *CreateFunctionTemplateDecl(C, clang::DeclContext *DC, clang::TemplateParameterList *Params, clang::FunctionDecl *FD)

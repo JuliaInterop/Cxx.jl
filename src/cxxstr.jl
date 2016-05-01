@@ -257,15 +257,17 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         symarg = :(args[$i])
         if arg <: Type
             if arg.parameters[1] <: Val
-                body = replace(body,"__juliavar$i","__juliaconst$i")
-                push!(typeargs,(i,arg.parameters[1].parameters[1]))
+                body = replace(body,"__juliavar$i","__juliaconst$icxxcounter")
+                push!(typeargs,(icxxcounter,arg.parameters[1].parameters[1]))
             else
-                body = replace(body,"__juliavar$i","__juliatype$i")
-                push!(typeargs,(i,cpptype(C,arg.parameters[1])))
+                body = replace(body,"__juliavar$i","__juliatype$icxxcounter")
+                push!(typeargs,(icxxcounter,cpptype(C,arg.parameters[1])))
             end
+            icxxcounter += 1
         elseif arg <: Val
-            body = replace(body,"__juliavar$i","__juliaconst$i")
-            push!(typeargs,(i,arg.parameters[1]))
+            body = replace(body,"__juliavar$i","__juliaconst$icxxcounter")
+            push!(typeargs,(icxxcounter,arg.parameters[1]))
+            icxxcounter += 1
         else
             arg, symarg = cxxtransform(arg,symarg)
             T = cpptype(C,arg)

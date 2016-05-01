@@ -317,6 +317,7 @@ function cpptype{T}(C,::Type{T})
                 AddCallOpToClass(AnonClass, Method)
                 f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), tt, false, true))
                 @assert f != C_NULL
+                FinalizeAnonClass(C, AnonClass)
                 ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = isbits(T) || isbits(retty),
                     NeedsBoxed = [false], FirstIsEnv = true, jts = Any[T])
             else
@@ -327,9 +328,9 @@ function cpptype{T}(C,::Type{T})
                 SetFDParams(Method,params)
                 D = CreateFunctionTemplateDecl(C,toctx(AnonClass),Params,Method)
                 AddDeclToDeclCtx(toctx(AnonClass),pcpp"clang::Decl"(convert(Ptr{Void}, D)))
+                FinalizeAnonClass(C, AnonClass)
             end
         end
-        FinalizeAnonClass(C, AnonClass)
 
         # Anything that you want C++ to be able to do with a julia object
         # needs to be declared here.
@@ -427,31 +428,9 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}()
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-# TODO: Autogenerate this from the appropriate header
-const cVoid      = 0
-const cBool      = 1
-const cChar_U    = 2
-const cUChar     = 3
-const cWChar_U   = 4
-const cChar16    = 5
-const cChar32    = 6
-const cUShort    = 7
-const cUInt      = 8
-const cULong     = 9
-const cULongLong = 10
-const CUInt128   = 11
-const cChar_S    = 12
-const cSChar     = 13
-const cWChar_S   = 14
-const cShort     = 15
-const cInt       = 16
-const cLong      = 17
-const cLongLong  = 18
-const cInt128    = 19
-const cHalf      = 20
-const cFloat     = 21
-const cDouble    = 22
+include(joinpath(dirname(@__FILE__),"../deps/clang_constants.jl"))
 
+# TODO: Autogenerate this from the appropriate header
 # Decl::Kind
 const LinkageSpec = 10
 
@@ -565,6 +544,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         elseif kind == cSChar
             T = Int8
         else
+            ccall(:jl_,Void,(Any,),kind)
             dump(t)
             error("Unrecognized Integer type")
         end

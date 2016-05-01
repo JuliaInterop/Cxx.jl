@@ -321,7 +321,7 @@ end
 
 function addClangHeaders(C)
     # Also add clang's intrinsic headers
-    addHeaderDir(C,joinpath(BASE_JULIA_HOME,"../lib/clang/$(Base.libllvm_version)/include/"), kind = C_ExternCSystem)
+    addHeaderDir(C,joinpath(BASE_JULIA_HOME,"../lib/clang/$(replace(Base.libllvm_version,"svn",""))/include/"), kind = C_ExternCSystem)
 end
 
 function initialize_instance!(C; register_boot = true)
@@ -346,7 +346,7 @@ function __init__()
     push!(active_instances, C)
     # Setup exception translation callback
     callback = cglobal((:process_cxx_exception,libcxxffi),Ptr{Void})
-    unsafe_store!(callback, cfunction(process_cxx_exception,Void,Tuple{UInt64,Ptr{Void}}))
+    unsafe_store!(callback, cfunction(process_cxx_exception,Union{},Tuple{UInt64,Ptr{Void}}))
 end
 
 function new_clang_instance(register_boot = true)

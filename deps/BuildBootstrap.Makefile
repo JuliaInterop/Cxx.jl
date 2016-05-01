@@ -2,11 +2,19 @@ JULIAHOME := $(subst \,/,$(BASE_JULIA_HOME))/../..
 include $(JULIAHOME)/deps/Versions.make
 include $(JULIAHOME)/Make.inc
 
-FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) -I$(build_includedir) \
+CXXJL_CPPFLAGS = -I$(build_includedir) \
 		-I$(JULIAHOME)/src/support \
 		-I$(call exec,$(LLVM_CONFIG) --includedir) \
 		-I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
 		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
+
+FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) $(CXXJL_CPPFLAGS)
+
+ifneq ($(USEMSVC), 1)
+CPP_STDOUT := $(CPP) -P
+else
+CPP_STDOUT := $(CPP) -E
+endif
 
 JULIA_LDFLAGS = -L$(build_shlibdir) -L$(build_libdir)
 
@@ -86,7 +94,7 @@ endif
 endif
 LDFLAGS += -l$(LLVM_LIB_NAME)
 
-all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT)
+all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) clang_constants.jl
 
 usr/lib:
 	@mkdir -p $(CURDIR)/usr/lib/
@@ -137,3 +145,6 @@ usr/lib/libcxxffi-debug.$(SHLIB_EXT):
 	@echo $(build_libdir)/libjulia-debug.$(SHLIB_EXT)
 	@echo "has been built."
 endif
+
+clang_constants.jl: ../src/cenumvals.jl.h usr/lib/libcxxffi.$(SHLIB_EXT)
+	@$(call PRINT_PERL, $(CPP_STDOUT) $(CXXJL_CPPFLAGS) -DJULIA ../src/cenumvals.jl.h > $@)

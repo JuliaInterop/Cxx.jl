@@ -541,7 +541,8 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
         ret = C_NULL
     end
 
-    createReturn(C,builder,f,argt,argt,llvmrt,rett,rt,ret,state)
+    createReturn(C,builder,f,argt,argt,llvmrt,rett,rt,ret,state;
+        argidxs=pvd == nothing ? [] : [1])
 end
 
 #
