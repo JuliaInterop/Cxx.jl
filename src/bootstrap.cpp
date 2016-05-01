@@ -856,9 +856,9 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
       getTrivialSourceLocation(Cxx),
       Cxx->Parser->getPreprocessor().getIdentifierInfo(name),
       getTrivialSourceLocation(Cxx),
-      attrs.getList(),
+      attrs.getList()
 #ifdef LLVM39
-      UsingDecl
+      ,UsingDecl
 #endif
     );
 }
