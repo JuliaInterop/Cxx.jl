@@ -29,7 +29,7 @@ end
                 continue;
             $:(begin
                 fieldname = bytestring(icxx"return field->getName();")
-                showexpr = Expr(:macrocall,symbol("@icxx_str"),"
+                showexpr = Expr(:macrocall,Symbol("@icxx_str"),"
                     auto &r = \$x.$fieldname;
                     return r;
                 ")

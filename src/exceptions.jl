@@ -57,7 +57,7 @@ function show_cxx_backtrace(io::IO, top_function::Symbol, t, set)
                 return
             end
             saw_unwind_resume || return
-            lastname == symbol("???") && return
+            lastname == Symbol("???") && return
             Base.show_trace_entry(io, lastname, lastfile, lastline, last_inlinedat_file, last_inlinedat_line, n)
         end
     end
@@ -80,13 +80,13 @@ function process_cxx_exception(code::UInt64, e::Ptr{Void})
         offset = Base.fieldoffset(LibCxxException,length(LibCxxException.types))
         cxxe = Ptr{LibCxxException}(e - offset)
         T = unsafe_load(cxxe).exceptionType
-        throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
+        throw(CxxException{Symbol(bytestring(icxx"$T->name();"))}(cxxe))
     elseif (code & get_vendor_and_language) == libstdcxx_class
         # This is a libstdc++ exception
         offset = Base.fieldoffset(LibStdCxxException,length(LibStdCxxException.types))
         cxxe = Ptr{LibStdCxxException}(e - offset)
         T = unsafe_load(cxxe).exceptionType
-        throw(CxxException{symbol(bytestring(icxx"$T->name();"))}(cxxe))
+        throw(CxxException{Symbol(bytestring(icxx"$T->name();"))}(cxxe))
     end
     error("Caught a C++ exception")
 end
@@ -101,7 +101,7 @@ end
     if isReferenceType(T)
         T = getPointeeType(T)
     end
-    s = symbol(getTypeName(C, T))
+    s = Symbol(getTypeName(C, T))
     quot(s)
 end
 

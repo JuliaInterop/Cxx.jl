@@ -11,12 +11,12 @@ macro list(t)
         Base.done(it::$t,i) = i >= length(it)
     end
     if isexpr(t,:macrocall)
-        if t.args[1] == symbol("@pcpp_str")
+        if t.args[1] == Symbol("@pcpp_str")
             append!(q.args,(quote
                 Base.getindex(it::$t,i) = icxx"(*$(it))[$i];"
                 Base.length(it::$t) = icxx"$(it)->size();"
             end).args)
-        elseif t.args[1] == symbol("@vcpp_str")
+        elseif t.args[1] == Symbol("@vcpp_str")
             append!(q.args,(quote
                 Base.getindex(it::$t,i) = icxx"$(it)[$i];"
                 Base.length(it::$t) = icxx"$(it).size();"

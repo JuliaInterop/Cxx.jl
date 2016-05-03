@@ -165,7 +165,7 @@ typeForLambda{N}(::Type{CppLambda{N}}) = lambdaTypes[N]
 # etc.
 
 const NullCVR = (false,false,false)
-simpleCppType(s) = CppBaseType{symbol(s)}
+simpleCppType(s) = CppBaseType{Symbol(s)}
 simpleCppValue(s) = CxxQualType{simpleCppType(s),NullCVR}
 
 macro pcpp_str(s,args...)

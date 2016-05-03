@@ -462,8 +462,8 @@ for (rt,argt) in ((pcpp"clang::ClassTemplateSpecializationDecl",pcpp"clang::Decl
                   (pcpp"clang::CXXMethodDecl",pcpp"clang::Decl"),
                   (pcpp"clang::CXXConstructorDecl",pcpp"clang::Decl"))
     s = split(string(rt.parameters[1].parameters[1].parameters[1]),"::")[end]
-    isas = symbol(string("isa",s))
-    ds = symbol(string("dcast",s))
+    isas = Symbol(string("isa",s))
+    ds = Symbol(string("dcast",s))
     # @cxx llvm::isa{$rt}(t)
     @eval $(isas)(t::$(argt)) = ccall(($(quot(isas)),libcxxffi),Cint,(Ptr{Void},),t) != 0
     @eval $(ds)(t::$(argt)) = ($rt)(ccall(($(quot(ds)),libcxxffi),Ptr{Void},(Ptr{Void},),t))

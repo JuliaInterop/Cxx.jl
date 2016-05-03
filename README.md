@@ -172,11 +172,11 @@ julia> cxx"""
        """
 # Access enum
 julia> @cxx Klassy::Bar
-CppEnum{symbol("Klassy::Foo")}(0)
+CppEnum{Symbol("Klassy::Foo")}(0)
 
 # Pass enum as an argument
 julia> @cxx Klassy::exec(@cxx(Klassy::Baz))
-CppEnum{symbol("Klassy::Foo")}(1)
+CppEnum{Symbol("Klassy::Foo")}(1)
 ```
 #### Example 7: C++ Hello World class
 ```julia

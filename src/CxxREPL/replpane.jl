@@ -158,7 +158,7 @@ module CxxREPL
                     error("Only one julia-assignment operator allowed per expression")
                 end
                 var, line = parts
-                var = symbol(strip(var))
+                var = Symbol(strip(var))
                 isAssignment = true
             end
             # Strip trailing semicolon (since we add one on the next line) to avoid unused result warning

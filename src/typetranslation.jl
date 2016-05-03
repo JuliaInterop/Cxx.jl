@@ -440,7 +440,7 @@ getPointeeType(t::QualType) = getPointeeType(extractTypePtr(t))
 canonicalType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
 
 function toBaseType(t::pcpp"clang::Type")
-    T = CppBaseType{symbol(get_name(t))}
+    T = CppBaseType{Symbol(get_name(t))}
     rd = getAsCXXRecordDecl(t)
     if rd != C_NULL
         targs = getTemplateParameters(rd)
@@ -523,7 +523,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isEnumeralType(t)
         T = juliatype(getUnderlyingTypeOfEnum(t))
         if !isAnonymous(t)
-            T = CppEnum{symbol(get_name(t)),T}
+            T = CppEnum{Symbol(get_name(t)),T}
         end
     elseif isIntegerType(t)
         kind = builtinKind(t)
@@ -576,7 +576,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         t = pcpp"clang::TemplateSpecializationType"(convert(Ptr{Void},t))
         TD = getUnderlyingTemplateDecl(t)
         TDargs = getTemplateParameters(t,quoted,typeargs)
-        T = CppBaseType{symbol(get_name(TD))}
+        T = CppBaseType{Symbol(get_name(TD))}
         if quoted
             exprT = :(CppTemplate{$T,$TDargs})
             valuecvr && (exprT = :(CxxQualType{$exprT,$CVR}))

@@ -239,7 +239,7 @@ end
 # Create a clang FunctionDecl with the given body and
 # and the given types for embedded __juliavars
 #
-function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), line::Int = 1, col::Int = 1)
+function CreateFunctionWithBody(C,body,args...; filename::Symbol = Symbol(""), line::Int = 1, col::Int = 1)
     global icxxcounter
 
     argtypes = Tuple{Int,QualType}[]
@@ -279,7 +279,7 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = symbol(""), l
         push!(symargs,symarg)
     end
 
-    if filename == symbol("")
+    if filename == Symbol("")
         EnterBuffer(C,body)
     else
         EnterVirtualSource(C,body,VirtualFileName(filename))
@@ -400,8 +400,8 @@ end
 
 collect_icxx(compiler, s, icxxs) = s
 function collect_icxx(compiler, e::Expr,icxxs)
-    if isexpr(e,:macrocall) && e.args[1] == symbol("@icxx_str")
-        x = symbol(string("arg",length(icxxs)+1))
+    if isexpr(e,:macrocall) && e.args[1] == Symbol("@icxx_str")
+        x = Symbol(string("arg",length(icxxs)+1))
         exprs, str = collect_exprs(e.args[2])
         push!(icxxs, (x,str,exprs))
         return Expr(:call, Cxx.lambdacall, compiler, x, [e[1] for e in exprs]...)
@@ -413,7 +413,7 @@ function collect_icxx(compiler, e::Expr,icxxs)
     e
 end
 
-function process_body(compiler, str, global_scope = true, cxxt = false, filename=symbol(""),line=1,col=1)
+function process_body(compiler, str, global_scope = true, cxxt = false, filename=Symbol(""),line=1,col=1)
     # First we transform the source buffer by pulling out julia expressions
     # and replaceing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
@@ -427,13 +427,13 @@ function process_body(compiler, str, global_scope = true, cxxt = false, filename
     if !global_scope && !cxxt
         write(sourcebuf,"{\n")
     end
-    if !cxxt && filename != symbol("")
+    if !cxxt && filename != Symbol("")
         if filename == :none
             filename = :REPL
         end
         write(sourcebuf,"#line $line \"$filename\"\n")
         if filename == :REPL
-            filename = symbol(joinpath(pwd(),"REPL"))
+            filename = Symbol(joinpath(pwd(),"REPL"))
         end
     end
     # Clang has no function for setting the column
@@ -458,7 +458,7 @@ function process_body(compiler, str, global_scope = true, cxxt = false, filename
             collect_icxx(compiler, expr,this_icxxs)
         end
         push!(exprs, isexpr ?
-            Expr(:->,Expr(:tuple,map(i->symbol(string("arg",i)),1:length(this_icxxs))...),
+            Expr(:->,Expr(:tuple,map(i->Symbol(string("arg",i)),1:length(this_icxxs))...),
                 expr.args[1]) : expr)
         push!(isexprs,isexpr)
 
@@ -573,7 +573,7 @@ function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr
     return setup
 end
 
-function process_cxx_string(str,global_scope = true,type_name = false,filename=symbol(""),line=1,col=1;
+function process_cxx_string(str,global_scope = true,type_name = false,filename=Symbol(""),line=1,col=1;
     compiler = :__current_compiler__, tojuliatype = true)
     startvarnum, sourcebuf, exprs, isexprs, icxxs =
         process_body(compiler, str, global_scope, !global_scope && type_name, filename, line, col)
@@ -641,7 +641,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=s
     else
         if type_name
             Expr(:call,Cxx.CxxType,:__current_compiler__,
-                CxxTypeName{symbol(takebuf_string(sourcebuf))}(),CodeLoc{filename,line,col}(),exprs...)
+                CxxTypeName{Symbol(takebuf_string(sourcebuf))}(),CodeLoc{filename,line,col}(),exprs...)
         else
             push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
             id = length(sourcebuffers)

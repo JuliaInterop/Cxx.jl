@@ -81,7 +81,7 @@ end
 
 function build_cpp_ref(member, this, isaddrof)
     @assert isa(member,Symbol)
-    x = :(Cxx.CppExpr{$(quot(symbol(member))),()}())
+    x = :(Cxx.CppExpr{$(quot(Symbol(member))),()}())
     ret = esc(Expr(:call, :(Cxx.cxxmemref), :__current_compiler__, isaddrof ? :(Cxx.CppAddr($x)) : x, this))
 end
 
@@ -185,7 +185,7 @@ function extract_params(C,FD)
             T = T{cxxsizeof(C,QT) % Int64}
         end
         name = getName(PV)
-        push!(params,symbol(name) => T)
+        push!(params,Symbol(name) => T)
     end
     params
 end

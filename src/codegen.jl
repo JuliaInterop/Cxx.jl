@@ -56,7 +56,7 @@ end
 cpptype{T,jlt}(C,p::Type{JLCppCast{T,jlt}}) = pointerTo(C,cpptype(C,T))
 
 macro jpcpp_str(s,args...)
-    JLCppCast{CppBaseType{symbol(s)}}
+    JLCppCast{CppBaseType{Symbol(s)}}
 end
 
 # Represents a forced cast form the value T
@@ -580,7 +580,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
         else
             decl = declfornns(C,expr)
             @assert decl != C_NULL
-            fname = symbol(getName(pcpp"clang::NamedDecl"(convert(Ptr{Void},decl))))
+            fname = Symbol(getName(pcpp"clang::NamedDecl"(convert(Ptr{Void},decl))))
         end
         @assert isa(fname,Symbol)
 
@@ -622,7 +622,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
             else
                 cxxd = dcastCXXRecordDecl(d)
             end
-            fname = symbol(_decl_name(d))
+            fname = Symbol(_decl_name(d))
             cxxt = cxxtmplt(d)
             if cxxd != C_NULL || cxxt != C_NULL
                 if cxxd == C_NULL
