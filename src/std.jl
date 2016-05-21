@@ -1,4 +1,4 @@
-import Base: bytestring
+import Base: String
 
 cxxparse("""
 #include <string>
@@ -13,7 +13,7 @@ const StdStringR = cxxt"std::string&"
 typealias StdVector{T} Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
 typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 
-bytestring(str::Union{StdString,StdStringR}) = bytestring((@cxx str->data()),@cxx str->size())
+String(str::Union{StdString,StdStringR}) = Cxx.unsafe_string((@cxx str->data()),@cxx str->size())
 
 import Base: showerror
 import Cxx: CppValue
@@ -70,4 +70,4 @@ function Base.show{T}(io::IO,
 end
 
 #Cxx.cpptype{T<:Union{ASCIIString,UTF8String}}(C,::Type{T}) = Cxx.cpptype(C,Ptr{UInt8})
-Cxx.cxxtransform{T<:Union{ASCIIString,UTF8String}}(::Type{T},ex) = (Ptr{UInt8},:(pointer($ex)))
+Cxx.cxxtransform(::Type{String},ex) = (Ptr{UInt8},:(pointer($ex)))

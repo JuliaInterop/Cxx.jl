@@ -83,12 +83,12 @@ end
 # Enter's the buffer, while pretending it's the contents of the file at path
 # `file`. Note that if `file` actually exists and is included from somewhere
 # else, `buf` will be included instead.
-function EnterVirtualSource(C,buf,file::ByteString)
+function EnterVirtualSource(C,buf,file::String)
     ccall((:EnterVirtualFile,libcxxffi),Void,
         (Ptr{ClangCompiler},Ptr{UInt8},Csize_t,Ptr{UInt8},Csize_t),
         &C,buf,sizeof(buf),file,sizeof(file))
 end
-EnterVirtualSource(C,buf,file::Symbol) = EnterVirtualSource(C,buf,bytestring(file))
+EnterVirtualSource(C,buf,file::Symbol) = EnterVirtualSource(C,buf,string(file))
 
 # Parses everything until the end of the currently entered source file
 # Returns true if the file was successfully parsed (i.e. no error occurred)

@@ -60,7 +60,7 @@ function _lookup_name(C,fname::AbstractString, ctx::pcpp"clang::DeclContext")
     #end
     pcpp"clang::Decl"(
         ccall((:lookup_name,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{UInt8},Ptr{Void}),&C,bytestring(fname),ctx))
+            (Ptr{ClangCompiler},Cstring,Ptr{Void}),&C,string(fname),ctx))
 end
 _lookup_name(C,fname::Symbol, ctx::pcpp"clang::DeclContext") = _lookup_name(C,string(fname),ctx)
 
@@ -352,7 +352,7 @@ isIncompleteType(t::pcpp"clang::Type") = pcpp"clang::NamedDecl"(ccall((:isIncomp
 function createNamespace(C,name::AbstractString)
     pcpp"clang::NamespaceDecl"(
         ccall((:createNamespace,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{UInt8}),&C,bytestring(name)))
+            (Ptr{ClangCompiler},Ptr{UInt8}),&C,string(name)))
 end
 
 function PerformMoveOrCopyInitialization(C,rt,expr)
@@ -595,8 +595,8 @@ function CreateLinkageSpec(C,DC::pcpp"clang::DeclContext",kind)
     pcpp"clang::DeclContext"(ccall((:CreateLinkageSpec,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Cuint),&C,DC,kind))
 end
 
-getName(x::pcpp"llvm::Function") = bytestring(ccall((:getLLVMValueName,libcxxffi),Ptr{UInt8},(Ptr{Void},),x))
-getName(ND::pcpp"clang::NamedDecl") = bytestring(ccall((:getNDName,libcxxffi),Ptr{UInt8},(Ptr{Void},),ND))
+getName(x::pcpp"llvm::Function") = unsafe_string(ccall((:getLLVMValueName,libcxxffi),Ptr{UInt8},(Ptr{Void},),x))
+getName(ND::pcpp"clang::NamedDecl") = unsafe_string(ccall((:getNDName,libcxxffi),Ptr{UInt8},(Ptr{Void},),ND))
 getName(ND::pcpp"clang::ParmVarDecl") = getName(pcpp"clang::NamedDecl"(convert(Ptr{Void}, ND)))
 
 getParmVarDecl(x::pcpp"clang::FunctionDecl",i) = pcpp"clang::ParmVarDecl"(ccall((:getParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Cuint),x,i))

@@ -1,6 +1,6 @@
-Base.bytestring(str::vcpp"llvm::StringRef") = bytestring(icxx"$str.data();",icxx"$str.size();")
+Base.bytestring(str::vcpp"llvm::StringRef") = Cxx.unsafe_string(icxx"$str.data();",icxx"$str.size();")
 function typename(QT)
-    bytestring(icxx"""
+    String(icxx"""
       const clang::LangOptions LO;
       const clang::PrintingPolicy PP(LO);
       $QT.getAsString(PP);

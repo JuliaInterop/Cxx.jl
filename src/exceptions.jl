@@ -86,7 +86,7 @@ function process_cxx_exception(code::UInt64, e::Ptr{Void})
         offset = Base.fieldoffset(LibStdCxxException,length(LibStdCxxException.types))
         cxxe = Ptr{LibStdCxxException}(e - offset)
         T = unsafe_load(cxxe).exceptionType
-        throw(CxxException{Symbol(bytestring(icxx"$T->name();"))}(cxxe))
+        throw(CxxException{Symbol(unsafe_string(icxx"$T->name();"))}(cxxe))
     end
     error("Caught a C++ exception")
 end

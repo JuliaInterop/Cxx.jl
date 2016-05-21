@@ -114,7 +114,7 @@ module CxxREPL
 
     # Inspired by cling's InputValidator.cpp
     function isExpressionComplete(C,data)
-        @assert data[end] == '\0'
+        @assert data[end] == UInt8('\0')
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(endof(data))-1;

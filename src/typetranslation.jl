@@ -111,9 +111,9 @@ function lookup_name(C::ClangCompiler,parts, cxxscope = C_NULL, start=translatio
         cur = _lookup_name(C,fpart,primary_ctx(toctx(cur)))
         if cur == C_NULL
             if lastcur == translation_unit(C)
-                error("Could not find $fpart in translation unit")
+                error("Could not find `$fpart` in translation unit")
             else
-                error("Could not find $fpart in context $(_decl_name(lastcur))")
+                error("Could not find `$fpart` in context $(_decl_name(lastcur))")
             end
         end
     end
@@ -356,14 +356,14 @@ end
 
 function _decl_name(d)
     s = __decl_name(d)
-    ret = bytestring(s)
+    ret = unsafe_string(s)
     Libc.free(s)
     ret
 end
 
 function simple_decl_name(d)
     s = ccall((:simple_decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
-    ret = bytestring(s)
+    ret = unsafe_string(s)
     Libc.free(s)
     ret
 end
@@ -382,9 +382,11 @@ function _get_name(t)
     s
 end
 
+const unsafe_string = String
+
 function get_name(t)
     s = _get_name(t)
-    ret = bytestring(s)
+    ret = unsafe_string(s)
     Libc.free(s)
     ret
 end
