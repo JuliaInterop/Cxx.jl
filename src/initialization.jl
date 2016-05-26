@@ -23,7 +23,7 @@ init_libcxxffi()
 
 function setup_instance(UsePCH = C_NULL)
     x = Array(ClangCompiler,1)
-    sysroot = @osx? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
+    sysroot = @static is_apple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
     EmitPCH = true
     ccall((:init_clang_instance,libcxxffi),Void,
         (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Bool,Ptr{UInt8},Ptr{Void}),
@@ -174,7 +174,7 @@ defineMacro(Name) = defineMacro(__default_compiler__,Name)
 nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
-@osx_only function addStdHeaders(C)
+@static if is_apple() function addStdHeaders(C)
     xcode_path =
         "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
     didfind = false
@@ -185,7 +185,8 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
         end
     end
     didfind || error("Could not find C++ standard library. Is XCode installed?")
-end
+end # function addStdHeaders(C)
+end # is_apple
 
 # On linux the situation is a little more complicated as the system header is
 # generally shipped with GCC, which every distribution seems to put in a
@@ -306,18 +307,20 @@ function AddLinuxHeaderPaths(C)
     end
 end
 
-@linux_only function addStdHeaders(C)
+@static if is_linux() function addStdHeaders(C)
     AddLinuxHeaderPaths(C)
     addHeaderDir(C,"/usr/include", kind = C_System);
-end
+end # function addStdHeaders(C)
+end # is_linux
 
-@windows_only function addStdHeaders(C)
+@static if is_windows() function addStdHeaders(C)
       base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
       addHeaderDir(C,joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
       #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
       addHeaderDir(C,joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
       addHeaderDir(C,joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
-end
+end #function addStdHeaders(C)
+end # is_windows
 
 function addClangHeaders(C)
     # Also add clang's intrinsic headers
