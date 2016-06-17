@@ -172,6 +172,13 @@ JL_DLLEXPORT void add_directory(C, int kind, int isFramework, const char *dirnam
     pp.getHeaderSearchInfo().AddSearchPath(clang::DirectoryLookup(dir,flag,isFramework),flag == clang::SrcMgr::C_System || flag == clang::SrcMgr::C_ExternCSystem);
 }
 
+JL_DLLEXPORT int isCCompiler(C)
+{
+    return Cxx->CI->getLangOpts().CPlusPlus == 0 &&
+           Cxx->CI->getLangOpts().ObjC1 == 0 &&
+           Cxx->CI->getLangOpts().ObjC2 == 0;
+}
+
 JL_DLLEXPORT int _cxxparse(C)
 {
     clang::Sema &S = Cxx->CI->getSema();
@@ -387,7 +394,10 @@ JL_DLLEXPORT void *lookup_name(C, char *name, clang::DeclContext *ctx)
     cs.RequireCompleteDeclContext(spec,ctx);
     //return dctx->lookup(DName).front();
     clang::LookupResult R(cs, DName, getTrivialSourceLocation(Cxx), clang::Sema::LookupAnyName);
-    cs.LookupQualifiedName(R, ctx, false);
+    if (isa<clang::TranslationUnitDecl>(ctx))
+      cs.LookupName(R, cs.getCurScope(), false);
+    else
+      cs.LookupQualifiedName(R, ctx, false);
     return R.empty() ? NULL : R.getRepresentativeDecl();
 }
 
@@ -828,7 +838,11 @@ JL_DLLEXPORT bool ParseFunctionStatementBody(C, clang::Decl *D)
       }
     }
     if (last && isa<clang::Expr>(last)) {
-      clang::StmtResult RetStmt(sema.BuildReturnStmt(getTrivialSourceLocation(Cxx), cast<clang::Expr>(last)));
+      clang::Expr *RetExpr = cast<clang::Expr>(last);
+      clang::SourceLocation ReturnLoc = getTrivialSourceLocation(Cxx);
+      sema.DeduceFunctionTypeFromReturnExpr(cast<clang::FunctionDecl>(D), ReturnLoc, RetExpr,
+            cast<clang::FunctionDecl>(D)->getReturnType()->getContainedAutoType());
+      clang::StmtResult RetStmt(sema.BuildReturnStmt(ReturnLoc, RetExpr));
       if (!RetStmt.isUsable()) {
         sema.ActOnFinishFunctionBody(D, nullptr);
         return false;
@@ -1208,47 +1222,51 @@ public:
 extern "C" {
 
 
-JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
-  const char *UsePCH, Type *_T_pvalue_llvmt) {
+static void set_common_options(C)
+{
+  Cxx->CI->getDiagnosticOpts().ShowColors = 1;
+  Cxx->CI->getDiagnosticOpts().ShowPresumedLoc = 1;
+  Cxx->CI->createDiagnostics();
+  Cxx->CI->getCodeGenOpts().setDebugInfo(
+#ifdef LLVM39
+    clang::codegenoptions::NoDebugInfo
+#else
+    clang::CodeGenOptions::NoDebugInfo
+#endif
+  );
+}
+
+static void set_default_clang_options(C, bool CCompiler, const char *Triple, const char *SysRoot, Type *_T_pvalue_llvmt)
+{
     T_pvalue_llvmt = _T_pvalue_llvmt;
 
-    //copied from http://www.ibm.com/developerworks/library/os-createcompilerllvm2/index.html
-    Cxx->CI = new clang::CompilerInstance;
-    Cxx->CI->getDiagnosticOpts().ShowColors = 1;
-    Cxx->CI->getDiagnosticOpts().ShowPresumedLoc = 1;
-    Cxx->CI->createDiagnostics();
-    Cxx->CI->getLangOpts().CPlusPlus = 1;
-    Cxx->CI->getLangOpts().CPlusPlus11 = 1;
-    Cxx->CI->getLangOpts().CPlusPlus14 = 1;
     Cxx->CI->getLangOpts().LineComment = 1;
     Cxx->CI->getLangOpts().Bool = 1;
     Cxx->CI->getLangOpts().WChar = 1;
     Cxx->CI->getLangOpts().C99 = 1;
-    Cxx->CI->getLangOpts().RTTI = 1;
-    Cxx->CI->getLangOpts().RTTIData = 1;
+    if (!CCompiler) {
+        Cxx->CI->getLangOpts().CPlusPlus = 1;
+        Cxx->CI->getLangOpts().CPlusPlus11 = 1;
+        Cxx->CI->getLangOpts().CPlusPlus14 = 1;
+        Cxx->CI->getLangOpts().RTTI = 0;
+        Cxx->CI->getLangOpts().RTTIData = 0;
+        Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
+        Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
+        Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
+        Cxx->CI->getLangOpts().CXXOperatorNames = 1;
+        Cxx->CI->getHeaderSearchOpts().UseLibcxx = 1;
+        Cxx->CI->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
+        Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
+    }
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
-    Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
-    Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
-    Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
-    Cxx->CI->getLangOpts().CXXOperatorNames = 1;
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
     Cxx->CI->getPreprocessorOpts().UsePredefines = 1;
     Cxx->CI->getHeaderSearchOpts().UseBuiltinIncludes = 1;
-    Cxx->CI->getHeaderSearchOpts().UseLibcxx = 1;
-    Cxx->CI->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
-    Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
     if (SysRoot)
       Cxx->CI->getHeaderSearchOpts().Sysroot = SysRoot;
-    Cxx->CI->getCodeGenOpts().setDebugInfo(
-#ifdef LLVM39
-      clang::codegenoptions::NoDebugInfo
-#else
-      clang::CodeGenOptions::NoDebugInfo
-#endif
-    );
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
     Cxx->CI->getCodeGenOpts().StackRealignment = 1;
     Cxx->CI->getTargetOpts().Triple = Triple == NULL ? llvm::Triple::normalize(llvm::sys::getProcessTriple()) : Triple;
@@ -1261,6 +1279,9 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot
                                               std::string(F.first()));
       Cxx->CI->getTargetOpts().Features = Features;
     }
+}
+
+static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
     Cxx->CI->setTarget(clang::TargetInfo::CreateTargetInfo(
       Cxx->CI->getDiagnostics(),
       std::make_shared<clang::TargetOptions>(Cxx->CI->getTargetOpts())));
@@ -1356,6 +1377,22 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot
     f_julia_type_to_llvm = (llvm::Type *(*)(void *, bool *))
       dlsym(RTLD_DEFAULT, "julia_type_to_llvm");
     assert(f_julia_type_to_llvm);
+}
+
+JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
+  bool CCompiler, const char *UsePCH, Type *_T_pvalue_llvmt) {
+    Cxx->CI = new clang::CompilerInstance;
+    set_common_options(Cxx);
+    set_default_clang_options(Cxx, CCompiler, Triple, SysRoot, _T_pvalue_llvmt);
+    finish_clang_init(Cxx, EmitPCH, UsePCH);
+}
+
+JL_DLLEXPORT void init_clang_instance_from_invocation(C, clang::CompilerInvocation *Inv)
+{
+    Cxx->CI = new clang::CompilerInstance;
+    Cxx->CI->setInvocation(Inv);
+    set_common_options(Cxx);
+    finish_clang_init(Cxx, false, nullptr);
 }
 
 void decouple_pch(C)
@@ -1586,6 +1623,11 @@ JL_DLLEXPORT void AssociateValue(C, clang::Decl *d, void *type, llvm::Value *V)
 JL_DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
 {
     DC->addDecl(D);
+}
+
+JL_DLLEXPORT void AddTopLevelDecl(C, clang::NamedDecl *D)
+{
+    Cxx->CI->getSema().pushExternalDeclIntoScope(D, D->getDeclName());
 }
 
 JL_DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)

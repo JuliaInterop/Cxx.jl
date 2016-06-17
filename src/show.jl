@@ -13,7 +13,12 @@ function typename{T<:Cxx.CxxQualType}(::Type{T})
 end
 @generated function Base.show(io::IO,x::Union{Cxx.CppValue,Cxx.CppRef})
     C = Cxx.instance(Cxx.__default_compiler__)
-    QT = Cxx.cpptype(C,x)
+    QT = try
+        Cxx.cpptype(C,x)
+    catch err
+        (isa(err, ErrorException) && contains(err.msg, "Could not find")) || rethrow(err)
+        return :( Base.show_datatype(io, typeof(x)); println(io,"(<not found in compilation unit>)") )
+    end
     name = typename(QT)
     ret = Expr(:block)
     push!(ret.args,:(print(io,"(",$name,") ")))
@@ -44,7 +49,12 @@ end
 end
 @generated function Base.show(io::IO, x::Cxx.CppPtr)
     C = Cxx.instance(Cxx.__default_compiler__)
-    QT = Cxx.cpptype(C,x)
+    QT = try
+        Cxx.cpptype(C,x)
+    catch err
+        (isa(err, ErrorException) && contains(err.msg, "Could not find")) || rethrow(err)
+        return :( Base.show_datatype(io, typeof(x)); println(io," @0x", hex(convert(UInt,convert(Ptr{Void},x)),Sys.WORD_SIZE>>2)) )
+    end
     name = typename(QT)
     :( println(io,"(",$name,") @0x", hex(convert(UInt,convert(Ptr{Void},x)),Sys.WORD_SIZE>>2) ))
 end

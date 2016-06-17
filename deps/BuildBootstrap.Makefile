@@ -94,7 +94,7 @@ endif
 endif
 LDFLAGS += -l$(LLVM_LIB_NAME)
 
-all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) clang_constants.jl
+all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
 
 usr/lib:
 	@mkdir -p $(CURDIR)/usr/lib/
@@ -146,5 +146,5 @@ usr/lib/libcxxffi-debug.$(SHLIB_EXT):
 	@echo "has been built."
 endif
 
-clang_constants.jl: ../src/cenumvals.jl.h usr/lib/libcxxffi.$(SHLIB_EXT)
+build/clang_constants.jl: ../src/cenumvals.jl.h usr/lib/libcxxffi.$(SHLIB_EXT)
 	@$(call PRINT_PERL, $(CPP_STDOUT) $(CXXJL_CPPFLAGS) -DJULIA ../src/cenumvals.jl.h > $@)

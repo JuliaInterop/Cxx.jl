@@ -21,13 +21,20 @@ function init_libcxxffi()
 end
 init_libcxxffi()
 
-function setup_instance(UsePCH = C_NULL)
+function setup_instance(UsePCH = C_NULL; makeCCompiler=false)
     x = Array(ClangCompiler,1)
     sysroot = @static is_apple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
     EmitPCH = true
     ccall((:init_clang_instance,libcxxffi),Void,
-        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Bool,Ptr{UInt8},Ptr{Void}),
-        x,C_NULL,sysroot,EmitPCH,UsePCH,julia_to_llvm(Any))
+        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Ptr{Void}),
+        x,C_NULL,sysroot,EmitPCH,makeCCompiler,UsePCH,julia_to_llvm(Any))
+    x[1]
+end
+
+function setup_instance_from_inovcation(invocation)
+    x = Array(ClangCompiler,1)
+    ccall((:init_clang_instance_from_invocation,libcxxffi),Void,
+        (Ptr{Void},Ptr{Void}), x, invocation)
     x[1]
 end
 
@@ -352,8 +359,8 @@ function __init__()
     unsafe_store!(callback, cfunction(process_cxx_exception,Union{},Tuple{UInt64,Ptr{Void}}))
 end
 
-function new_clang_instance(register_boot = true)
-    C = setup_instance()
+function new_clang_instance(register_boot = true, makeCCompiler = false)
+    C = setup_instance(makeCCompiler = makeCCompiler)
     initialize_instance!(C; register_boot = register_boot)
     push!(active_instances, C)
     CxxInstance{length(active_instances)}()

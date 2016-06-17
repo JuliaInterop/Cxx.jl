@@ -1,4 +1,4 @@
-import Base: String
+import Base: String, unsafe_string
 
 cxxparse("""
 #include <string>
@@ -13,7 +13,8 @@ const StdStringR = cxxt"std::string&"
 typealias StdVector{T} Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
 typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 
-String(str::Union{StdString,StdStringR}) = Cxx.unsafe_string((@cxx str->data()),@cxx str->size())
+unsafe_string(str::Union{StdString,StdStringR}) = unsafe_string((@cxx str->data()),@cxx str->size())
+String(str::Union{StdString,StdStringR}) = unsafe_string(str)
 
 import Base: showerror
 import Cxx: CppValue

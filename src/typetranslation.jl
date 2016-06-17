@@ -1,5 +1,7 @@
 # Translating between clang and julia types
 
+import Base: unsafe_string
+
 # # # # Section 1: Mapping Julia types to clang types
 #
 # The main function defined by this section is cpptype(T), which for a given
@@ -382,8 +384,6 @@ function _get_name(t)
     s
 end
 
-const unsafe_string = String
-
 function get_name(t)
     s = _get_name(t)
     ret = unsafe_string(s)
@@ -430,7 +430,7 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}()
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-include(joinpath(dirname(@__FILE__),"../deps/clang_constants.jl"))
+include(joinpath(dirname(@__FILE__),"../deps/build/clang_constants.jl"))
 
 # TODO: Autogenerate this from the appropriate header
 # Decl::Kind

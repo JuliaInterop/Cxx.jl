@@ -668,10 +668,12 @@ end
 
 function CreateFunctionWithPersonality(C, args...)
     f = CreateFunction(C, args...)
-    PersonalityF = pcpp"llvm::Function"(convert(Ptr{Void},GetAddrOfFunction(C,
-        lookup_name(C,["__cxxjl_personality_v0"]))))
-    @assert PersonalityF != C_NULL
-    setPersonality(f, PersonalityF)
+    if !isCCompiler(C)
+        PersonalityF = pcpp"llvm::Function"(convert(Ptr{Void},GetAddrOfFunction(C,
+            lookup_name(C,["__cxxjl_personality_v0"]))))
+        @assert PersonalityF != C_NULL
+        setPersonality(f, PersonalityF)
+    end
     f
 end
 

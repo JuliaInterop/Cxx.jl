@@ -109,6 +109,7 @@ bitstype 8*sizeof(Ptr{Void}) CppPtr{T,CVR}
 
 cconvert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 Base.convert(::Type{Int},p::CppPtr) = convert(Int,reinterpret(Ptr{Void}, p))
+Base.convert(::Type{UInt},p::CppPtr) = convert(UInt,reinterpret(Ptr{Void}, p))
 Base.convert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 
 ==(p1::CppPtr,p2::Ptr) = convert(Ptr{Void}, p1) == p2

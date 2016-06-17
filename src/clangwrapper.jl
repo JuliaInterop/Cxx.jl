@@ -722,3 +722,12 @@ end
 function SetConstexpr(VD::pcpp"clang::VarDecl")
     ccall((:SetVarDeclInit, libcxxffi), Void, (Ptr{Void},), VD)
 end
+
+function isCCompiler(C)
+    ccall((:isCCompiler, libcxxffi), Cint, (Ptr{ClangCompiler},), &C) != 0
+end
+
+function AddTopLevelDecl(C, D)
+    ccall((:AddTopLevelDecl, libcxxffi), Void,
+        (Ptr{ClangCompiler}, Ptr{Void}), &C, D)
+end
