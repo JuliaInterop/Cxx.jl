@@ -82,12 +82,17 @@ function CreateDeclRefExpr(C, p; cxxscope=C_NULL, islvalue=true)
     CreateDeclRefExpr(C, vd;islvalue=islvalue,cxxscope=cxxscope)
 end
 
+function EmitDeclRef(C, DRE)
+    pcpp"llvm::Value"(ccall((:EmitDeclRef, libcxxffi), Ptr{Void},
+        (Ptr{ClangCompiler}, Ptr{Void}), &C, DRE))
+end
+
 cptrarr(a) = Ptr{Void}[convert(Ptr{Void}, x) for x in a]
 
-function CreateParmVarDecl(C, p::QualType,name="dummy")
+function CreateParmVarDecl(C, p::QualType,name="dummy"; used = true)
     pcpp"clang::ParmVarDecl"(
         ccall((:CreateParmVarDecl,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8}),&C,p,name))
+            (Ptr{ClangCompiler},Ptr{Void},Ptr{UInt8},Cint),&C,p,name,used))
 end
 
 function CreateVarDecl(C, DC::pcpp"clang::DeclContext",name,T::QualType)
@@ -602,6 +607,7 @@ getName(ND::pcpp"clang::ParmVarDecl") = getName(pcpp"clang::NamedDecl"(convert(P
 getParmVarDecl(x::pcpp"clang::FunctionDecl",i) = pcpp"clang::ParmVarDecl"(ccall((:getParmVarDecl,libcxxffi),Ptr{Void},(Ptr{Void},Cuint),x,i))
 
 SetDeclUsed(C,FD) = ccall((:SetDeclUsed, libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,FD)
+IsDeclUsed(D) = ccall((:IsDeclUsed, libcxxffi), Cint, (Ptr{Void},), D) != 0
 
 emitDestroyCXXObject(C, x, T) = ccall((:emitDestroyCXXObject, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,x,T)
 
@@ -730,4 +736,9 @@ end
 function AddTopLevelDecl(C, D)
     ccall((:AddTopLevelDecl, libcxxffi), Void,
         (Ptr{ClangCompiler}, Ptr{Void}), &C, D)
+end
+
+function DeleteUnusedArguments(F, todelete)
+    pcpp"llvm::Function"(ccall((:DeleteUnusedArguments, libcxxffi), Ptr{Void},
+        (Ptr{Void}, Ptr{UInt64}, Csize_t), F, todelete, length(todelete)))
 end

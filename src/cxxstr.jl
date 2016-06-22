@@ -243,7 +243,8 @@ end
 # Create a clang FunctionDecl with the given body and
 # and the given types for embedded __juliavars
 #
-function CreateFunctionWithBody(C,body,args...; filename::Symbol = Symbol(""), line::Int = 1, col::Int = 1)
+function CreateFunctionWithBody(C,body,args...; named_args = Any[],
+        filename::Symbol = Symbol(""), line::Int = 1, col::Int = 1)
     global icxxcounter
 
     argtypes = Tuple{Int,QualType}[]
@@ -283,6 +284,10 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = Symbol(""), l
         push!(symargs,symarg)
     end
 
+    for (i,(name, T)) in enumerate(named_args)
+        push!(argtypes,(length(args)+i,cpptype(C,T)))
+    end
+
     if filename == Symbol("")
         EnterBuffer(C,body)
     else
@@ -292,19 +297,17 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = Symbol(""), l
     local FD
     local dne
     begin
-        if isCCompiler(C)
-            ctx = toctx(translation_unit(C))
-        else
-            ND = ActOnStartNamespaceDef(C,"__icxx")
-            ctx = toctx(ND)
-        end
+        ND = ActOnStartNamespaceDef(C,"__icxx")
         fname = string("icxx",icxxcounter)
         icxxcounter += 1
+        ctx = toctx(ND)
         FD = CreateFunctionDecl(C,ctx,fname,makeFunctionType(C,QualType(C_NULL),
             QualType[ T for (_,T) in argtypes ]),false)
         params = pcpp"clang::ParmVarDecl"[]
         for (i,argt) in argtypes
-            param = CreateParmVarDecl(C, argt,string("__juliavar",i))
+            is_named = i > length(args)
+            name = is_named ? named_args[i-length(args)][1] : string("__juliavar",i)
+            param = CreateParmVarDecl(C, argt, name; used = !is_named)
             push!(params,param)
         end
         for (i,T) in typeargs
@@ -322,16 +325,13 @@ function CreateFunctionWithBody(C,body,args...; filename::Symbol = Symbol(""), l
         try
             ParseFunctionStatementBody(C,FD)
         finally
-            !isCCompiler(C) && ActOnFinishNamespaceDef(C,ND)
+            ActOnFinishNamespaceDef(C,ND)
         end
     end
 
-    # dump(FD)
-
-    EmitTopLevelDecl(C,FD)
-
     FD, llvmargs, argidxs, symargs
 end
+
 
 function CallDNE(C, dne, argt; kwargs...)
     callargs, pvds = buildargexprs(C,argt)
@@ -345,6 +345,7 @@ end
     buf, filename, line, col = sourcebuffers[id]
 
     FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
+    EmitTopLevelDecl(C,FD)
 
     for T in args
         if haskey(MappedTypes, T)

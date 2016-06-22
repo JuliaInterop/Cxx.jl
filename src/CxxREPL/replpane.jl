@@ -172,8 +172,9 @@ module CxxREPL
         end
     end
 
-    function RunCxxREPL(C; prompt = "C++ > ", name = :cxx, key = '<', onDoneCreator = createDefaultDone)
-
+    function CreateCxxREPL(C; prompt = "C++ > ", name = :cxx, onDoneCreator = createDefaultDone, repl = Base.active_repl,
+        main_mode = repl.interface.modes[1])
+        mirepl = isdefined(repl,:mi) ? repl.mi : repl
         # Setup cxx panel
         panel = LineEdit.Prompt(prompt;
             # Copy colors from the prompt object
@@ -181,19 +182,32 @@ module CxxREPL
             prompt_suffix=Base.text_colors[:white],
             on_enter = s->isExpressionComplete(C,push!(copy(LineEdit.buffer(s).data),0)))
 
-        mirepl = isdefined(Base.active_repl,:mi) ? Base.active_repl.mi : Base.active_repl
-        repl = Base.active_repl
-
         panel.on_done = REPL.respond(onDoneCreator(C),repl,panel)
 
-        main_mode = mirepl.interface.modes[1]
-
-        push!(mirepl.interface.modes,panel)
+        main_mode == mirepl.interface.modes[1] &&
+            push!(mirepl.interface.modes,panel)
 
         hp = main_mode.hist
         hp.mode_mapping[name] = panel
         panel.hist = hp
 
+        search_prompt, skeymap = LineEdit.setup_search_keymap(hp)
+        mk = REPL.mode_keymap(main_mode)
+
+        b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap, LineEdit.escape_defaults]
+        panel.keymap_dict = LineEdit.keymap(b)
+        
+        panel
+    end
+
+    function RunCxxREPL(C; prompt = "C++ > ", name = :cxx, key = '<', onDoneCreator = createDefaultDone)
+        repl = Base.active_repl
+        mirepl = isdefined(repl,:mi) ? repl.mi : repl
+        main_mode = mirepl.interface.modes[1]
+
+        panel = CreateCxxREPL(C; prompt=prompt, name=name, repl=repl, onDoneCreator=onDoneCreator)
+
+        # Install this mode into the main mode
         const cxx_keymap = Dict{Any,Any}(
             key => function (s,args...)
                 if isempty(s) || position(LineEdit.buffer(s)) == 0
@@ -206,13 +220,6 @@ module CxxREPL
                 end
             end
         )
-
-        search_prompt, skeymap = LineEdit.setup_search_keymap(hp)
-        mk = REPL.mode_keymap(main_mode)
-
-        b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap, LineEdit.escape_defaults]
-        panel.keymap_dict = LineEdit.keymap(b)
-
         main_mode.keymap_dict = LineEdit.keymap_merge(main_mode.keymap_dict, cxx_keymap);
         nothing
     end

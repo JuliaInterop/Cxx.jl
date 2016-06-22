@@ -739,6 +739,45 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
   return NewF;
 }
 
+JL_DLLEXPORT void *DeleteUnusedArguments(llvm::Function *F, uint64_t *dtodelete, size_t ntodelete)
+{
+  FunctionType *FTy = F->getFunctionType();
+  std::vector<Type*> Params(FTy->param_begin(), FTy->param_end());
+  std::vector<uint64_t> todelete;
+  todelete.insert(todelete.end(), dtodelete, dtodelete+ntodelete);
+  std::sort(todelete.begin(), todelete.end());
+  // Delete from back to front to avoid invalidating indices
+  for (auto i = todelete.rbegin(); i != todelete.rend(); ++i)
+    Params.erase(Params.begin() + *i);
+  FunctionType *NFTy = FunctionType::get(FTy->getReturnType(),
+                                                Params, false);
+  Function *NF = Function::Create(NFTy, F->getLinkage());
+  NF->copyAttributesFrom(F);
+  F->getParent()->getFunctionList().insert(F->getIterator(), NF);
+  NF->takeName(F);
+  
+  NF->getBasicBlockList().splice(NF->begin(), F->getBasicBlockList());
+  
+  auto x = todelete.begin();
+  size_t i = 0;
+  for (Function::arg_iterator I = F->arg_begin(), E = F->arg_end(),
+       I2 = NF->arg_begin(); I != E; ++i, ++I) {
+    if (*x == i) {
+      I->replaceAllUsesWith(UndefValue::get(I->getType()));
+      ++x;
+      continue;
+    }
+    // Move the name and users over to the new version.
+    I->replaceAllUsesWith(&*I2);
+    I2->takeName(&*I);
+    ++I2;
+  }
+  
+  F->eraseFromParent();
+  
+  return NF;
+}
+
 
 JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool firstIsEnv, bool *needsbox, void **juliatypes)
 {
@@ -1566,7 +1605,7 @@ JL_DLLEXPORT void *CreateCxxCallMethodDecl(C, clang::CXXRecordDecl *TheClass, vo
   return Method;
 }
 
-JL_DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
+JL_DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name, int used)
 {
     clang::QualType T = clang::QualType::getFromOpaquePtr(type);
     clang::ParmVarDecl *d = clang::ParmVarDecl::Create(
@@ -1578,7 +1617,8 @@ JL_DLLEXPORT void *CreateParmVarDecl(C, void *type, char *name)
         T,
         Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T),
         clang::SC_None,NULL);
-    d->setIsUsed();
+    if (used)
+        d->setIsUsed();
     return (void*)d;
 }
 
@@ -1637,6 +1677,11 @@ JL_DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec 
             scope->getWithLocInContext(Cxx->CI->getASTContext()) : clang::NestedNameSpecifierLoc(NULL,NULL),
             getTrivialSourceLocation(Cxx), D, false, getTrivialSourceLocation(Cxx),
             T.getNonReferenceType(), islvalue ? clang::VK_LValue : clang::VK_RValue);
+}
+
+JL_DLLEXPORT void *EmitDeclRef(C, clang::DeclRefExpr *DRE)
+{
+    return Cxx->CGF->EmitDeclRefLValue(DRE).getPointer();
 }
 
 JL_DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
@@ -2607,6 +2652,11 @@ JL_DLLEXPORT void *getParmVarDecl(clang::FunctionDecl *FD, unsigned i)
 JL_DLLEXPORT void SetDeclUsed(C,clang::Decl *D)
 {
   D->markUsed(Cxx->CI->getASTContext());
+}
+
+JL_DLLEXPORT int IsDeclUsed(clang::Decl *D)
+{
+  return D->isUsed();
 }
 
 JL_DLLEXPORT void *getPointerElementType(llvm::Type *T)
