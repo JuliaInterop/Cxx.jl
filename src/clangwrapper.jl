@@ -742,3 +742,11 @@ function DeleteUnusedArguments(F, todelete)
     pcpp"llvm::Function"(ccall((:DeleteUnusedArguments, libcxxffi), Ptr{Void},
         (Ptr{Void}, Ptr{UInt64}, Csize_t), F, todelete, length(todelete)))
 end
+
+function getTypeNameAsString(QT)
+    ptr = ccall((:getTypeNameAsString, libcxxffi), Ptr{UInt8},
+        (Ptr{Void},), QT)
+    str = unsafe_string(ptr)
+    Libc.free(ptr)
+    str
+end

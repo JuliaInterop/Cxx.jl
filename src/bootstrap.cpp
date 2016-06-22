@@ -1844,6 +1844,17 @@ JL_DLLEXPORT void *to_cxxdecl(clang::Decl *decl)
     return dyn_cast<clang::CXXRecordDecl>(decl);
 }
 
+JL_DLLEXPORT char *getTypeNameAsString(void *T)
+{
+    const clang::LangOptions LO;
+    const clang::PrintingPolicy PP(LO);
+    clang::QualType QT = clang::QualType::getFromOpaquePtr(T);
+    std::string name = QT.getAsString(PP);
+    char *cname = (char*)malloc(name.size()+1);
+    memcpy(cname, name.c_str(), name.size()+1);
+    return cname;
+}
+
 JL_DLLEXPORT void *GetFunctionReturnType(clang::FunctionDecl *FD)
 {
     return FD->getReturnType().getAsOpaquePtr();

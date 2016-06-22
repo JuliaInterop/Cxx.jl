@@ -1,11 +1,5 @@
 Base.bytestring(str::vcpp"llvm::StringRef") = Cxx.unsafe_string(icxx"$str.data();",icxx"$str.size();")
-function typename(QT)
-    String(icxx"""
-      const clang::LangOptions LO;
-      const clang::PrintingPolicy PP(LO);
-      $QT.getAsString(PP);
-    """)
-end
+typename(QT) = Cxx.getTypeNameAsString(QT)
 function typename{T<:Cxx.CxxQualType}(::Type{T})
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,T)
