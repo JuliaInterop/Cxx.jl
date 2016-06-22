@@ -275,3 +275,13 @@ julia> pointer_to_array(arr, 5)
  16.0
  32.0
 ```
+
+### Troubleshooting
+
+#### Replacement the current compiler instance
+
+As of now Cxx.jl does not allow redefinition of a function. In order to allow defining the same function multiple times the current compiler instance can be replaced by typing
+
+```julia
+__current_compiler__ = Cxx.new_clang_instance()
+```
