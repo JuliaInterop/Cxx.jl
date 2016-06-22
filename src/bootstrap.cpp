@@ -753,7 +753,11 @@ JL_DLLEXPORT void *DeleteUnusedArguments(llvm::Function *F, uint64_t *dtodelete,
                                                 Params, false);
   Function *NF = Function::Create(NFTy, F->getLinkage());
   NF->copyAttributesFrom(F);
+#ifdef LLVM39
   F->getParent()->getFunctionList().insert(F->getIterator(), NF);
+#else
+  F->getParent()->getFunctionList().insert(F, NF);
+#endif
   NF->takeName(F);
   
   NF->getBasicBlockList().splice(NF->begin(), F->getBasicBlockList());
@@ -1681,7 +1685,11 @@ JL_DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec 
 
 JL_DLLEXPORT void *EmitDeclRef(C, clang::DeclRefExpr *DRE)
 {
+#ifdef LLVM39
     return Cxx->CGF->EmitDeclRefLValue(DRE).getPointer();
+#else
+    return Cxx->CGF->EmitDeclRefLValue(DRE).getAddress();
+#endif
 }
 
 JL_DLLEXPORT void *DeduceReturnType(clang::Expr *expr)
