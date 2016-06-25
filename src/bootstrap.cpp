@@ -753,15 +753,15 @@ JL_DLLEXPORT void *DeleteUnusedArguments(llvm::Function *F, uint64_t *dtodelete,
                                                 Params, false);
   Function *NF = Function::Create(NFTy, F->getLinkage());
   NF->copyAttributesFrom(F);
-#ifdef LLVM39
+#ifdef LLVM38
   F->getParent()->getFunctionList().insert(F->getIterator(), NF);
 #else
   F->getParent()->getFunctionList().insert(F, NF);
 #endif
   NF->takeName(F);
-  
+
   NF->getBasicBlockList().splice(NF->begin(), F->getBasicBlockList());
-  
+
   auto x = todelete.begin();
   size_t i = 0;
   for (Function::arg_iterator I = F->arg_begin(), E = F->arg_end(),
@@ -776,9 +776,9 @@ JL_DLLEXPORT void *DeleteUnusedArguments(llvm::Function *F, uint64_t *dtodelete,
     I2->takeName(&*I);
     ++I2;
   }
-  
+
   F->eraseFromParent();
-  
+
   return NF;
 }
 
@@ -903,7 +903,7 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
 {
   Cxx->Parser->EnterScope(clang::Scope::DeclScope);
   clang::ParsedAttributes attrs(Cxx->Parser->getAttrFactory());
-#ifdef LLVM39
+#ifdef LLVM38
   clang::UsingDirectiveDecl *UsingDecl = nullptr;
 #endif
   return Cxx->CI->getSema().ActOnStartNamespaceDef(
@@ -914,7 +914,7 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(C, char *name)
       Cxx->Parser->getPreprocessor().getIdentifierInfo(name),
       getTrivialSourceLocation(Cxx),
       attrs.getList()
-#ifdef LLVM39
+#ifdef LLVM38
       ,UsingDecl
 #endif
     );
@@ -1685,7 +1685,7 @@ JL_DLLEXPORT void *CreateDeclRefExpr(C,clang::ValueDecl *D, clang::CXXScopeSpec 
 
 JL_DLLEXPORT void *EmitDeclRef(C, clang::DeclRefExpr *DRE)
 {
-#ifdef LLVM39
+#ifdef LLVM38
     return Cxx->CGF->EmitDeclRefLValue(DRE).getPointer();
 #else
     return Cxx->CGF->EmitDeclRefLValue(DRE).getAddress();
@@ -2497,7 +2497,7 @@ JL_DLLEXPORT void ExitParserScope(C)
 
 JL_DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t ND)
 {
-#ifdef LLVM39
+#ifdef LLVM38
   return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(),
     clang::SourceLocation(), ArrayRef<clang::NamedDecl*>(D, ND), clang::SourceLocation());
 #else
