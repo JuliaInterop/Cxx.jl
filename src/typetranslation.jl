@@ -475,11 +475,13 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isPointerType(t)
         pt = getPointeeType(t)
         tt = juliatype(pt,quoted,typeargs)
-        if tt <: CppFunc
+        if isa(tt,Expr) ? tt.args[1] == :CppFunc : tt <: CppFunc
             return quoted ? :(CppFptr{$tt}) : CppFptr{tt}
-        elseif CVR != NullCVR || tt <: CppValue || tt <: CppPtr || tt <: CppRef
-            if tt <: CppValue
-                tt = tt.parameters[1]
+        elseif CVR != NullCVR || isa(tt,Expr) ?
+            (tt.args[1] == :CppValue || tt.args[1] == :CppPtr || tt.args[1] == :CppRef) :
+            (tt <: CppValue || tt <: CppPtr || tt <: CppRef)
+            if isa(tt,Expr) ? tt.args[1] == :CppValue : tt <: CppValue
+                tt = isa(tt,Expr) ? tt.args[2] : tt.parameters[1]
             end
             xT = quoted ? :(CppPtr{$tt,$CVR}) : CppPtr{tt, CVR}
             # As a special case, if we're returning a jl_value_t *, interpret it

@@ -401,3 +401,8 @@ public:
 """
 @assert icxx"Template246<$(Val{5})>().getI();" == 5
 @assert icxx"Template246<$(Val{5}())>().getI();" == 5
+
+# #256
+typealias SVP{T} cxxt"std::vector<$T>*"
+# This is a bug!
+# @assert SVP{cxxt"std::string"} == cxxt"std::vector<std::string>*"
