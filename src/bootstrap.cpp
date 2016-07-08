@@ -2188,6 +2188,16 @@ JL_DLLEXPORT void *CreateBitCast(CxxIRBuilder *builder, llvm::Value *val, llvm::
   return (void*)builder->CreateBitCast(val,type);
 }
 
+JL_DLLEXPORT void *CreateZext(CxxIRBuilder *builder, llvm::Value *val, llvm::Type *type)
+{
+  return (void*)builder->CreateZExt(val,type);
+}
+
+JL_DLLEXPORT void *CreateTrunc(CxxIRBuilder *builder, llvm::Value *val, llvm::Type *type)
+{
+  return (void*)builder->CreateTrunc(val,type);
+}
+
 JL_DLLEXPORT void *getConstantIntToPtr(llvm::Constant *CC, llvm::Type *type)
 {
   return (void*)ConstantExpr::getIntToPtr(CC,type);

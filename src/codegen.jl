@@ -126,6 +126,8 @@ resolvemodifier{T}(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
 # same in julia and Clang
 resolvemodifier_llvm{ptr}(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
 resolvemodifier_llvm{T<:Ref}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(C, builder, t::Type{Bool}, v::pcpp"llvm::Value") =
+    CreateTrunc(builder, v, toLLVM(C, cpptype(C, Bool)))
 resolvemodifier_llvm(C, builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 
 resolvemodifier_llvm{T}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
@@ -774,6 +776,8 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
                         ExtractValue(C,ret,0),getStructElementType(llvmrt,0)),0)
                 ret = InsertValue(builder,i1,CreateBitCast(builder,
                         ExtractValue(C,ret,1),getStructElementType(llvmrt,1)),1)
+            elseif rett == Bool
+                ret = CreateZext(builder,ret,julia_to_llvm(rett))
             else
                 ret = CreateBitCast(builder,ret,julia_to_llvm(rett))
             end

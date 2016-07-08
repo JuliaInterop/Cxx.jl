@@ -215,6 +215,12 @@ CreateRetVoid(builder) =
 CreateBitCast(builder,val,ty) =
     pcpp"llvm::Value"(ccall((:CreateBitCast,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
 
+CreateZext(builder,val,ty) =
+    pcpp"llvm::Value"(ccall((:CreateZext,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
+
+CreateTrunc(builder,val,ty) =
+    pcpp"llvm::Value"(ccall((:CreateTrunc,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
+
 getConstantIntToPtr(C::pcpp"llvm::Constant", ty) =
     pcpp"llvm::Constant"(ccall((:getConstantIntToPtr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),C,ty))
 
