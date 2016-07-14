@@ -1279,7 +1279,7 @@ static void set_common_options(C)
   );
 }
 
-static void set_default_clang_options(C, bool CCompiler, const char *Triple, const char *SysRoot, Type *_T_pvalue_llvmt)
+static void set_default_clang_options(C, bool CCompiler, const char *Triple, const char *CPU, const char *SysRoot, Type *_T_pvalue_llvmt)
 {
     T_pvalue_llvmt = _T_pvalue_llvmt;
 
@@ -1313,7 +1313,7 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
     Cxx->CI->getCodeGenOpts().StackRealignment = 1;
     Cxx->CI->getTargetOpts().Triple = Triple == NULL ? llvm::Triple::normalize(llvm::sys::getProcessTriple()) : Triple;
-    Cxx->CI->getTargetOpts().CPU = llvm::sys::getHostCPUName ();
+    Cxx->CI->getTargetOpts().CPU = CPU == NULL ? llvm::sys::getHostCPUName() : CPU;
     StringMap< bool > ActiveFeatures;
     std::vector< std::string > Features;
     if (llvm::sys::getHostCPUFeatures(ActiveFeatures)) {
@@ -1422,11 +1422,11 @@ static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
     assert(f_julia_type_to_llvm);
 }
 
-JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *SysRoot, bool EmitPCH,
+JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *CPU, const char *SysRoot, bool EmitPCH,
   bool CCompiler, const char *UsePCH, Type *_T_pvalue_llvmt) {
     Cxx->CI = new clang::CompilerInstance;
     set_common_options(Cxx);
-    set_default_clang_options(Cxx, CCompiler, Triple, SysRoot, _T_pvalue_llvmt);
+    set_default_clang_options(Cxx, CCompiler, Triple, CPU, SysRoot, _T_pvalue_llvmt);
     finish_clang_init(Cxx, EmitPCH, UsePCH);
 }
 
