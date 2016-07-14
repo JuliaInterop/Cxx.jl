@@ -1321,9 +1321,10 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
         Cxx->CI->getLangOpts().CUDA = 1;
         Cxx->CI->getLangOpts().CUDAIsDevice = 1;
         Cxx->CI->getLangOpts().DeclSpecKeyword = 1;
-#ifdef LLVM38
+#if defined(LLVM38) && !defined(LLVM39)
         Cxx->CI->getLangOpts().CUDAAllowHostCallsFromHostDevice = 1;
         Cxx->CI->getLangOpts().CUDATargetOverloads = 1;
+        Cxx->CI->getLangOpts().CUDADisableTargetCallChecks = 1;
 #endif
     }
 
