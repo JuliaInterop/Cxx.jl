@@ -430,8 +430,13 @@ JL_DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **ty
                             tmplt->getTemplatedDecl()->getLocStart(),
                             tmplt->getLocation(),
                             tmplt,
+#ifndef LLVM39
                             targs,
-                            nargs, nullptr);
+                            nargs,
+#else                      
+                            ArrayRef<clang::TemplateArgument>{targs,nargs},
+#endif
+                            nullptr);
     tmplt->AddSpecialization(ret, InsertPos);
     if (tmplt->isOutOfLine())
       ret->setLexicalDeclContext(tmplt->getLexicalDeclContext());
@@ -563,7 +568,11 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
     if (MD && MD->isInstance()) {
       Cxx->CGM->getCXXABI().buildThisParam(*Cxx->CGF, Args);
     }
+#ifdef LLVM39
+    for (auto *PVD : FD->parameters()) {
+#else
     for (auto *PVD : FD->params()) {
+#endif
       Args.push_back(PVD);
     }
     size_t n_roots = 0;
@@ -1545,7 +1554,9 @@ JL_DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     // Hack: MaybeBindToTemporary can cause this to be
     // set if the allocated type has a constructor.
     // For now, ignore.
+#ifndef LLVM39
     Cxx->CI->getSema().ExprNeedsCleanups = false;
+#endif
 
     cur_module = state->module;
     cur_func = state->func;
