@@ -1283,6 +1283,11 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
 {
     T_pvalue_llvmt = _T_pvalue_llvmt;
 
+    llvm::Triple target = llvm::Triple(Triple == NULL ?
+        llvm::Triple::normalize(llvm::sys::getProcessTriple()) : llvm::Triple::normalize(Triple));
+    bool isnvptx = (target.getArch() == Triple::ArchType::nvptx) ||
+                   (target.getArch() == Triple::ArchType::nvptx64);
+
     Cxx->CI->getLangOpts().LineComment = 1;
     Cxx->CI->getLangOpts().Bool = 1;
     Cxx->CI->getLangOpts().WChar = 1;
@@ -1303,6 +1308,16 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     }
     Cxx->CI->getLangOpts().ImplicitInt = 0;
     Cxx->CI->getLangOpts().PICLevel = 2;
+    if (isnvptx) {
+        Cxx->CI->getLangOpts().CUDA = 1;
+        Cxx->CI->getLangOpts().CUDAIsDevice = 1;
+        Cxx->CI->getLangOpts().CPlusPlus14 = 0;
+        Cxx->CI->getLangOpts().DeclSpecKeyword = 1;
+#ifdef LLVM38
+        Cxx->CI->getLangOpts().CUDAAllowHostCallsFromHostDevice = 1;
+        Cxx->CI->getLangOpts().CUDATargetOverloads = 1;
+#endif
+    }
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
@@ -1312,11 +1327,14 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
       Cxx->CI->getHeaderSearchOpts().Sysroot = SysRoot;
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
     Cxx->CI->getCodeGenOpts().StackRealignment = 1;
-    Cxx->CI->getTargetOpts().Triple = Triple == NULL ? llvm::Triple::normalize(llvm::sys::getProcessTriple()) : Triple;
+    Cxx->CI->getTargetOpts().Triple = target.normalize();
     Cxx->CI->getTargetOpts().CPU = CPU == NULL ? llvm::sys::getHostCPUName() : CPU;
     StringMap< bool > ActiveFeatures;
     std::vector< std::string > Features;
-    if (llvm::sys::getHostCPUFeatures(ActiveFeatures)) {
+    if (isnvptx) {
+      Features.push_back("+ptx42");
+      Cxx->CI->getTargetOpts().Features = Features;
+    } else if (llvm::sys::getHostCPUFeatures(ActiveFeatures)) {
       for (auto &F : ActiveFeatures)
         Features.push_back(std::string(F.second ? "+" : "-") +
                                               std::string(F.first()));
