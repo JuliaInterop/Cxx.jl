@@ -1311,7 +1311,6 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     if (isnvptx) {
         Cxx->CI->getLangOpts().CUDA = 1;
         Cxx->CI->getLangOpts().CUDAIsDevice = 1;
-        Cxx->CI->getLangOpts().CPlusPlus14 = 0;
         Cxx->CI->getLangOpts().DeclSpecKeyword = 1;
 #ifdef LLVM38
         Cxx->CI->getLangOpts().CUDAAllowHostCallsFromHostDevice = 1;
