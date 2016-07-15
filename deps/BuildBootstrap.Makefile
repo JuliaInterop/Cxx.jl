@@ -1,12 +1,69 @@
 JULIAHOME := $(subst \,/,$(BASE_JULIA_HOME))/../..
-include $(JULIAHOME)/deps/Versions.make
-include $(JULIAHOME)/Make.inc
 
-CXXJL_CPPFLAGS = -I$(build_includedir) \
-		-I$(JULIAHOME)/src/support \
-		-I$(call exec,$(LLVM_CONFIG) --includedir) \
-		-I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
-		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
+ifeq ($(LLVM_VER),)
+include $(JULIAHOME)/deps/Versions.make
+include $(JULIAHOME)/Make.user
+endif
+include Make.inc
+
+CXXJL_CPPFLAGS = -I$(JULIAHOME)/src/support -I$(BASE_JULIA_HOME)/../include
+
+ifeq ($(JULIA_BINARY_BUILD),1)
+LIBDIR := $(BASE_JULIA_HOME)/../lib/julia
+else
+LIBDIR := $(BASE_JULIA_HOME)/../lib
+endif
+LIB_DEPENDENCY = $(LIBDIR)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
+
+# If clang is not built by base julia, build it ourselves 
+ifeq ($(BUILD_LLVM_CLANG),)
+ifeq ($(LLVM_VER),svn)
+$(error For julia built against llvm-svn, please built clang in tree)
+endif
+
+LLVM_TAR_EXT:=$(LLVM_VER).src.tar.xz
+LLVM_CLANG_TAR:=src/cfe-$(LLVM_TAR_EXT)
+LLVM_COMPILER_RT_TAR:=src/compiler-rt-$(LLVM_TAR_EXT)
+LLVM_SRC_URL := http://llvm.org/releases/$(LLVM_VER)
+
+all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
+
+CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse \
+	clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
+	clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers \
+	clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore \
+	clangCodeGen clangARCMigrate
+
+JULIA_LDFLAGS = -L$(BASE_JULIA_HOME)/../lib -L$(BASE_JULIA_HOME)/../lib/julia
+
+$(LLVM_CLANG_TAR): | src
+	curl -O $@ $(LLVM_SRC_URL)/$(notdir $@)
+$(LLVM_COMPILER_RT_TAR): | src
+	$(JLDOWNLOAD) $@ $(LLVM_SRC_URL)/$(notdir $@)
+src/clang-$(LLVM_VER): $(LLVM_CLANG_TAR)
+	mkdir -p $@
+	tar -C $@ --strip-components=1 -xf $<
+build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER)
+	mkdir -p $(dir $@)
+	cd $(dir $@) && \
+		cmake -G "Unix Makefiles" -DLLVM_CONFIG=$(LLVM_CONFIG) ../../src/clang-$(LLVM_VER)
+build/clang-$(LLVM_VER)/lib/libclangCodeGen.a: build/clang-$(LLVM_VER)/Makefile
+	cd build/clang-$(LLVM_VER) && $(MAKE)
+LIB_DEPENDENCY += build/clang-$(LLVM_VER)/lib/libclangCodeGen.a
+JULIA_LDFLAGS += -Lbuild/clang-$(LLVM_VER)/lib
+CXXJL_CPPFLAGS += -Isrc/clang-$(LLVM_VER)/lib -Ibuild/clang-$(LLVM_VER)/include \
+	-Isrc/clang-$(LLVM_VER)/include
+else
+CXXJL_CPPFLAGS += -I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
+		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib \
+endif
+endif
+
+LLVM_INCLUDE_DIR = $(shell $(LLVM_CONFIG) --includedir)
+
+ifneq ($(LLVM_INCLUDE_DIR),)
+CXXJL_CPPFLAGS += -I$(LLVM_INCLUDE_DIR)
+endif
 
 FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) $(CXXJL_CPPFLAGS)
 
@@ -16,85 +73,11 @@ else
 CPP_STDOUT := $(CPP) -E
 endif
 
-JULIA_LDFLAGS = -L$(build_shlibdir) -L$(build_libdir)
 
-CLANG_LIBS = -lclangFrontendTool -lclangBasic -lclangLex -lclangDriver -lclangFrontend -lclangParse \
-    -lclangAST -lclangASTMatchers -lclangSema -lclangAnalysis -lclangEdit \
-    -lclangRewriteFrontend -lclangRewrite -lclangSerialization -lclangStaticAnalyzerCheckers \
-    -lclangStaticAnalyzerCore -lclangStaticAnalyzerFrontend -lclangTooling -lclangToolingCore \
-    -lclangCodeGen -lclangARCMigrate
 
-LLDB_LIBS = -llldbBreakpoint -llldbCommands -llldbCore -llldbInitialization \
-    -llldbDataFormatters -llldbExpression -llldbHost  \
-    -llldbBase -llldbInterpreter  \
-    -llldbPluginABISysV_x86_64 -llldbPluginABISysV_i386 -llldbPluginABISysV_ppc -llldbPluginABISysV_ppc64 -llldbPluginDisassemblerLLVM \
-    -llldbPluginABISysV_arm -llldbPluginABISysV_arm64 -llldbPluginABISysV_mips -llldbPluginABISysV_mips64 \
-    -llldbPluginDynamicLoaderPosixDYLD -llldbPluginDynamicLoaderStatic -llldbPluginInstructionARM \
-    -llldbPluginDynamicLoaderMacOSXDYLD -llldbPluginDynamicLoaderWindowsDYLD \
-    -llldbPluginInstructionMIPS64 -llldbPluginInstructionMIPS \
-    -llldbPluginInstructionARM64 -llldbPluginJITLoaderGDB -llldbPluginCXXItaniumABI \
-    -llldbPluginObjectFileELF -llldbPluginObjectFileJIT -llldbPluginObjectContainerBSDArchive \
-    -llldbPluginObjectContainerMachOArchive \
-    -llldbPluginObjectFilePECOFF -llldbPluginOSPython \
-    -llldbPluginPlatformFreeBSD -llldbPluginPlatformGDB -llldbPluginPlatformLinux \
-    -llldbPluginPlatformPOSIX -llldbPluginPlatformWindows -llldbPluginPlatformKalimba \
-    -llldbPluginPlatformMacOSX  -llldbPluginAppleObjCRuntime \
-    -llldbPluginProcessElfCore -llldbPluginProcessGDBRemote -llldbPluginMemoryHistoryASan \
-    -llldbPluginSymbolFileDWARF -llldbPluginSymbolFileSymtab -llldbPluginSymbolVendorELF -llldbSymbol -llldbUtility \
-    -llldbPluginSystemRuntimeMacOSX \
-    -llldbPluginUnwindAssemblyInstEmulation -llldbPluginUnwindAssemblyX86 -llldbTarget \
-    -llldbPluginInstrumentationRuntimeAddressSanitizer -llldbPluginPlatformAndroid \
-    -llldbPluginRenderScriptRuntime \
-    $(call exec,$(LLVM_CONFIG) --system-libs)
-
-ifeq ($(LLVM_VER),svn)
-LLDB_LIBS += -llldbPluginProcessUtility \
-    -llldbPluginScriptInterpreterNone \
-    -llldbPluginObjCLanguage \
-    -llldbPluginCPlusPlusLanguage \
-    -llldbPluginObjCPlusPlusLanguage \
-    -llldbPluginExpressionParserClang \
-    -llldbPluginOSGo -llldbPluginLanguageRuntimeGo -llldbPluginGoLanguage \
-    -llldbPluginExpressionParserGo \
-    $(call exec,$(LLVM_CONFIG) --system-libs)
-else
-LLDB_LIBS += -llldbPluginUtility
-endif
-
-LLDB_LIBS += -llldbPluginABIMacOSX_arm -llldbPluginABIMacOSX_arm64 -llldbPluginABIMacOSX_i386
-ifeq ($(OS), Darwin)
-LLDB_LIBS += -F/System/Library/Frameworks -F/System/Library/PrivateFrameworks -framework DebugSymbols \
-	-llldbPluginPlatformAndroid \
-    -llldbPluginDynamicLoaderDarwinKernel \
-    -llldbPluginProcessDarwin  -llldbPluginProcessMachCore \
-    -llldbPluginSymbolVendorMacOSX  -llldbPluginObjectFileMachO \
-    -framework Security -lpanel -framework CoreFoundation \
-    -framework Foundation -framework Carbon -lobjc -ledit -lxml2
-endif
-ifeq ($(EXPERIMENTAL_LLDB),1)
-LLDB_LIBS +=  -llldbPluginABIMips32 -llldbPluginUnwindAssemblyMips
-endif
-ifeq ($(OS), WINNT)
-LLDB_LIBS += -llldbPluginProcessWindows -lWs2_32
-endif
-ifeq ($(OS), Linux)
-LLDB_LIBS += -llldbPluginProcessLinux -llldbPluginProcessPOSIX -lz -lbsd -ledit
-endif
-
-ifneq ($(LLVM_USE_CMAKE),1)
-LLDB_LIBS += -llldbAPI
-endif
-
-ifeq ($(USE_LLVM_SHLIB),1)
-ifeq ($(LLVM_USE_CMAKE),1)
-LLVM_LIB_NAME = LLVM
-else
-LLVM_LIB_NAME = LLVM-$(call exec,$(LLVM_CONFIG) --version)
-endif
-endif
+LLVM_LIB_NAME := LLVM-$(shell $(LLVM_CONFIG) --version)
 LDFLAGS += -l$(LLVM_LIB_NAME)
 
-all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
 
 usr/lib:
 	@mkdir -p $(CURDIR)/usr/lib/
@@ -107,26 +90,18 @@ ifneq ($(LLVM_ASSERTIONS),1)
 LLVM_EXTRA_CPPFLAGS += -DLLVM_NDEBUG
 endif
 
-ifneq ($(BUILD_LLVM_CLANG),1)
-$(error Cxx.jl requires Clang to be built with julia - Set BUILD_LLVM_CLANG in Make.user)
-endif
-ifneq ($(USE_LLVM_SHLIB),1)
-$(error Cxx.jl currently requires LLVM to be built as a shared library - Set USE_LLVM_SHLIB in Make.user)
-endif
-
-build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile | build
+build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) | build
 	@$(call PRINT_CC, $(CXX) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
 
 
-LINKED_LIBS = $(CLANG_LIBS)
+LINKED_LIBS = $(addprefix -l,$(CLANG_LIBS))
 ifeq ($(BUILD_LLDB),1)
 LINKED_LIBS += $(LLDB_LIBS)
 endif
 
-ifneq (,$(wildcard $(build_shlibdir)/libjulia.$(SHLIB_EXT)))
-usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o $(build_libdir)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT) | usr/lib
+ifneq (,$(wildcard $(BASE_JULIA_HOME)/../lib/libjulia.$(SHLIB_EXT)))
+usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o $(LIB_DEPENDENCY) | usr/lib
 	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
-	@cp usr/lib/libcxxffi.$(SHLIB_EXT) $(build_shlibdir)
 else
 usr/lib/libcxxffi.$(SHLIB_EXT):
 	@echo "Not building release library because corresponding julia RELEASE library does not exist."
@@ -135,8 +110,8 @@ usr/lib/libcxxffi.$(SHLIB_EXT):
 	@echo "has been built."
 endif
 
-ifneq (,$(wildcard $(build_shlibdir)/libjulia-debug.$(SHLIB_EXT)))
-usr/lib/libcxxffi-debug.$(SHLIB_EXT): build/bootstrap.o | usr/lib
+ifneq (,$(wildcard $(BASE_JULIA_HOME)/../lib/libjulia-debug.$(SHLIB_EXT)))
+usr/lib/libcxxffi-debug.$(SHLIB_EXT): build/bootstrap.o $(LIB_DEPENDENCY) | usr/lib
 	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia-debug $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 else
 usr/lib/libcxxffi-debug.$(SHLIB_EXT):

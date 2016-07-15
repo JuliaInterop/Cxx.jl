@@ -47,7 +47,13 @@ module CxxREPL
     const __current_compiler__ = Cxx.__default_compiler__
 
     # Load Clang Headers
+    ver_str = Base.libllvm_version
+    cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/src/clang-$ver_str/include")
 
+    if isdir(cxxclangdir)
+        addHeaderDir(cxxclangdir)
+        addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/clang-$ver_str/include"))
+    end
     addHeaderDir(joinpath(BASE_JULIA_HOME,"../include"))
 
     cxx"""

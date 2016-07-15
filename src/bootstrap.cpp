@@ -65,6 +65,7 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclTemplate.h>
 #include <clang/Basic/Specifiers.h>
+#include <clang/CodeGen/CGFunctionInfo.h>
 
 #include "Parse/RAIIObjectsForParser.h"
 #include "CodeGen/CodeGenModule.h"
@@ -1320,7 +1321,9 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     if (isnvptx) {
         Cxx->CI->getLangOpts().CUDA = 1;
         Cxx->CI->getLangOpts().CUDAIsDevice = 1;
+#if defined(LLVM38)
         Cxx->CI->getLangOpts().DeclSpecKeyword = 1;
+#endif
 #if defined(LLVM38) && !defined(LLVM39)
         Cxx->CI->getLangOpts().CUDAAllowHostCallsFromHostDevice = 1;
         Cxx->CI->getLangOpts().CUDATargetOverloads = 1;

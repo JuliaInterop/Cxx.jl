@@ -18,4 +18,8 @@ close(f)
 
 println("Tuning for julia installation at: ",BASE_JULIA_HOME)
 
-run(`make -f BuildBootstrap.Makefile BASE_JULIA_HOME=$BASE_JULIA_HOME`)
+llvm_config_path = joinpath(BASE_JULIA_HOME,"..","tools","llvm-config")
+if isfile(llvm_config_path)
+    ENV["LLVM_CONFIG"] = llvm_config_path
+end
+run(`make -j$(Sys.CPU_CORES) -f BuildBootstrap.Makefile BASE_JULIA_HOME=$BASE_JULIA_HOME`)

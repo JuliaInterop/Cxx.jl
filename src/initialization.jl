@@ -329,9 +329,20 @@ end # is_linux
 end #function addStdHeaders(C)
 end # is_windows
 
+# Also add clang's intrinsic headers
 function addClangHeaders(C)
-    # Also add clang's intrinsic headers
-    addHeaderDir(C,joinpath(BASE_JULIA_HOME,"../lib/clang/$(replace(Base.libllvm_version,"svn",""))/include/"), kind = C_ExternCSystem)
+    ver = Base.VersionNumber(Base.libllvm_version)
+    ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)        
+    baseclangdir = joinpath(BASE_JULIA_HOME,
+        "../lib/clang/$ver/include/")
+    cxxclangdir = joinpath(dirname(@__FILE__),
+        "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+    if isdir(baseclangdir)
+        addHeaderDir(C, baseclangdir, kind = C_ExternCSystem)
+    else
+        @assert isdir(cxxclangdir)
+        addHeaderDir(C, cxxclangdir, kind = C_ExternCSystem)
+    end
 end
 
 function initialize_instance!(C; register_boot = true)
