@@ -6,6 +6,9 @@ include $(JULIAHOME)/Make.user
 endif
 include Make.inc
 
+all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
+
+
 CXXJL_CPPFLAGS = -I$(JULIAHOME)/src/support -I$(BASE_JULIA_HOME)/../include
 
 ifeq ($(JULIA_BINARY_BUILD),1)
@@ -15,6 +18,12 @@ LIBDIR := $(BASE_JULIA_HOME)/../lib
 endif
 LIB_DEPENDENCY = $(LIBDIR)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
 
+CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse \
+	clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
+	clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers \
+	clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore \
+	clangCodeGen clangARCMigrate
+
 # If clang is not built by base julia, build it ourselves 
 ifeq ($(BUILD_LLVM_CLANG),)
 ifeq ($(LLVM_VER),svn)
@@ -23,30 +32,47 @@ endif
 
 LLVM_TAR_EXT:=$(LLVM_VER).src.tar.xz
 LLVM_CLANG_TAR:=src/cfe-$(LLVM_TAR_EXT)
+LLVM_SRC_TAR:=src/llvm-$(LLVM_TAR_EXT)
 LLVM_COMPILER_RT_TAR:=src/compiler-rt-$(LLVM_TAR_EXT)
 LLVM_SRC_URL := http://llvm.org/releases/$(LLVM_VER)
 
-all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
-
-CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse \
-	clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
-	clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers \
-	clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore \
-	clangCodeGen clangARCMigrate
+# Also build a new copy of LLVM, so we get headers, tools, etc.
+ifeq ($(JULIA_BINARY_BUILD),1)
+$(LLVM_SRC_TAR): | src
+	curl -o $@ $(LLVM_SRC_URL)/$(notdir $@)
+src/llvm-$(LLVM_VER): $(LLVM_SRC_TAR)
+	mkdir -p $@
+	tar -C $@ --strip-components=1 -xf $<
+build/llvm-$(LLVM_VER)/Makefile: src/llvm-$(LLVM_VER)
+	mkdir -p $(dir $@)
+	cd $(dir $@) && \
+		cmake -G "Unix Makefiles"  -DLLVM_TARGETS_TO_BUILD="X86" \
+		 	-DLLVM_BUILD_LLVM_DYLIB=ON \
+			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADING=OFF \
+			../../src/llvm-$(LLVM_VER)
+build/llvm-$(LLVM_VER)/bin/llvm-config: build/llvm-$(LLVM_VER)/Makefile
+	cd build/llvm-$(LLVM_VER) && $(MAKE)
+LLVM_HEADER_DIRS = src/llvm-$(LLVM_VER)/include build/llvm-$(LLVM_VER)/include
+CLANG_CMAKE_DEP = build/llvm-$(LLVM_VER)/bin/llvm-config
+LLVM_CONFIG = ../llvm-$(LLVM_VER)/bin/llvm-config
+endif
 
 JULIA_LDFLAGS = -L$(BASE_JULIA_HOME)/../lib -L$(BASE_JULIA_HOME)/../lib/julia
 
 $(LLVM_CLANG_TAR): | src
-	curl -O $@ $(LLVM_SRC_URL)/$(notdir $@)
+	curl -o $@ $(LLVM_SRC_URL)/$(notdir $@)
 $(LLVM_COMPILER_RT_TAR): | src
 	$(JLDOWNLOAD) $@ $(LLVM_SRC_URL)/$(notdir $@)
 src/clang-$(LLVM_VER): $(LLVM_CLANG_TAR)
 	mkdir -p $@
 	tar -C $@ --strip-components=1 -xf $<
-build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER)
+build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER) $(CLANG_CMAKE_DEP)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \
-		cmake -G "Unix Makefiles" -DLLVM_CONFIG=$(LLVM_CONFIG) ../../src/clang-$(LLVM_VER)
+		cmake -G "Unix Makefiles" \
+			-DLLVM_BUILD_LLVM_DYLIB=ON \
+			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADING=OFF \
+			-DLLVM_CONFIG=$(LLVM_CONFIG) $(CLANG_CMAKE_OPTS) ../../src/clang-$(LLVM_VER)
 build/clang-$(LLVM_VER)/lib/libclangCodeGen.a: build/clang-$(LLVM_VER)/Makefile
 	cd build/clang-$(LLVM_VER) && $(MAKE)
 LIB_DEPENDENCY += build/clang-$(LLVM_VER)/lib/libclangCodeGen.a
@@ -59,10 +85,8 @@ CXXJL_CPPFLAGS += -I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib 
 endif
 endif
 
-LLVM_INCLUDE_DIR = $(shell $(LLVM_CONFIG) --includedir)
-
-ifneq ($(LLVM_INCLUDE_DIR),)
-CXXJL_CPPFLAGS += -I$(LLVM_INCLUDE_DIR)
+ifneq ($(LLVM_HEADER_DIRS),)
+CXXJL_CPPFLAGS += $(addprefix -I,$(LLVM_HEADER_DIRS))
 endif
 
 FLAGS = -std=c++11 $(CPPFLAGS) $(CFLAGS) $(CXXJL_CPPFLAGS)
@@ -75,7 +99,7 @@ endif
 
 
 
-LLVM_LIB_NAME := LLVM-$(shell $(LLVM_CONFIG) --version)
+LLVM_LIB_NAME := LLVM-$(LLVM_VER)
 LDFLAGS += -l$(LLVM_LIB_NAME)
 
 

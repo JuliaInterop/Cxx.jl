@@ -75,8 +75,17 @@
 #undef private
 #include "CodeGen/CGCXXABI.h"
 
-#include "dtypes.h"
-#include "platform.h"
+#ifdef _OS_WINDOWS_
+#define STDCALL __stdcall
+# ifdef LIBRARY_EXPORTS
+#  define JL_DLLEXPORT __declspec(dllexport)
+# else
+#  define JL_DLLEXPORT __declspec(dllimport)
+# endif
+#else
+#define STDCALL
+#define JL_DLLEXPORT __attribute__ ((visibility("default")))
+#endif
 
 #if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 6
 #define LLVM36 1
