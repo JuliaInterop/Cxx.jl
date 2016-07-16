@@ -36,6 +36,9 @@ LLVM_SRC_TAR:=src/llvm-$(LLVM_TAR_EXT)
 LLVM_COMPILER_RT_TAR:=src/compiler-rt-$(LLVM_TAR_EXT)
 LLVM_SRC_URL := http://llvm.org/releases/$(LLVM_VER)
 
+src:
+	mkdir $@
+
 # Also build a new copy of LLVM, so we get headers, tools, etc.
 ifeq ($(JULIA_BINARY_BUILD),1)
 $(LLVM_SRC_TAR): | src
@@ -47,8 +50,9 @@ build/llvm-$(LLVM_VER)/Makefile: src/llvm-$(LLVM_VER)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \
 		cmake -G "Unix Makefiles"  -DLLVM_TARGETS_TO_BUILD="X86" \
-		 	-DLLVM_BUILD_LLVM_DYLIB=ON \
-			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADING=OFF \
+		 	-DLLVM_BUILD_LLVM_DYLIB=ON -DCMAKE_BUILD_TYPE=Release \
+			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADS=OFF \
+			-DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=1" \
 			../../src/llvm-$(LLVM_VER)
 build/llvm-$(LLVM_VER)/bin/llvm-config: build/llvm-$(LLVM_VER)/Makefile
 	cd build/llvm-$(LLVM_VER) && $(MAKE)
@@ -70,8 +74,9 @@ build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER) $(CLANG_CMAKE_DEP)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \
 		cmake -G "Unix Makefiles" \
-			-DLLVM_BUILD_LLVM_DYLIB=ON \
-			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADING=OFF \
+			-DLLVM_BUILD_LLVM_DYLIB=ON -DCMAKE_BUILD_TYPE=Release \
+			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADS=OFF \
+                        -DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=1" \
 			-DLLVM_CONFIG=$(LLVM_CONFIG) $(CLANG_CMAKE_OPTS) ../../src/clang-$(LLVM_VER)
 build/clang-$(LLVM_VER)/lib/libclangCodeGen.a: build/clang-$(LLVM_VER)/Makefile
 	cd build/clang-$(LLVM_VER) && $(MAKE)
@@ -115,7 +120,7 @@ LLVM_EXTRA_CPPFLAGS += -DLLVM_NDEBUG
 endif
 
 build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) | build
-	@$(call PRINT_CC, $(CXX) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
+	@$(call PRINT_CC, $(CXX) -D_GLIBCXX_USE_CXX11_ABI=1 -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) -c ../src/bootstrap.cpp -o $@)
 
 
 LINKED_LIBS = $(addprefix -l,$(CLANG_LIBS))

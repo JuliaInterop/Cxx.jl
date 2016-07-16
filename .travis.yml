@@ -1,0 +1,37 @@
+language: julia
+os:
+    - linux
+sudo: false
+julia:
+    - nightly
+addons:
+    apt:
+        sources:
+           - ubuntu-toolchain-r-test
+           - george-edison55-precise-backports
+        packages:
+           - cmake
+           - cmake-data
+           - gcc-6
+           - g++-6
+install:
+    - export CXX="g++-6" CC="gcc-6"
+    - export JULIA_CPU_CORES=2
+cache:
+    directories:
+        - ~/.julia/v0.5/Cxx/deps/src
+        - ~/.julia/v0.5/Cxx/deps/build
+before_cache:
+    - rm ~/.julia/0.5/deps/build/bootstrap.o
+    - rm -rf ~/.julia/0.5/deps/usr
+script:
+    - echo $CXX
+    - export VERBOSE=1
+    - mv ~/.julia/v0.5/Cxx ~/.julia/v0.5/Cxx-cache
+    - julia -e 'Pkg.clone(pwd())'
+    - mv ~/.julia/v0.5/Cxx-cache/deps/src ~/.julia/v0.5/Cxx/deps/src
+    - mv ~/.julia/v0.5/Cxx-cache/deps/build ~/.julia/v0.5/Cxx/deps/build
+    - julia -e 'Pkg.build("Cxx")'
+    - julia -e 'Pkg.test("Cxx")'
+notifications:
+  email: false
