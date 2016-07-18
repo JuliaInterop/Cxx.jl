@@ -1,9 +1,4 @@
-language: julia
-os:
-    - linux
 sudo: false
-julia:
-    - nightly
 addons:
     apt:
         sources:
@@ -14,19 +9,52 @@ addons:
            - cmake-data
            - gcc-6
            - g++-6
+           - gfortran
+           - libblas-dev
+           - liblapack-dev
+           - libgmp-dev
+           - libmpfr-dev
+matrix:
+    include:
+       - language: julia
+         julia: nightly
+         os: linux
+       - language: generic
+         os: linux
+         env:
+           - BUILD_NONSTANDARD_JULIA=1
+           - LLVM_VER=3.8.1
+           - JULIA_GIT_COMMIT=f5764ac530e75d90132b65216d2fc9abe2fa6ea1
 install:
     - export CXX="g++-6" CC="gcc-6"
-    - export JULIA_CPU_CORES=2
+    - export JULIA_CPU_CORES=3
 cache:
     directories:
         - ~/.julia/v0.5/Cxx/deps/src
         - ~/.julia/v0.5/Cxx/deps/build
+        - ~/custom-julia
 before_cache:
     - rm ~/.julia/0.5/deps/build/bootstrap.o
     - rm -rf ~/.julia/0.5/deps/usr
 script:
-    - echo $CXX
-    - export VERBOSE=1
+    - > 
+        if [ -n "$BUILD_NONSTANDARD_JULIA" -a ! -f ~/custom-julia/usr/lib/julia/sys.so ]; then
+           if [ ! -d ~/custom-julia/deps ]; then rm -rf ~/custom-julia && git clone https://github.com/JuliaLang/julia.git ~/custom-julia; fi;
+           echo "override CC=$CC" >> ~/custom-julia/Make.user
+           echo "override CXX=$CXX" >> ~/custom-julia/Make.user
+           echo "override LLVM_USE_CMAKE=1" >> ~/custom-julia/Make.user
+           cat ~/custom-julia/Make.user
+           for lib in ARPACK BLAS LAPACK GMP MPFR; do
+               export BUILDOPTS="$BUILDOPTS USE_SYSTEM_$lib=1";
+           done;
+           make $BUILDOPTS -C ~/custom-julia/deps/ distclean-libgit2
+           make $BUILDOPTS -C ~/custom-julia cleanall
+           (cd ~/custom-julia && git checkout $JULIA_GIT_COMMIT && 
+                echo "override LLVM_VER = $LLVM_VER" >> Make.user &&
+                make $BUILDOPTS -j$JULIA_CPU_CORES;)
+         fi
+    - export PATH=$HOME/custom-julia/usr/bin:$PATH
+    - julia -e 'versioninfo()'
     - mv ~/.julia/v0.5/Cxx ~/.julia/v0.5/Cxx-cache
     - julia -e 'Pkg.clone(pwd())'
     - mv ~/.julia/v0.5/Cxx-cache/deps/src ~/.julia/v0.5/Cxx/deps/src

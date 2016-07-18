@@ -61,6 +61,8 @@ build/llvm-$(LLVM_VER)/bin/llvm-config: build/llvm-$(LLVM_VER)/Makefile
 LLVM_HEADER_DIRS = src/llvm-$(LLVM_VER)/include build/llvm-$(LLVM_VER)/include
 CLANG_CMAKE_DEP = build/llvm-$(LLVM_VER)/bin/llvm-config
 LLVM_CONFIG = ../llvm-$(LLVM_VER)/bin/llvm-config
+else
+CLANG_CMAKE_OPTS += -DLLVM_TABLEGEN_EXE=$(BASE_JULIA_HOME)/../tools/llvm-tblgen
 endif
 
 JULIA_LDFLAGS = -L$(BASE_JULIA_HOME)/../lib -L$(BASE_JULIA_HOME)/../lib/julia
@@ -78,7 +80,7 @@ build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER) $(CLANG_CMAKE_DEP)
 		cmake -G "Unix Makefiles" \
 			-DLLVM_BUILD_LLVM_DYLIB=ON -DCMAKE_BUILD_TYPE=Release \
 			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADS=OFF \
-                        -DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=0" \
+      -DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=0" \
 			-DLLVM_CONFIG=$(LLVM_CONFIG) $(CLANG_CMAKE_OPTS) ../../src/clang-$(LLVM_VER)
 build/clang-$(LLVM_VER)/lib/libclangCodeGen.a: build/clang-$(LLVM_VER)/Makefile
 	cd build/clang-$(LLVM_VER) && $(MAKE)
