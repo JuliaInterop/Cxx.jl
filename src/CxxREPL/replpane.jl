@@ -49,10 +49,15 @@ module CxxREPL
     # Load Clang Headers
     ver_str = Base.libllvm_version
     cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/src/clang-$ver_str/include")
+    cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/src/llvm-$ver_str/include")
 
     if isdir(cxxclangdir)
         addHeaderDir(cxxclangdir)
         addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/clang-$ver_str/include"))
+    end
+    if isdir(cxxllvmdir)
+        addHeaderDir(cxxllvmdir)
+        addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
     end
     addHeaderDir(joinpath(BASE_JULIA_HOME,"../include"))
 

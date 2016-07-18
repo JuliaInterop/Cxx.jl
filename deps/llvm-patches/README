@@ -1,0 +1,2 @@
+These patches should kept in sync with base patches to make sure Cxx can
+be built against Julia's LLVM even if our patches break the ABI.
