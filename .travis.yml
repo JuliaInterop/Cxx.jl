@@ -14,6 +14,7 @@ addons:
            - liblapack-dev
            - libgmp-dev
            - libmpfr-dev
+
 matrix:
     include:
        - language: julia
@@ -22,9 +23,18 @@ matrix:
        - language: generic
          os: linux
          env:
-           - BUILD_NONSTANDARD_JULIA=1
            - LLVM_VER=3.8.1
+           - BUILD_NONSTANDARD_JULIA=1
            - JULIA_GIT_COMMIT=f5764ac530e75d90132b65216d2fc9abe2fa6ea1
+       - language: generic
+         os: linux
+         env:
+           - LLVM_GIT_VER=release_39
+           - CLANG_IN_TREE=1
+           - BUILD_NONSTANDARD_JULIA=1
+           - LLVM_VER=svn
+           - JULIA_GIT_COMMIT=f5764ac530e75d90132b65216d2fc9abe2fa6ea1
+           - BUILD_NEWER_CMAKE=1
 install:
     - export CXX="g++-6" CC="gcc-6"
     - export JULIA_CPU_CORES=3
@@ -33,23 +43,33 @@ cache:
         - ~/.julia/v0.5/Cxx/deps/src
         - ~/.julia/v0.5/Cxx/deps/build
         - ~/custom-julia
+        - ~/custom-cmake
 before_cache:
-    - rm ~/.julia/0.5/deps/build/bootstrap.o
+    - rm ~/.julia/0.5/Cxx/deps/build/bootstrap.o
     - rm -rf ~/.julia/0.5/deps/usr
+    # Save space to avoid casher timeouts
+    - rm -rf ~/custom-julia/deps/build
+    - rm -rf ~/custom-julia/usr-staging
 script:
+    - if [ -n "$BUILD_NEWER_CMAKE" -a ! -f ~/custom-cmake/bin/cmake ]; then
+        rm -rf ~/custom-cmake; mkdir ~/custom-cmake;
+        travis_retry curl -OL -o cmake-3.6.0-Linux-x86_64.tar.gz https://cmake.org/files/v3.6/cmake-3.6.0-Linux-x86_64.tar.gz; 
+        tar --strip-components=1 -xz -C ~/custom-cmake -f cmake-3.6.0-Linux-x86_64.tar.gz;
+        export PATH=~/custom-cmake/bin:$PATH;
+      fi;
     - > 
         if [ -n "$BUILD_NONSTANDARD_JULIA" -a ! -f ~/custom-julia/usr/lib/julia/sys.so ]; then
            if [ ! -d ~/custom-julia/deps ]; then rm -rf ~/custom-julia && git clone https://github.com/JuliaLang/julia.git ~/custom-julia; fi;
            echo "override CC=$CC" >> ~/custom-julia/Make.user
            echo "override CXX=$CXX" >> ~/custom-julia/Make.user
            echo "override LLVM_USE_CMAKE=1" >> ~/custom-julia/Make.user
-           echo "override LLVM_VER = $LLVM_VER" >> Make.user
+           echo "override LLVM_VER = $LLVM_VER" >> ~/custom-julia/Make.user
+           if [ -n "$LLVM_GIT_VER" ]; then echo "override LLVM_GIT_VER = $LLVM_GIT_VER" >> ~/custom-julia/Make.user; fi;
+           if [ -n "$CLANG_IN_TREE" ]; then echo "BUILD_LLVM_CLANG = 1" >> ~/custom-julia/Make.user; fi
            cat ~/custom-julia/Make.user
            for lib in ARPACK BLAS LAPACK GMP MPFR; do
                export BUILDOPTS="$BUILDOPTS USE_SYSTEM_$lib=1";
            done;
-           make $BUILDOPTS -C ~/custom-julia/deps/ distclean-libgit2
-           make $BUILDOPTS -C ~/custom-julia cleanall
            (cd ~/custom-julia && git checkout $JULIA_GIT_COMMIT && 
                 make $BUILDOPTS -j$JULIA_CPU_CORES;)
          fi
