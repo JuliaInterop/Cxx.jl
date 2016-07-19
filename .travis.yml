@@ -43,6 +43,7 @@ script:
            echo "override CC=$CC" >> ~/custom-julia/Make.user
            echo "override CXX=$CXX" >> ~/custom-julia/Make.user
            echo "override LLVM_USE_CMAKE=1" >> ~/custom-julia/Make.user
+           echo "override LLVM_VER = $LLVM_VER" >> Make.user
            cat ~/custom-julia/Make.user
            for lib in ARPACK BLAS LAPACK GMP MPFR; do
                export BUILDOPTS="$BUILDOPTS USE_SYSTEM_$lib=1";
@@ -50,7 +51,6 @@ script:
            make $BUILDOPTS -C ~/custom-julia/deps/ distclean-libgit2
            make $BUILDOPTS -C ~/custom-julia cleanall
            (cd ~/custom-julia && git checkout $JULIA_GIT_COMMIT && 
-                echo "override LLVM_VER = $LLVM_VER" >> Make.user &&
                 make $BUILDOPTS -j$JULIA_CPU_CORES;)
          fi
     - export PATH=$HOME/custom-julia/usr/bin:$PATH

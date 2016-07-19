@@ -16,7 +16,6 @@ LIBDIR := $(BASE_JULIA_HOME)/../lib/julia
 else
 LIBDIR := $(BASE_JULIA_HOME)/../lib
 endif
-LIB_DEPENDENCY = $(LIBDIR)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
 
 CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse \
 	clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
@@ -80,7 +79,7 @@ build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER) $(CLANG_CMAKE_DEP)
 		cmake -G "Unix Makefiles" \
 			-DLLVM_BUILD_LLVM_DYLIB=ON -DCMAKE_BUILD_TYPE=Release \
 			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADS=OFF \
-      -DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=0" \
+                        -DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=0" \
 			-DLLVM_CONFIG=$(LLVM_CONFIG) $(CLANG_CMAKE_OPTS) ../../src/clang-$(LLVM_VER)
 build/clang-$(LLVM_VER)/lib/libclangCodeGen.a: build/clang-$(LLVM_VER)/Makefile
 	cd build/clang-$(LLVM_VER) && $(MAKE)
@@ -88,10 +87,15 @@ LIB_DEPENDENCY += build/clang-$(LLVM_VER)/lib/libclangCodeGen.a
 JULIA_LDFLAGS += -Lbuild/clang-$(LLVM_VER)/lib
 CXXJL_CPPFLAGS += -Isrc/clang-$(LLVM_VER)/lib -Ibuild/clang-$(LLVM_VER)/include \
 	-Isrc/clang-$(LLVM_VER)/include
-else
+else # BUILD_LLVM_CLANG
+JULIA_LDFLAGS = -L$(BASE_JULIA_HOME)/../lib -L$(BASE_JULIA_HOME)/../lib/julia
 CXXJL_CPPFLAGS += -I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
-		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib \
+		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
 endif
+
+CXX_LLVM_VER := $(LLVM_VER)
+ifeq ($(CXX_LLVM_VER),svn)
+CXX_LLVM_VER := $(shell $(BASE_JULIA_HOME)/../tools/llvm-config --version)
 endif
 
 ifneq ($(LLVM_HEADER_DIRS),)
@@ -107,10 +111,10 @@ CPP_STDOUT := $(CPP) -E
 endif
 
 
-
-LLVM_LIB_NAME := LLVM-$(LLVM_VER)
+LLVM_LIB_NAME := LLVM-$(CXX_LLVM_VER)
 LDFLAGS += -l$(LLVM_LIB_NAME)
 
+LIB_DEPENDENCY = $(LIBDIR)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
 
 usr/lib:
 	@mkdir -p $(CURDIR)/usr/lib/
