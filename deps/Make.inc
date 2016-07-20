@@ -1,3 +1,7 @@
+# This file is extracted partly from julia
+# Copyright (c) 2009-2016: Jeff Bezanson, Stefan Karpinski, Viral B. Shah, and other contributors:
+# https://github.com/JuliaLang/julia/contributors
+
 # Figure out OS and architecture
 BUILD_OS := $(shell uname)
 
