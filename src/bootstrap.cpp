@@ -1627,6 +1627,11 @@ JL_DLLEXPORT void *CreateFunctionDecl(C, void *DC, char* name, void *type, int i
     getTrivialSourceLocation(Cxx), getTrivialSourceLocation(Cxx),
       clang::DeclarationName(Cxx->CI->getPreprocessor().getIdentifierInfo(name)),
       T, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T), isextern ? clang::SC_Extern : clang::SC_None);
+
+  // check if we are compiling for a device
+  if (Cxx->CI->getLangOpts().CUDAIsDevice == 1) {
+    D->addAttr(clang::CUDADeviceAttr::CreateImplicit(Cxx->CI->getASTContext(), D->getLocation()));
+  }
   return D;
 }
 
