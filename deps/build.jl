@@ -20,10 +20,11 @@ println("Tuning for julia installation at: ",BASE_JULIA_HOME)
 
 llvm_config_path = joinpath(BASE_JULIA_HOME,"..","tools","llvm-config")
 if isfile(llvm_config_path)
+    info("Building julia source build")
     ENV["LLVM_CONFIG"] = llvm_config_path
     delete!(ENV,"LLVM_VER")
 else
-    ENV["LLVM_CONFIG"] = joinpath(dirname(@__FILE__),"fake-llvm-config.jl")
+    info("Building julia binary build")
     ENV["LLVM_VER"] = Base.libllvm_version
     ENV["JULIA_BINARY_BUILD"] = "1"
     ENV["PATH"] = string(JULIA_HOME,":",ENV["PATH"])
