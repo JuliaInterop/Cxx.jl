@@ -266,7 +266,7 @@ function AddLinuxHeaderPaths(C)
                         "i586-linux-gnu"]
 
 
-    CXXJL_ROOTDIR = get(ENV, "CXXJL_ROOTDIR", "") * "/usr"
+    CXXJL_ROOTDIR = get(ENV, "CXXJL_ROOTDIR", "/usr")
     const Prefixes = [ CXXJL_ROOTDIR ]
 
     LibDirs = (Int === Int64 ? X86_64LibDirs : X86LibDirs)
