@@ -21,7 +21,7 @@ CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend cla
 	clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
 	clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers \
 	clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore \
-	clangCodeGen clangARCMigrate
+	clangCodeGen clangARCMigrate clangFormat
 
 # If clang is not built by base julia, build it ourselves 
 ifeq ($(BUILD_LLVM_CLANG),)
@@ -111,10 +111,16 @@ CPP_STDOUT := $(CPP) -E
 endif
 
 
+ifeq ($(LLVM_USE_CMAKE),1)
+LLVM_LIB_NAME := LLVM
+else ifeq ($(LLVM_VER),svn)
+LLVM_LIB_NAME := LLVM
+else
 LLVM_LIB_NAME := LLVM-$(CXX_LLVM_VER)
+endif
 LDFLAGS += -l$(LLVM_LIB_NAME)
 
-LIB_DEPENDENCY = $(LIBDIR)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
+LIB_DEPENDENCY += $(LIBDIR)/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
 
 usr/lib:
 	@mkdir -p $(CURDIR)/usr/lib/

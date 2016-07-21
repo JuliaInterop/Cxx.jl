@@ -25,7 +25,7 @@ matrix:
          env:
            - LLVM_VER=3.8.1
            - BUILD_NONSTANDARD_JULIA=1
-           - JULIA_GIT_COMMIT=f5764ac530e75d90132b65216d2fc9abe2fa6ea1
+           - JULIA_GIT_COMMIT=8f99882d27f9ff5a9e632370ead90bcc4bf81a6b
        - language: generic
          os: linux
          env:
@@ -33,11 +33,35 @@ matrix:
            - CLANG_IN_TREE=1
            - BUILD_NONSTANDARD_JULIA=1
            - LLVM_VER=svn
-           - JULIA_GIT_COMMIT=f5764ac530e75d90132b65216d2fc9abe2fa6ea1
+           - JULIA_GIT_COMMIT=8f99882d27f9ff5a9e632370ead90bcc4bf81a6b
            - BUILD_NEWER_CMAKE=1
+           - LLVM_GIT_VER_CLANG=release_39
+       - language: julia
+         julia: nightly
+         os: osx
+       - language: generic
+         os: osx
+         osx_image: xcode8
+         env:
+           - LLVM_VER=3.8.1
+           - BUILD_NONSTANDARD_JULIA=1
+           - JULIA_GIT_COMMIT=8f99882d27f9ff5a9e632370ead90bcc4bf81a6b
+           - CASHER_TIME_OUT=600
+       - language: generic
+         os: osx
+         osx_image: xcode8
+         env:
+           - LLVM_GIT_VER=release_39
+           - CLANG_IN_TREE=1
+           - BUILD_NONSTANDARD_JULIA=1
+           - LLVM_VER=svn
+           - JULIA_GIT_COMMIT=8f99882d27f9ff5a9e632370ead90bcc4bf81a6b
+           - LLVM_GIT_VER_CLANG=release_39
+           - CASHER_TIME_OUT=600
 install:
-    - export CXX="g++-6" CC="gcc-6"
-    - export JULIA_CPU_CORES=3
+    - if [ "$TRAVIS_OS_NAME" = "linux" ]; then export CXX="g++-6" CC="gcc-6"; fi
+    - if [ "$TRAVIS_OS_NAME" = "osx" ]; then export CXX="clang++" CC="clang"; fi
+    - export JULIA_CPU_CORES=2
 cache:
     directories:
         - ~/.julia/v0.5/Cxx/deps/src
@@ -48,38 +72,72 @@ before_cache:
     - rm ~/.julia/0.5/Cxx/deps/build/bootstrap.o
     - rm -rf ~/.julia/0.5/deps/usr
     # Save space to avoid casher timeouts
-    - rm -rf ~/custom-julia/deps/build
+    - if [ ! "$TRAVIS_OS_NAME" = "osx" ]; then rm -rf ~/custom-julia/deps/build; fi;
     - rm -rf ~/custom-julia/usr-staging
 script:
+    # Due to the timeout on OS X, kill everything after 40 minutes to make
+    # sure the cache gets uploaded.
+    - if [ "$TRAVIS_OS_NAME" = "osx" ]; then (sleep 1960; echo 1 > $HOME/early_abort; killall -9 julia; sleep 10; killall -15 make clang clang++ ld gfortran; reset)& fi
+    - cat ~/build.sh
     - if [ -n "$BUILD_NEWER_CMAKE" -a ! -f ~/custom-cmake/bin/cmake ]; then
         rm -rf ~/custom-cmake; mkdir ~/custom-cmake;
-        travis_retry curl -OL -o cmake-3.6.0-Linux-x86_64.tar.gz https://cmake.org/files/v3.6/cmake-3.6.0-Linux-x86_64.tar.gz; 
+        travis_retry curl -OL -o cmake-3.6.0-Linux-x86_64.tar.gz https://cmake.org/files/v3.6/cmake-3.6.0-Linux-x86_64.tar.gz;
         tar --strip-components=1 -xz -C ~/custom-cmake -f cmake-3.6.0-Linux-x86_64.tar.gz;
-        export PATH=~/custom-cmake/bin:$PATH;
       fi;
-    - > 
-        if [ -n "$BUILD_NONSTANDARD_JULIA" -a ! -f ~/custom-julia/usr/lib/julia/sys.so ]; then
-           if [ ! -d ~/custom-julia/deps ]; then rm -rf ~/custom-julia && git clone https://github.com/JuliaLang/julia.git ~/custom-julia; fi;
-           echo "override CC=$CC" >> ~/custom-julia/Make.user
-           echo "override CXX=$CXX" >> ~/custom-julia/Make.user
-           echo "override LLVM_USE_CMAKE=1" >> ~/custom-julia/Make.user
-           echo "override LLVM_VER = $LLVM_VER" >> ~/custom-julia/Make.user
-           if [ -n "$LLVM_GIT_VER" ]; then echo "override LLVM_GIT_VER = $LLVM_GIT_VER" >> ~/custom-julia/Make.user; fi;
-           if [ -n "$CLANG_IN_TREE" ]; then echo "BUILD_LLVM_CLANG = 1" >> ~/custom-julia/Make.user; fi
-           cat ~/custom-julia/Make.user
-           for lib in ARPACK BLAS LAPACK GMP MPFR; do
-               export BUILDOPTS="$BUILDOPTS USE_SYSTEM_$lib=1";
-           done;
-           (cd ~/custom-julia && git checkout $JULIA_GIT_COMMIT && 
-                make $BUILDOPTS -j$JULIA_CPU_CORES;)
-         fi
-    - export PATH=$HOME/custom-julia/usr/bin:$PATH
+    - if [ -n "$BUILD_NEWER_CMAKE" ]; then export PATH=~/custom-cmake/bin:$PATH; fi;
+    - if [ "$TRAVIS_OS_NAME" = "osx" ]; then
+        brew update;
+        brew tap staticfloat/julia;
+        brew rm --force $(brew deps --HEAD julia);
+        brew install -v staticfloat/juliadeps/libgfortran;
+        brew install -v --only-dependencies --HEAD julia;
+        export DYLD_FALLBACK_LIBRARY_PATH="/usr/local/lib:/lib:/usr/lib:$(brew --prefix openblas-julia)/lib:$(brew --prefix suite-sparse-julia)/lib:$(brew --prefix arpack-julia)/lib:/usr/local/opt/gcc/lib/gcc/6/:/usr/local/lib/gcc/6/:/usr/local/Cellar/gcc/6.1.0/lib/gcc/6/";
+        ls -la $(brew --prefix openblas-julia)/lib;
+        otool -L $(brew --prefix openblas-julia)/lib/libopenblas.dylib;
+      fi
+    - echo $DYLD_FALLBACK_LIBRARY_PATH
+    - >
+        if [ -n "$BUILD_NONSTANDARD_JULIA" ] && [ ! -f ~/custom-julia/usr/lib/julia/sys.so ] && [ ! -f ~/custom-julia/usr/lib/julia/sys.dylib ]; then
+          if [ ! -d ~/custom-julia/deps ]; then rm -rf ~/custom-julia && git clone https://github.com/JuliaLang/julia.git ~/custom-julia; fi;
+          echo "override CC=$CC" >> ~/custom-julia/Make.user
+          echo "override CXX=$CXX" >> ~/custom-julia/Make.user
+          echo "override LLVM_USE_CMAKE=1" >> ~/custom-julia/Make.user
+          echo "override LLVM_VER = $LLVM_VER" >> ~/custom-julia/Make.user
+          if [ -n "$LLVM_GIT_VER" ]; then
+            echo "override LLVM_GIT_VER = $LLVM_GIT_VER" >> ~/custom-julia/Make.user;
+          fi;
+          echo "override LLVM_OBJ_SOURCE=\$(LLVM_BUILDDIR_withtype)/bin/llc" >> ~/custom-julia/Make.user;
+          if [ -n "$LLVM_GIT_VER_CLANG" ]; then
+            echo "override LLVM_GIT_VER_CLANG = $LLVM_GIT_VER_CLANG" >> ~/custom-julia/Make.user;
+          fi;
+          if [ -n "$CLANG_IN_TREE" ]; then
+            echo "BUILD_LLVM_CLANG = 1" >> ~/custom-julia/Make.user;
+            echo "override LLVM_OBJ_SOURCE=\$(LLVM_BUILDDIR_withtype)/bin/clang" >> ~/custom-julia/Make.user;
+          fi;
+          cat ~/custom-julia/Make.user
+          if [ "$TRAVIS_OS_NAME" = "linux" ]; then for lib in ARPACK BLAS LAPACK GMP MPFR; do
+            export BUILDOPTS="$BUILDOPTS USE_SYSTEM_$lib=1";
+          done; elif [ "$TRAVIS_OS_NAME" = "osx" ]; then for lib in SUITESPARSE ARPACK BLAS FFTW LAPACK GMP MPFR PCRE LIBUNWIND; do
+             export BUILDOPTS="$BUILDOPTS USE_SYSTEM_$lib=1";
+          done; fi;
+          (cd ~/custom-julia && git checkout $JULIA_GIT_COMMIT);
+          if [ "$TRAVIS_OS_NAME" = "osx" ]; then
+            export BUILDOPTS="$BUILDOPTS USE_BLAS64=0 SUITESPARSE_INC=-I$(brew --prefix suite-sparse-julia)/include FORCE_ASSERTIONS=1 STAGE2_DEPS=utf8proc"
+            export BUILDOPTS="$BUILDOPTS LIBBLAS=-lopenblas LIBBLASNAME=/usr/local/opt/openblas-julia/lib/libopenblas.dylib LIBLAPACK=-lopenblas LIBLAPACKNAME=/usr/local/opt/openblas-julia/lib/libopenblas.dylib";
+            make $BUILDOPTS LDFLAGS="-L$(brew --prefix openblas-julia)/lib -L$(brew --prefix suite-sparse-julia)/lib" -C ~/custom-julia/contrib -f repackage_system_suitesparse4.make;
+          fi;
+          make -C ~/custom-julia $BUILDOPTS -j$JULIA_CPU_CORES;
+        fi
+    - df -h
+    - export PATH=$PATH:$HOME/custom-julia/usr/bin
     - julia -e 'versioninfo()'
     - mv ~/.julia/v0.5/Cxx ~/.julia/v0.5/Cxx-cache
     - julia -e 'Pkg.clone(pwd())'
     - mv ~/.julia/v0.5/Cxx-cache/deps/src ~/.julia/v0.5/Cxx/deps/src
     - mv ~/.julia/v0.5/Cxx-cache/deps/build ~/.julia/v0.5/Cxx/deps/build
-    - julia -e 'Pkg.build("Cxx")'
-    - julia -e 'Pkg.test("Cxx")'
+    - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.build("Cxx")' || false; fi
+    - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.test("Cxx")' || false; fi
+after_script:
+    - if [ "$TRAVIS_OS_NAME" = "osx" ]; then sleep 1960; fi;
 notifications:
   email: false
