@@ -4,8 +4,9 @@
 # adding header search directories is done in this file.
 
 # Paths
-basepath = joinpath(BASE_JULIA_HOME, "../../")
-depspath = joinpath(basepath, "deps", "srccache")
+binpath = BASE_JULIA_BIN
+srcpath = BASE_JULIA_SRC
+depspath = joinpath(BASE_JULIA_SRC, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
@@ -333,7 +334,7 @@ end # is_windows
 function addClangHeaders(C)
     ver = Base.VersionNumber(Base.libllvm_version)
     ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)        
-    baseclangdir = joinpath(BASE_JULIA_HOME,
+    baseclangdir = joinpath(BASE_JULIA_BIN,
         "../lib/clang/$ver/include/")
     cxxclangdir = joinpath(dirname(@__FILE__),
         "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
