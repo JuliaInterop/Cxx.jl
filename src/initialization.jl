@@ -266,30 +266,42 @@ function AddLinuxHeaderPaths(C)
                         "i586-linux-gnu"]
 
 
-    CXXJL_ROOTDIR = get(ENV, "CXXJL_ROOTDIR", "/usr")
-    const Prefixes = [ CXXJL_ROOTDIR ]
 
     LibDirs = (Int === Int64 ? X86_64LibDirs : X86LibDirs)
     Triples = (Int === Int64 ? X86_64Triples : X86Triples)
     Version = v"0.0.0"
     Path = VersionString = Triple = ""
-    for prefix in Prefixes
-        isdir(prefix) || continue
-        for dir in LibDirs
-            isdir(prefix*dir) || continue
-            for triple in Triples
-                CandidateVersion, CandidateVersionString, CandidatePath =
-                    ScanLibDirForGCCTriple(prefix*dir,triple)
-                if CandidateVersion > Version
-                    Version = CandidateVersion
-                    VersionString = CandidateVersionString
-                    Path = CandidatePath
-                    Triple = triple
+
+    if haskey(ENV, "CXXJL_GCCPATH")
+        VersionString = ENV["CXXJL_GCCVERSIONSTRING"]
+        Path = ENV["CXXJL_GCCPATH"]
+        Triple = ENV["CXXJL_GCCTRIPLE"]
+        Version = VersionNumber(VersionString)
+    else
+        CXXJL_ROOTDIR = get(ENV, "CXXJL_ROOTDIR", "/usr")
+        const Prefixes = [ CXXJL_ROOTDIR ]
+        for prefix in Prefixes
+            isdir(prefix) || continue
+            for dir in LibDirs
+                isdir(prefix*dir) || continue
+                for triple in Triples
+                    CandidateVersion, CandidateVersionString, CandidatePath =
+                        ScanLibDirForGCCTriple(prefix*dir,triple)
+                    if CandidateVersion > Version
+                        Version = CandidateVersion
+                        VersionString = CandidateVersionString
+                        Path = CandidatePath
+                        Triple = triple
+                    end
                 end
             end
         end
     end
-
+    @show VersionString
+    @show Path
+    @show Triple
+    @show Version
+    
     if Version == v"0.0.0"
         error("Could not find C++ standard library")
     end
