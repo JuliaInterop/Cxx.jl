@@ -1,20 +1,22 @@
-JULIAHOME := $(subst \,/,$(BASE_JULIA_HOME))/../..
+JULIA_SRC := $(subst \,/,$(BASE_JULIA_SRC))
+JULIA_BIN := $(subst \,/,$(BASE_JULIA_BIN))
 
 ifeq ($(LLVM_VER),)
-include $(JULIAHOME)/deps/Versions.make
-include $(JULIAHOME)/Make.user
+BUILDROOT=$(JULIA_BIN)/../..
+include $(JULIA_SRC)/deps/Versions.make
+include $(BUILDROOT)/Make.user
 endif
 include Make.inc
 
 all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
 
 
-CXXJL_CPPFLAGS = -I$(JULIAHOME)/src/support -I$(BASE_JULIA_HOME)/../include
+CXXJL_CPPFLAGS = -I$(JULIA_SRC)/src/support -I$(BASE_JULIA_BIN)/../include
 
 ifeq ($(JULIA_BINARY_BUILD),1)
-LIBDIR := $(BASE_JULIA_HOME)/../lib/julia
+LIBDIR := $(BASE_JULIA_BIN)/../lib/julia
 else
-LIBDIR := $(BASE_JULIA_HOME)/../lib
+LIBDIR := $(BASE_JULIA_BIN)/../lib
 endif
 
 CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse \
@@ -61,10 +63,10 @@ LLVM_HEADER_DIRS = src/llvm-$(LLVM_VER)/include build/llvm-$(LLVM_VER)/include
 CLANG_CMAKE_DEP = build/llvm-$(LLVM_VER)/bin/llvm-config
 LLVM_CONFIG = ../llvm-$(LLVM_VER)/bin/llvm-config
 else
-CLANG_CMAKE_OPTS += -DLLVM_TABLEGEN_EXE=$(BASE_JULIA_HOME)/../tools/llvm-tblgen
+CLANG_CMAKE_OPTS += -DLLVM_TABLEGEN_EXE=$(BASE_JULIA_BIN)/../tools/llvm-tblgen
 endif
 
-JULIA_LDFLAGS = -L$(BASE_JULIA_HOME)/../lib -L$(BASE_JULIA_HOME)/../lib/julia
+JULIA_LDFLAGS = -L$(BASE_JULIA_BIN)/../lib -L$(BASE_JULIA_BIN)/../lib/julia
 
 $(LLVM_CLANG_TAR): | src
 	curl -o $@ $(LLVM_SRC_URL)/$(notdir $@)
@@ -88,14 +90,14 @@ JULIA_LDFLAGS += -Lbuild/clang-$(LLVM_VER)/lib
 CXXJL_CPPFLAGS += -Isrc/clang-$(LLVM_VER)/lib -Ibuild/clang-$(LLVM_VER)/include \
 	-Isrc/clang-$(LLVM_VER)/include
 else # BUILD_LLVM_CLANG
-JULIA_LDFLAGS = -L$(BASE_JULIA_HOME)/../lib -L$(BASE_JULIA_HOME)/../lib/julia
-CXXJL_CPPFLAGS += -I$(JULIAHOME)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
-		-I$(JULIAHOME)/deps/llvm-$(LLVM_VER)/tools/clang/lib
+JULIA_LDFLAGS = -L$(BASE_JULIA_BIN)/../lib -L$(BASE_JULIA_BIN)/../lib/julia
+CXXJL_CPPFLAGS += -I$(JULIA_SRC)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
+		-I$(JULIA_SRC)/deps/llvm-$(LLVM_VER)/tools/clang/lib
 endif
 
 CXX_LLVM_VER := $(LLVM_VER)
 ifeq ($(CXX_LLVM_VER),svn)
-CXX_LLVM_VER := $(shell $(BASE_JULIA_HOME)/../tools/llvm-config --version)
+CXX_LLVM_VER := $(shell $(BASE_JULIA_BIN)/../tools/llvm-config --version)
 endif
 
 ifneq ($(LLVM_HEADER_DIRS),)
@@ -142,7 +144,7 @@ ifeq ($(BUILD_LLDB),1)
 LINKED_LIBS += $(LLDB_LIBS)
 endif
 
-ifneq (,$(wildcard $(BASE_JULIA_HOME)/../lib/libjulia.$(SHLIB_EXT)))
+ifneq (,$(wildcard $(BASE_JULIA_BIN)/../lib/libjulia.$(SHLIB_EXT)))
 usr/lib/libcxxffi.$(SHLIB_EXT): build/bootstrap.o $(LIB_DEPENDENCY) | usr/lib
 	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 else
@@ -153,7 +155,7 @@ usr/lib/libcxxffi.$(SHLIB_EXT):
 	@echo "has been built."
 endif
 
-ifneq (,$(wildcard $(BASE_JULIA_HOME)/../lib/libjulia-debug.$(SHLIB_EXT)))
+ifneq (,$(wildcard $(BASE_JULIA_BIN)/../lib/libjulia-debug.$(SHLIB_EXT)))
 usr/lib/libcxxffi-debug.$(SHLIB_EXT): build/bootstrap.o $(LIB_DEPENDENCY) | usr/lib
 	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia-debug $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 else

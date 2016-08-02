@@ -59,7 +59,7 @@ module CxxREPL
         addHeaderDir(cxxllvmdir)
         addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
     end
-    addHeaderDir(joinpath(BASE_JULIA_HOME,"../include"))
+    addHeaderDir(joinpath(BASE_JULIA_BIN,"../include"))
 
     cxx"""
     #define __STDC_LIMIT_MACROS
