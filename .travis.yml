@@ -137,7 +137,5 @@ script:
     - mv ~/.julia/v0.5/Cxx-cache/deps/build ~/.julia/v0.5/Cxx/deps/build
     - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.build("Cxx")' || false; fi
     - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.test("Cxx")' || false; fi
-after_script:
-    - if [ "$TRAVIS_OS_NAME" = "osx" ]; then sleep 1960; fi;
 notifications:
   email: false
