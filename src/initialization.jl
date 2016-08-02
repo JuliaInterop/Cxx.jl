@@ -297,10 +297,6 @@ function AddLinuxHeaderPaths(C)
             end
         end
     end
-    @show VersionString
-    @show Path
-    @show Triple
-    @show Version
     
     if Version == v"0.0.0"
         error("Could not find C++ standard library")
