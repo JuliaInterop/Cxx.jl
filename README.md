@@ -34,7 +34,7 @@ override LLVM_ASSERTIONS=1
 If you're feeling adventure adventurous, you may also use `LLVM_VER=svn` instead, directly pulls in the latest LLVM version.
 This configuration may have more features (and is the development version), but may break unexpectedly if upstream makes changes.
 
-Then build simply with `make`. 
+Then build simply with `make`. If this results in errors, you might need to `make -C deps distclean-llvm` and then try `make` again.
 
 Test your build of julia with `make testall`.
 
