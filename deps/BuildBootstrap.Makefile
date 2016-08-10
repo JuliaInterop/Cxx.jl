@@ -10,6 +10,11 @@ include Make.inc
 
 all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
 
+ifeq ($(OLD_CXX_ABI),1)
+CXX_ABI_SETTING=-D_GLIBCXX_USE_CXX11_ABI=0
+else
+CXX_ABI_SETTING=-D_GLIBCXX_USE_CXX11_ABI=1
+endif
 
 CXXJL_CPPFLAGS = -I$(JULIA_SRC)/src/support -I$(BASE_JULIA_BIN)/../include
 
@@ -55,7 +60,7 @@ build/llvm-$(LLVM_VER)/Makefile: src/llvm-$(LLVM_VER) $(LLVM_PATCH_LIST)
 		cmake -G "Unix Makefiles"  -DLLVM_TARGETS_TO_BUILD="X86" \
 		 	-DLLVM_BUILD_LLVM_DYLIB=ON -DCMAKE_BUILD_TYPE=Release \
 			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADS=OFF \
-			-DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=0" \
+			-DCMAKE_CXX_COMPILER_ARG1="$(CXX_ABI_SETTING)" \
 			../../src/llvm-$(LLVM_VER)
 build/llvm-$(LLVM_VER)/bin/llvm-config: build/llvm-$(LLVM_VER)/Makefile
 	cd build/llvm-$(LLVM_VER) && $(MAKE)
@@ -81,7 +86,7 @@ build/clang-$(LLVM_VER)/Makefile: src/clang-$(LLVM_VER) $(CLANG_CMAKE_DEP)
 		cmake -G "Unix Makefiles" \
 			-DLLVM_BUILD_LLVM_DYLIB=ON -DCMAKE_BUILD_TYPE=Release \
 			-DLLVM_LINK_LLVM_DYLIB=ON -DLLVM_ENABLE_THREADS=OFF \
-                        -DCMAKE_CXX_COMPILER_ARG1="-D_GLIBCXX_USE_CXX11_ABI=0" \
+                        -DCMAKE_CXX_COMPILER_ARG1="$(CXX_ABI_SETTING)" \
 			-DLLVM_CONFIG=$(LLVM_CONFIG) $(CLANG_CMAKE_OPTS) ../../src/clang-$(LLVM_VER)
 build/clang-$(LLVM_VER)/lib/libclangCodeGen.a: build/clang-$(LLVM_VER)/Makefile
 	cd build/clang-$(LLVM_VER) && $(MAKE)
@@ -136,7 +141,7 @@ LLVM_EXTRA_CPPFLAGS += -DLLVM_NDEBUG
 endif
 
 build/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) | build
-	@$(call PRINT_CC, $(CXX) -D_GLIBCXX_USE_CXX11_ABI=0 -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) $(LLVM_EXTRA_CPPFLAGS) -c ../src/bootstrap.cpp -o $@)
+	@$(call PRINT_CC, $(CXX) $(CXX_ABI_SETTING) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) $(LLVM_EXTRA_CPPFLAGS) -c ../src/bootstrap.cpp -o $@)
 
 
 LINKED_LIBS = $(addprefix -l,$(CLANG_LIBS))
