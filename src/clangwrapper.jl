@@ -732,7 +732,7 @@ function SetVarDeclInit(D::pcpp"clang::VarDecl", init)
 end
 
 function SetConstexpr(VD::pcpp"clang::VarDecl")
-    ccall((:SetVarDeclInit, libcxxffi), Void, (Ptr{Void},), VD)
+    ccall((:SetConstexpr, libcxxffi), Void, (Ptr{Void},), VD)
 end
 
 function isCCompiler(C)
