@@ -22,6 +22,11 @@ close(f)
 
 println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly at $BASE_JULIA_SRC")
 
+# Try to autodetect C++ ABI in use
+llvm_lib_path = Libdl.dlpath("libLLVM-$(Base.libllvm_version)")
+old_cxx_abi = searchindex(open(read, llvm_lib_path),"_ZN4llvm3sys16getProcessTripleEv".data,0) != 0
+old_cxx_abi && (ENV["OLD_CXX_ABI"] = "1")
+
 llvm_config_path = joinpath(BASE_JULIA_BIN,"..","tools","llvm-config")
 if isfile(llvm_config_path)
     info("Building julia source build")
