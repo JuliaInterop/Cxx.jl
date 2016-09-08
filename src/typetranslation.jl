@@ -458,7 +458,7 @@ function isCxxEquivalentType(t)
     (t <: CppPtr) || (t <: CppRef) || (t <: CppValue) || (t <: CppCast) ||
         (t <: CppFptr) || (t <: CppMFptr) || (t <: CppEnum) ||
         (t <: CppDeref) || (t <: CppAddr) || (t <: Ptr) ||
-        (t <: JLCppCast)
+        (t <: Ref) || (t <: JLCppCast)
 end
 
 

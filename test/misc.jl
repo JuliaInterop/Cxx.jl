@@ -406,3 +406,13 @@ public:
 typealias SVP{T} cxxt"std::vector<$T>*"
 # This is a bug!
 # @assert SVP{cxxt"std::string"} == cxxt"std::vector<std::string>*"
+
+# #290 - Reference arguments in @cxx macro
+cxx"""
+void func290(int &res) {
+   res = 7;
+}
+"""
+r = Ref{Cint}(0)
+@cxx func290(r)
+@assert r[] == 7
