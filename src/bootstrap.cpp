@@ -1478,6 +1478,16 @@ JL_DLLEXPORT void init_clang_instance_from_invocation(C, clang::CompilerInvocati
     finish_clang_init(Cxx, false, nullptr);
 }
 
+#define xstringify(s) stringify(s)
+#define stringify(s) #s
+JL_DLLEXPORT void apply_default_abi(C)
+{
+#if defined(_GLIBCXX_USE_CXX11_ABI)
+    char define[] = "#define _GLIBCXX_USE_CXX11_ABI " xstringify(_GLIBCXX_USE_CXX11_ABI);
+    cxxparse(Cxx, define, sizeof(define)-1);
+#endif
+}
+
 void decouple_pch(C)
 {
   Cxx->PCHGenerator->HandleTranslationUnit(Cxx->CI->getASTContext());
