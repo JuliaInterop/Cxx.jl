@@ -8,6 +8,25 @@ include $(BUILDROOT)/Make.user
 endif
 include Make.inc
 
+LLVM_VER_MAJ:=$(word 1, $(subst ., ,$(LLVM_VER)))
+LLVM_VER_MIN:=$(word 2, $(subst ., ,$(LLVM_VER)))
+# define a "short" LLVM version for easy comparisons
+ifeq ($(LLVM_VER),svn)
+LLVM_VER_SHORT:=svn
+else
+LLVM_VER_SHORT:=$(LLVM_VER_MAJ).$(LLVM_VER_MIN)
+endif
+LLVM_VER_PATCH:=$(word 3, $(subst ., ,$(LLVM_VER)))
+ifeq ($(LLVM_VER_PATCH),)
+LLVM_VER_PATCH := 0
+endif
+
+ifeq ($(LLVM_VER_SHORT),$(filter $(LLVM_VER_SHORT),3.3 3.4 3.5 3.6 3.7 3.8))
+LLVM_USE_CMAKE := 0
+else
+LLVM_USE_CMAKE := 1
+endif
+
 all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) build/clang_constants.jl
 
 ifeq ($(OLD_CXX_ABI),1)
@@ -116,7 +135,6 @@ CPP_STDOUT := $(CPP) -P
 else
 CPP_STDOUT := $(CPP) -E
 endif
-
 
 ifeq ($(LLVM_USE_CMAKE),1)
 LLVM_LIB_NAME := LLVM
