@@ -223,15 +223,18 @@ end
 # caveats named in typetranslation.jl still apply.
 #
 
-function typeForNNS{nns}(C,T::Type{CppNNS{nns}})
+function typeForNNS{Tnns}(C,T::Type{CppNNS{Tnns}})
+    nns = isa(Tnns, Symbol) ? Tuple{Tnns} : Tnns
     nns2 = nns.parameters
-    if length(nns2) == 1 && (nns2[1] <: CppPtr || nns2[1] <: CppRef)
+    if length(nns2) == 1 && (isa(nns2[1], Type) &&
+        (nns2[1] <: CppPtr || nns2[1] <: CppRef))
         return cpptype(C,nns2[1])
     end
     typeForDecl(declfornns(C,T))
 end
 
-function declfornns{nns}(C,::Type{CppNNS{nns}},cxxscope=C_NULL)
+function declfornns{Tnns}(C,::Type{CppNNS{Tnns}},cxxscope=C_NULL)
+    nns = isa(Tnns, Symbol) ? Tuple{Tnns} : Tnns
     @assert nns <: Tuple
     d = tu = translation_unit(C)
     for (i,n) in enumerate(nns.parameters)
@@ -592,10 +595,10 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
 
         ce = BuildCallToMemberFunction(C,me,callargs[2:end])
     else
-        targs = ()
+        targs = Tuple{}
         if expr <: CppTemplate
-            targs = expr.args[2]
-            expr = expr.args[1]
+            targs = expr.parameters[2]
+            expr = expr.parameters[1]
         end
 
         # Check if we're calling an operator
@@ -626,9 +629,10 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
             end
             fname = Symbol(_decl_name(d))
             cxxt = cxxtmplt(d)
+            targs = map(targ->typeForNNS(C, targ), targs.parameters)
             if cxxd != C_NULL || cxxt != C_NULL
                 if cxxd == C_NULL
-                    cxxd = specialize_template(C,cxxt,targs)
+                    cxxd = specialize_template_clang(C, cxxt, targs)
                 end
 
                 # targs may have changed because the name is canonical

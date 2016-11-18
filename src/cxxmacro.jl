@@ -17,6 +17,21 @@ function refderefarg(arg)
     arg
 end
 
+function add_to_nns_list!(nns, expr)
+    if isexpr(expr, Symbol("::"))
+        add_to_nns_list!(nns, expr.args[1])
+        push!(nns, expr.args[2])
+    else
+        push!(nns, expr)
+    end
+end
+
+function expr_to_nns(x)
+  args = Any[]
+  add_to_nns_list!(args, x)
+  :( Cxx.CppNNS{$(Expr(:curly, Tuple, map(quot, args)...))} )
+end
+
 # Builds a call to the cppcall staged functions that represents a
 # call to a C++ function.
 # Arguments:
@@ -45,7 +60,7 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
     # (and optionally type arguments)
     if isexpr(cexpr.args[1],:curly)
         nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1].args[1]))
-        targs = map(macroexpand, copy(cexpr.args[1].args[2:end]))
+        targs = Expr(:curly, Tuple, map(expr_to_nns, map(macroexpand, copy(cexpr.args[1].args[2:end])))...)
     else
         nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1]))
         targs = Tuple{}
@@ -63,7 +78,6 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
 
     e = curly = :( Cxx.CppNNS{$nns} )
 
-    @assert isa(targs,Type)
     # Add templating
     if targs != Tuple{}
         e = :( Cxx.CppTemplate{$curly,$targs} )

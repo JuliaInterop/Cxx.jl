@@ -416,3 +416,15 @@ void func290(int &res) {
 r = Ref{Cint}(0)
 @cxx func290(r)
 @assert r[] == 7
+
+# #303 - Template type parameters in @cxx
+cxx"""
+namespace ns303 {
+  struct nsedfoo303 {};
+}
+struct foo303 {};
+template <typename T> struct bar303 {
+};
+"""
+@assert typeof(@cxx bar303{foo303}()) <: cxxt"bar303<foo303>"
+@assert typeof(@cxx bar303{ns303::nsedfoo303}()) <: cxxt"bar303<ns303::nsedfoo303>"

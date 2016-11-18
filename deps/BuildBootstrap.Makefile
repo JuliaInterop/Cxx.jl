@@ -4,7 +4,9 @@ JULIA_BIN := $(subst \,/,$(BASE_JULIA_BIN))
 ifeq ($(LLVM_VER),)
 BUILDROOT=$(JULIA_BIN)/../..
 include $(JULIA_SRC)/deps/Versions.make
+ifeq (exists, $(shell [ -e $(BUILDROOT)/Make.user ] && echo exists ))
 include $(BUILDROOT)/Make.user
+endif
 endif
 include Make.inc
 
