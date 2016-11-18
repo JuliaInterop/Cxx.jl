@@ -19,8 +19,9 @@
 #   - Value Reference
 #       @cxx foo
 #
-# Note that unary * inside a call, e.g. @cxx foo(*a) is treated as
-# a (C++ side) dereference of a. Further, prefixing any value by `&`
+# Note that unary * inside a call, e.g. @cxx foo(*(a)) [the () being necessary
+# since julia syntax does not allow `*` in unary op position otherwise] is
+# treated as a (C++ side) dereference of a. Further, prefixing any value by `&`
 # takes the address of a given value.
 #
 # Additionally, this package provides the cxx"" and icxx"" custom
