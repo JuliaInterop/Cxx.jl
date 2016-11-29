@@ -44,24 +44,20 @@ function exceptionObject{T<:CppRef}(e::CxxException,::Type{T})
     T(convert(Ptr{Void},(e.exception+sizeof(LibCxxException))))
 end
 
-function show_cxx_backtrace(io::IO, t, set=1:typemax(Int))
-    show_cxx_backtrace(io,Base.eval_user_input.env.name,t, set)
-end
-
-function show_cxx_backtrace(io::IO, top_function::Symbol, t, set)
+function show_cxx_backtrace(io::IO, t, limit=typemax(Int))
     local process_entry
     let saw_unwind_resume = false
-        function process_entry(lastname, lastfile, lastline, last_inlinedat_file, last_inlinedat_line, n)
-            if lastname == :_Unwind_Resume
+        function process_entry(stackframe, n)
+            if stackframe.func == :_Unwind_Resume
                 saw_unwind_resume = true
                 return
             end
             saw_unwind_resume || return
-            lastname == Symbol("???") && return
-            Base.show_trace_entry(io, lastname, lastfile, lastline, last_inlinedat_file, last_inlinedat_line, n)
+            stackframe.func == Symbol("???") && return
+            Base.show_trace_entry(io, stackframe, n)
         end
     end
-    Base.process_backtrace(process_entry, top_function, t, set; skipC = false)
+    Base.process_backtrace(process_entry, t, limit; skipC = false)
 end
 
 import Base: showerror
