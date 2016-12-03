@@ -15,6 +15,8 @@ typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 
 unsafe_string(str::Union{StdString,StdStringR}) = unsafe_string((@cxx str->data()),@cxx str->size())
 String(str::Union{StdString,StdStringR}) = unsafe_string(str)
+Base.convert(::Type{String}, x::Union{StdString,StdStringR}) = String(x)
+Base.convert(StdString, x::AbstractString) = icxx"std::string s($(pointer(x)), $(sizeof(x))); s;"
 
 import Base: showerror
 import Cxx: CppValue
