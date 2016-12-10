@@ -92,6 +92,89 @@ function Base.filter!(f, a::StdVector)
     return a
 end
 
+typealias CxxBuiltinVecTs Union{Float32,Float64,Int16,Int32,Int64,Int8,UInt16,UInt32,UInt64,UInt8}
+
+Base.unsafe_wrap{T}(::Type{DenseArray}, v::StdVector{T}) = WrappedCppObjArray(pointer(v), length(v))
+Base.unsafe_wrap{T<:CxxBuiltinVecTs}(::Type{DenseArray}, v::StdVector{T}) = WrappedCppPrimArray(pointer(v), length(v))
+Base.unsafe_wrap(::Type{DenseArray}, v::StdVector{Bool}) = WrappedCppBoolVector(icxx"std::vector<bool> &vr = $v; vr;", length(v))
+
+Base.copy!(dest::StdVector, src) = copy!(unsafe_wrap(DenseArray, dest), src)
+Base.copy!(dest::AbstractArray, src::StdVector) = copy!(dest, unsafe_wrap(DenseArray, src))
+# Base.copy!(dest::StdVector, src::StdVector) = ...
+
+Base.copy!(dest::StdVector, doffs::Integer, src, soffs::Integer, n::Integer) =
+    copy!(unsafe_wrap(DenseArray, dest), doffs + 1, src, soffs, n)
+Base.copy!(dest::AbstractArray, doffs::Integer, src::StdVector, soffs::Integer, n::Integer) =
+    copy!(dest, doffs, unsafe_wrap(DenseArray, src), soffs + 1, n)
+# Base.copy!(dest::StdVector, doffs::Integer, src::StdVector, soffs::Integer, n::Integer) = ...
+
+Base.convert{CT<:AbstractArray}(::Type{CT}, v::StdVector) = convert(CT, unsafe_wrap(DenseArray, v))
+
+function Base.convert{T}(::Type{cxxt"std::vector<$T>"}, x::AbstractArray)
+    n = length(linearindices(x))
+    result = icxx"std::vector<$T> v($n); v;"
+    copy!(result, x)
+    result
+end
+
+
+abstract WrappedCppDenseValues{T} <: DenseArray{T,1}
+
+Base.size(A::WrappedCppDenseValues) = (length(A),)
+Base.linearindexing(::WrappedCppDenseValues) = Base.LinearFast()
+
+@propagate_inbounds Base.setindex!{T}(A::WrappedCppDenseValues{T}, val, i::Integer) =
+    setindex!(A, convert(T, val), i)
+
+
+immutable WrappedCppObjArray{T, CVR} <: WrappedCppDenseValues{T}
+    ptr::Cxx.CppPtr{T,CVR}
+    len::Int
+end
+
+Base.pointer(A::WrappedCppObjArray) = A.ptr
+Base.pointer{T}(A::WrappedCppObjArray{T}, i::Integer) = icxx"&$(A.ptr)[$(i - 1)];"
+Base.length(A::WrappedCppObjArray) = A.len
+
+@inline Base.getindex(A::WrappedCppObjArray, i::Integer) =
+    (@boundscheck checkbounds(A, i); icxx"($(A.ptr))[$(i - 1)];")
+
+@inline Base.setindex!{T}(A::WrappedCppObjArray{T}, val::T, i::Integer) =
+    (@boundscheck checkbounds(A, i); icxx"($(A.ptr))[$(i - 1)] = $val; void();")
+@inline Base.setindex!(A::WrappedCppObjArray, val::Union{Cxx.CppValue, Cxx.CppRef}, i::Integer) =
+    (@boundscheck checkbounds(A, i); icxx"($(A.ptr))[$(i - 1)] = $val; void();")
+
+
+immutable WrappedCppPrimArray{T<:CxxBuiltinVecTs} <: WrappedCppDenseValues{T}
+    ptr::Ptr{T}
+    len::Int
+end
+
+Base.pointer(A::WrappedCppPrimArray) = A.ptr
+Base.pointer{T}(A::WrappedCppPrimArray{T}, i::Integer) = A.ptr + sizeof(T) * (i - 1)
+Base.length(A::WrappedCppPrimArray) = A.len
+
+@inline Base.getindex(A::WrappedCppPrimArray, i::Integer) =
+    (@boundscheck checkbounds(A, i); unsafe_load(A.ptr, i))
+
+@inline Base.setindex!{T}(A::WrappedCppPrimArray{T}, val::T, i::Integer) =
+    (@boundscheck checkbounds(A, i); unsafe_store!(A.ptr, val, i) )
+
+
+immutable WrappedCppBoolVector <: WrappedCppDenseValues{Bool}
+    vref::cxxt"std::vector<bool>&"
+    len::Int
+end
+
+Base.length(A::WrappedCppBoolVector) = A.len
+
+@inline Base.getindex(A::WrappedCppBoolVector, i::Integer) =
+    (@boundscheck checkbounds(A, i); icxx"bool x = ($(A.vref))[$(i - 1)]; x;")
+
+@inline Base.setindex!(A::WrappedCppBoolVector, val::Bool, i::Integer) =
+    (@boundscheck checkbounds(A, i); icxx"($(A.vref))[$(i - 1)] = $val; void();")
+
+
 function Base.show{T}(io::IO,
     ptr::Union{cxxt"std::shared_ptr<$T>",cxxt"std::shared_ptr<$T>&"})
     println(io,"shared_ptr<",typename(T),"> @",convert(UInt,icxx"(void*)$ptr.get();"))
