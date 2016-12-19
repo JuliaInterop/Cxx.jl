@@ -61,7 +61,7 @@ LLVM_TAR_EXT:=$(LLVM_VER).src.tar.xz
 LLVM_CLANG_TAR:=src/cfe-$(LLVM_TAR_EXT)
 LLVM_SRC_TAR:=src/llvm-$(LLVM_TAR_EXT)
 LLVM_COMPILER_RT_TAR:=src/compiler-rt-$(LLVM_TAR_EXT)
-LLVM_SRC_URL := http://llvm.org/releases/$(LLVM_VER)
+LLVM_SRC_URL := http://releases.llvm.org/$(LLVM_VER)
 
 src:
 	mkdir $@
@@ -71,7 +71,7 @@ ifeq ($(JULIA_BINARY_BUILD),1)
 LLVM_SRC_DIR := src/llvm-$(LLVM_VER)
 include llvm-patches/apply-llvm-patches.mk
 $(LLVM_SRC_TAR): | src
-	curl -o $@ $(LLVM_SRC_URL)/$(notdir $@)
+	curl -Lo $@ $(LLVM_SRC_URL)/$(notdir $@)
 src/llvm-$(LLVM_VER): $(LLVM_SRC_TAR)
 	mkdir -p $@
 	tar -C $@ --strip-components=1 -xf $<
@@ -95,7 +95,7 @@ endif
 JULIA_LDFLAGS = -L$(BASE_JULIA_BIN)/../lib -L$(BASE_JULIA_BIN)/../lib/julia
 
 $(LLVM_CLANG_TAR): | src
-	curl -o $@ $(LLVM_SRC_URL)/$(notdir $@)
+	curl -Lo $@ $(LLVM_SRC_URL)/$(notdir $@)
 $(LLVM_COMPILER_RT_TAR): | src
 	$(JLDOWNLOAD) $@ $(LLVM_SRC_URL)/$(notdir $@)
 src/clang-$(LLVM_VER): $(LLVM_CLANG_TAR)
