@@ -44,6 +44,7 @@ Optionally, also build the debug build of julia with `make debug`. If available,
 
 Launch the julia you just built, and in the terminal type
 ```julia
+Pkg.add("PyCall")
 Pkg.clone("https://github.com/Keno/Cxx.jl.git")
 Pkg.build("Cxx")   
 ```
