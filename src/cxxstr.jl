@@ -669,7 +669,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
                     Cxx.translation_unit($instance) : begin
                     ns = Cxx.createNamespace($instance,"julia")
                     unsafe_store!(jns,convert(Ptr{Void},ns))
-                    pcpp"clang::Decl"(convert(Ptr{Void},ns))
+                    Cxx.@pcpp_str("clang::Decl")(convert(Ptr{Void},ns))
                 end))
                 $argsetup
                 $argcleanup

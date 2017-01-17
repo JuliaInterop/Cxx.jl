@@ -492,7 +492,7 @@ JL_DLLEXPORT void *SpecializeClass(C, clang::ClassTemplateDecl *tmplt, void **ty
 #ifndef LLVM39
                             targs,
                             nargs,
-#else                      
+#else
                             ArrayRef<clang::TemplateArgument>{targs,nargs},
 #endif
                             nullptr);
