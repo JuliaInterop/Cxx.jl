@@ -17,10 +17,10 @@ typealias StdMap{K,V} cxxt"std::map<$K,$V>"
 unsafe_string(str::Union{StdString,StdStringR}) = unsafe_string((@cxx str->data()),@cxx str->size())
 String(str::Union{StdString,StdStringR}) = unsafe_string(str)
 Base.convert(::Type{String}, x::Union{StdString,StdStringR}) = String(x)
-Base.convert(StdString, x::AbstractString) = icxx"std::string s($(pointer(x)), $(sizeof(x))); s;"
+Base.convert(::Type{StdString}, x::AbstractString) = icxx"std::string s($(pointer(x)), $(sizeof(x))); s;"
 
 import Base: showerror
-import Cxx: CppValue
+
 for T in Cxx.CxxBuiltinTypes.types
     @eval @exception function showerror(io::IO, e::$(T.parameters[1]))
         print(io, e)
@@ -51,13 +51,21 @@ end
 @inline Base.getindex(v::StdVector,i) = (@boundscheck checkbounds(v, i); icxx"($(v))[$i];")
 @inline Base.getindex{T<:Cxx.CxxBuiltinTs}(v::StdVector{T}, i) = (@boundscheck checkbounds(v, i); icxx"$T x = ($(v))[$i]; x;")
 
+
 @inline Base.setindex!{T}(v::StdVector{T}, val::T, i::Integer) =
     (@boundscheck checkbounds(v, i); icxx"($(v))[$i] = $val; void();")
+
 @inline Base.setindex!(v::StdVector, val::Union{Cxx.CppValue, Cxx.CppRef}, i::Integer) =
     (@boundscheck checkbounds(v, i); icxx"($(v))[$i] = $val; void();")
 
-@propagate_inbounds Base.setindex!{T}(v::StdVector{T}, val, i::Integer) =
+@propagate_inbounds _setindex_conv!{T}(v::StdVector{T}, val, i::Integer) =
     setindex!(v, convert(T, val), i)
+
+@propagate_inbounds _setindex_conv!{T<:Cxx.CxxQualType}(v::StdVector{T}, val, i::Integer) =
+    setindex!(v, convert(Cxx.CppValue{T}, val), i)
+
+@propagate_inbounds Base.setindex!(v::StdVector, val, i::Integer) =
+    _setindex_conv!(v, val, i)
 
 
 Base.deleteat!(v::StdVector,idxs::UnitRange) =
@@ -123,8 +131,12 @@ abstract WrappedCppDenseValues{T} <: DenseArray{T,1}
 Base.size(A::WrappedCppDenseValues) = (length(A),)
 Base.linearindexing(::WrappedCppDenseValues) = Base.LinearFast()
 
+
 @propagate_inbounds Base.setindex!{T}(A::WrappedCppDenseValues{T}, val, i::Integer) =
     setindex!(A, convert(T, val), i)
+
+@propagate_inbounds Base.setindex!{T<:Cxx.CxxQualType}(A::WrappedCppDenseValues{T}, val, i::Integer) =
+    setindex!(A, convert(Cxx.CppValue{T}, val), i)
 
 
 immutable WrappedCppObjArray{T, CVR} <: WrappedCppDenseValues{T}
