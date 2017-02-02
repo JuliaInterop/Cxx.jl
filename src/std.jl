@@ -18,7 +18,8 @@ String(str::Union{StdString,StdStringR}) = unsafe_string(str)
 
 import Base: showerror
 import Cxx: CppValue
-for T in Cxx.CxxBuiltinTypes.types
+
+for T in Base.uniontypes(Cxx.CxxBuiltinTypes)
     @eval @exception function showerror(io::IO, e::$(T.parameters[1]))
         print(io, e)
     end
@@ -26,7 +27,7 @@ end
 @exception function showerror(io::IO, e::cxxt"std::length_error&")
     try
         @show e
-        print(io, bytestring(icxx"$e.what();"))
+        print(io, String(icxx"$e.what();"))
     catch w
         @show w
     end
