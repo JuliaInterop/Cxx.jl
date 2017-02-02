@@ -43,7 +43,7 @@ function ssv(C,e::ANY,ctx,varnum,sourcebuf,typeargs=Dict{Void,Void}())
         name = string(iscc ? "__juliaglobalvar" : "var",varnum)
         sv = CreateTypeDefDecl(C,ctx,name,QT)
     elseif isa(e,TypeVar)
-        str = takebuf_string(sourcebuf)
+        str = String(take!(sourcebuf))
         name = string(iscc ? "__juliaglobalvar" : "var",varnum)
         write(sourcebuf, replace(str, string(iscc ? "__juliavar" : "__julia::var",varnum), name))
         sv = ActOnTypeParameterParserScope(C,name,varnum)
@@ -198,7 +198,7 @@ function ArgCleanup(C,e,sv)
     end
 end
 
-const sourcebuffers = Array(Tuple{AbstractString,Symbol,Int,Int},0)
+const sourcebuffers = Vector{Tuple{AbstractString,Symbol,Int,Int}}()
 
 immutable SourceBuf{id}; end
 sourceid{id}(::Type{SourceBuf{id}}) = id
@@ -404,7 +404,7 @@ function collect_exprs(str)
         push!(exprs, (expr, isexpr))
         i += 1
     end
-    exprs, takebuf_string(sourcebuf)
+    exprs, String(take!(sourcebuf))
 end
 
 collect_icxx(compiler, s, icxxs) = s
@@ -626,8 +626,8 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
             push!(postparse.args,:(Cxx.RealizeTemplates($instance,$ctx,$s)))
             startvarnum += 1
         end
-        parsecode = filename == "" ? :( cxxparse($instance,Cxx.adjust_source($instance,takebuf_string($sourcebuf)),$type_name) ) :
-            :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,takebuf_string($sourcebuf)),
+        parsecode = filename == "" ? :( cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name) ) :
+            :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,String(take!($sourcebuf))),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( line ),
@@ -668,9 +668,9 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
     else
         if type_name
             Expr(:call,Cxx.CxxType,:__current_compiler__,
-                CxxTypeName{Symbol(takebuf_string(sourcebuf))}(),CodeLoc{filename,line,col}(),exprs...)
+                CxxTypeName{Symbol(take!(sourcebuf))}(),CodeLoc{filename,line,col}(),exprs...)
         else
-            push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
+            push!(sourcebuffers,(String(take!(sourcebuf)),filename,line,col))
             id = length(sourcebuffers)
             build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
         end

@@ -24,22 +24,22 @@ init_libcxxffi()
 
 function setup_instance(UsePCH = C_NULL; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
         useDefaultCxxABI=true)
-    x = Array(ClangCompiler,1)
+    x = Ref{ClangCompiler}()
     sysroot = @static is_apple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
     EmitPCH = true
     ccall((:init_clang_instance,libcxxffi),Void,
         (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Ptr{Void}),
         x,target,CPU,sysroot,EmitPCH,makeCCompiler,UsePCH,julia_to_llvm(Any))
     useDefaultCxxABI && ccall((:apply_default_abi, libcxxffi),
-        Void, (Ptr{ClangCompiler},), &x[1])
-    x[1]
+        Void, (Ptr{ClangCompiler},), &x[])
+    x[]
 end
 
 function setup_instance_from_inovcation(invocation)
-    x = Array(ClangCompiler,1)
+    x = Ref{ClangCompiler}()
     ccall((:init_clang_instance_from_invocation,libcxxffi),Void,
         (Ptr{Void},Ptr{Void}), x, invocation)
-    x[1]
+    x[]
 end
 
 # Running global constructors

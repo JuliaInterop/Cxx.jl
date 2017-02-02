@@ -43,7 +43,7 @@ macro icxxdebug_str(str,args...)
     if isempty(args)
         args = (Symbol(""),1,1)
     end
-    push!(sourcebuffers,(takebuf_string(sourcebuf),args...))
+    push!(sourcebuffers,(String(take!(sourcebuf)),args...))
     id = length(sourcebuffers)
     esc(build_icxx_expr(id, exprs, isexprs, Any[], compiler, dumpast_impl))
 end
