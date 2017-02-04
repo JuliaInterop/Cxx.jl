@@ -24,7 +24,7 @@ init_libcxxffi()
 
 function setup_instance(UsePCH = C_NULL; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
         useDefaultCxxABI=true)
-    x = Array(ClangCompiler,1)
+    x = Array{ClangCompiler}(1)
     sysroot = @static is_apple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
     EmitPCH = true
     ccall((:init_clang_instance,libcxxffi),Void,
@@ -36,7 +36,7 @@ function setup_instance(UsePCH = C_NULL; makeCCompiler=false, target = C_NULL, C
 end
 
 function setup_instance_from_inovcation(invocation)
-    x = Array(ClangCompiler,1)
+    x = Array{ClangCompiler}(1)
     ccall((:init_clang_instance_from_invocation,libcxxffi),Void,
         (Ptr{Void},Ptr{Void}), x, invocation)
     x[1]
@@ -60,7 +60,7 @@ function RunGlobalConstructors(C)
     p = convert(Ptr{Void}, CollectGlobalConstructors(C))
     # If p is NULL it means we have no constructors to run
     if p != C_NULL
-        eval(:(llvmcall($p,Void,Tuple{})))
+        eval(:(let f()=llvmcall($p,Void,Tuple{}); f(); end))
     end
 end
 

@@ -135,7 +135,7 @@ $:(push!(test103::Vector{Int32},icxx"return x;"); nothing);
 @test test103 == [5,5]
 
 # The same thing with two arguments
-test2_103 = Array(Tuple{Int32,Int32},0)
+test2_103 = Array{Tuple{Int32,Int32}}(0)
 cxx"""
 void foo2_103() {
 int x = 5;

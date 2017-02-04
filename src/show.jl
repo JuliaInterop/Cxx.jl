@@ -1,4 +1,4 @@
-Base.bytestring(str::vcpp"llvm::StringRef") = Cxx.unsafe_string(icxx"$str.data();",icxx"$str.size();")
+Base.unsafe_string(str::vcpp"llvm::StringRef") = Cxx.unsafe_string(icxx"$str.data();",icxx"$str.size();")
 typename(QT) = Cxx.getTypeNameAsString(QT)
 function typename{T<:Cxx.CxxQualType}(::Type{T})
     C = Cxx.instance(Cxx.__default_compiler__)
@@ -27,7 +27,7 @@ end
             if (field->getAccess() != clang::AS_public)
                 continue;
             $:(begin
-                fieldname = bytestring(icxx"return field->getName();")
+                fieldname = unsafe_string(icxx"return field->getName();")
                 showexpr = Expr(:macrocall,Symbol("@icxx_str"),"
                     auto &r = \$x.$fieldname;
                     return r;

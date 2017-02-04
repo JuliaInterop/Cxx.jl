@@ -20,8 +20,14 @@ Base.convert(::Type{String}, x::Union{StdString,StdStringR}) = String(x)
 Base.convert(::Type{StdString}, x::AbstractString) = icxx"std::string s($(pointer(x)), $(sizeof(x))); s;"
 
 import Base: showerror
+import Cxx: CppValue
+if !isdefined(Core, :UnionAll)
+    uniontypes(U) = U.types
+else
+    const uniontypes = Base.uniontypes
+end
 
-for T in Cxx.CxxBuiltinTypes.types
+for T in uniontypes(Cxx.CxxBuiltinTypes)
     @eval @exception function showerror(io::IO, e::$(T.parameters[1]))
         print(io, e)
     end
@@ -193,4 +199,3 @@ function Base.show{T}(io::IO,
 end
 
 #Cxx.cpptype{T<:Union{ASCIIString,UTF8String}}(C,::Type{T}) = Cxx.cpptype(C,Ptr{UInt8})
-Cxx.cxxtransform(::Type{String},ex) = (Ptr{UInt8},:(pointer($ex)))

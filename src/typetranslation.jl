@@ -139,7 +139,7 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     integralValues = zeros(UInt64,nparams)
     integralValuesPresent = zeros(UInt8,nparams)
     bitwidths = zeros(UInt32,nparams)
-    ts = Array(QualType,nparams)
+    ts = Array{QualType}(nparams)
     for (i,t) in enumerate(targs.parameters)
         if isa(t,Type)
             ts[i] = cpptype(C,t)
@@ -164,7 +164,7 @@ function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     integralValues = zeros(UInt64,length(targs))
     integralValuesPresent = zeros(UInt8,length(targs))
     bitwidths = zeros(UInt32,length(targs))
-    ts = Array(QualType,length(targs))
+    ts = Array{QualType}(length(targs))
     for (i,t) in enumerate(targs)
         if isa(t,pcpp"clang::Type") || isa(t,QualType)
             ts[i] = QualType(t)
@@ -281,7 +281,7 @@ cpptype{f}(C,p::Type{CppFptr{f}}) = pointerTo(C,cpptype(C,f))
 const MappedTypes = Dict{Type, QualType}()
 const InverseMappedTypes = Dict{QualType, Type}()
 function cpptype{T}(C,::Type{T})
-    (!is(T,Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
+    (!(T === Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
     try
     if !haskey(MappedTypes, T)
         AnonClass = CreateAnonymousClass(C, translation_unit(C))
@@ -293,9 +293,9 @@ function cpptype{T}(C,::Type{T})
             linfo = T.name.mt.defs.func
             sig = T.name.mt.defs.sig
             nargt = length(sig.parameters)-1
-            tt = Tuple{T,(Any for _ in 1:nargt)...}
-            (tree, retty) = Core.Inference.typeinf(linfo,tt,svec())
-            if isa(retty,Union) || retty.abstract
+            tt = Tuple{T, (Any for _ in 1:nargt)...}
+            retty = latest_world_return_type(tt)
+            if isa(retty,Union) || isabstract(retty) || retty === Union{}
               error("Inferred Union or abstract type $retty for return value of lambda")
             end
             # Ok, now we need to figure out what arguments we need to declare to C++. For that purpose,
@@ -317,11 +317,11 @@ function cpptype{T}(C,::Type{T})
             if isempty(TPs)
                 Method = CreateCxxCallMethodDecl(C, AnonClass, makeFunctionType(C, cpptype(C, retty), argtQTs))
                 AddCallOpToClass(AnonClass, Method)
-                f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), tt, false, true))
+                f = get_llvmf_decl(tt)
                 @assert f != C_NULL
                 FinalizeAnonClass(C, AnonClass)
                 ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = isbits(T) || isbits(retty),
-                    NeedsBoxed = [false], FirstIsEnv = true, jts = Any[T])
+                    NeedsBoxed = [false], FirstIsEnv = true, retty = retty, jts = Any[T])
             else
                 Params = CreateTemplateParameterList(C,TPs)
                 Method = CreateCxxCallMethodDecl(C, AnonClass, makeFunctionType(C, cpptype(C, retty), argtQTs))
@@ -461,6 +461,13 @@ function isCxxEquivalentType(t)
         (t <: Ref) || (t <: JLCppCast)
 end
 
+if isdefined(Core, :UnionAll)
+include_string("""
+extract_T(::Type{S}) where (T,S<:Cxx.CppValue{T,N} where N) = T
+""")
+else
+extract_T(S) = S.parameters[1]
+end
 
 function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         wrapvalue = true, valuecvr = true)
@@ -481,7 +488,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
             (tt.args[1] == :CppValue || tt.args[1] == :CppPtr || tt.args[1] == :CppRef) :
             (tt <: CppValue || tt <: CppPtr || tt <: CppRef)
             if isa(tt,Expr) ? tt.args[1] == :CppValue : tt <: CppValue
-                tt = isa(tt,Expr) ? tt.args[2] : tt.parameters[1]
+                tt = isa(tt,Expr) ? tt.args[2] : extract_T(tt)
             end
             xT = quoted ? :(CppPtr{$tt,$CVR}) : CppPtr{tt, CVR}
             # As a special case, if we're returning a jl_value_t *, interpret it

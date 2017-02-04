@@ -43,7 +43,7 @@ function ssv(C,e::ANY,ctx,varnum,sourcebuf,typeargs=Dict{Void,Void}())
         name = string(iscc ? "__juliaglobalvar" : "var",varnum)
         sv = CreateTypeDefDecl(C,ctx,name,QT)
     elseif isa(e,TypeVar)
-        str = takebuf_string(sourcebuf)
+        str = String(take!(sourcebuf))
         name = string(iscc ? "__juliaglobalvar" : "var",varnum)
         write(sourcebuf, replace(str, string(iscc ? "__juliavar" : "__julia::var",varnum), name))
         sv = ActOnTypeParameterParserScope(C,name,varnum)
@@ -83,6 +83,41 @@ function CreateLambdaCallExpr(C, T, argt = [])
 end
 
 const lambda_roots = Function[]
+
+function latest_world_return_type(tt)
+    if VERSION >= v"0.6-"
+        params = Core.Inference.InferenceParams(typemax(UInt))
+        rt = Union{}
+        for m in Base._methods_by_ftype(tt, -1, params.world)
+            ty = Core.Inference.typeinf_type(m[3], m[1], m[2], true, params)
+            ty === nothing && return Any
+            rt = Core.Inference.tmerge(rt, ty)
+            rt === Any && break
+        end
+        return rt
+    else
+        linfo = tt.parameters[1].name.mt.defs.func
+        (tree, retty) = Core.Inference.typeinf(linfo,tt,svec())
+        return retty
+    end
+end
+
+function get_llvmf_decl(tt)
+  # We can emit a direct llvm-level reference to this
+  if VERSION > v"0.6-"
+    params = Base.CodegenParams()
+    world = typemax(UInt)
+    (ti, env, meth) = Base._methods_by_ftype(tt, 1, world)[1]
+    #(ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
+    meth = Base.func_for_method_checked(meth, tt)
+    linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, tt, env, world)
+    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Void}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
+  else
+    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool),
+      tt, false, true))
+  end
+  f
+end
 
 # TODO: It would be good if this could be invoked as a callback when Clang instantiates
 # a template.
@@ -125,8 +160,8 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         end
 
         linfo = F.func
-        ST = Tuple{LambdaT, specTypes...}
-        (tree, ty) = Core.Inference.typeinf(linfo,ST,svec())
+        tt = Tuple{LambdaT, specTypes...}
+        ty = latest_world_return_type(tt)
         T = ty
 
         if T === Union{}
@@ -135,9 +170,8 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         if isa(T,Union) || T.abstract
           error("Inferred Union or abstract type $T for expression $F")
         end
+        f = get_llvmf_decl(tt)
 
-        # We can emit a direct llvm-level reference to this
-        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), ST, false, true))
         @assert f != C_NULL
 
         # Create a Clang function Decl to represent this julia function
@@ -181,7 +215,7 @@ end
 function ArgCleanup(C,e,sv)
     if isa(sv,pcpp"clang::FunctionDecl")
         tt = Tuple{typeof(e)}
-        f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), tt, false, true))
+        f = get_llvmf_decl(tt)
         @assert f != C_NULL
         ReplaceFunctionForDecl(C,sv,f)
     elseif !isa(e,Type) && !isa(e,TypeVar)
@@ -198,7 +232,7 @@ function ArgCleanup(C,e,sv)
     end
 end
 
-const sourcebuffers = Array(Tuple{AbstractString,Symbol,Int,Int},0)
+const sourcebuffers = Array{Tuple{AbstractString,Symbol,Int,Int}}(0)
 
 immutable SourceBuf{id}; end
 sourceid{id}(::Type{SourceBuf{id}}) = id
@@ -339,26 +373,6 @@ function CallDNE(C, dne, argt; kwargs...)
     EmitExpr(C,ce,C_NULL,C_NULL,argt,pvds; kwargs...)
 end
 
-@generated function cxxstr_impl(CT, sourcebuf, args...)
-    C = instance(CT)
-    id = sourceid(sourcebuf)
-    buf, filename, line, col = sourcebuffers[id]
-
-    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
-    EmitTopLevelDecl(C,FD)
-
-    for T in args
-        if haskey(MappedTypes, T)
-            InstantiateSpecializationsForType(C, toctx(translation_unit(C)), T)
-        end
-    end
-
-    dne = CreateDeclRefExpr(C,FD)
-    argt = tuple(llvmargs...)
-    expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
-    expr
-end
-
 #
 # Generate a virtual name for a file in the same directory as `filename`.
 # This will be the virtual filename for clang to refer to the source snippet by.
@@ -404,7 +418,7 @@ function collect_exprs(str)
         push!(exprs, (expr, isexpr))
         i += 1
     end
-    exprs, takebuf_string(sourcebuf)
+    exprs, String(take!(sourcebuf))
 end
 
 collect_icxx(compiler, s, icxxs) = s
@@ -626,8 +640,8 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
             push!(postparse.args,:(Cxx.RealizeTemplates($instance,$ctx,$s)))
             startvarnum += 1
         end
-        parsecode = filename == "" ? :( cxxparse($instance,Cxx.adjust_source($instance,takebuf_string($sourcebuf)),$type_name) ) :
-            :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,takebuf_string($sourcebuf)),
+        parsecode = filename == "" ? :( cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name) ) :
+            :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,String(take!($sourcebuf))),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( line ),
@@ -668,14 +682,35 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
     else
         if type_name
             Expr(:call,Cxx.CxxType,:__current_compiler__,
-                CxxTypeName{Symbol(takebuf_string(sourcebuf))}(),CodeLoc{filename,line,col}(),exprs...)
+                CxxTypeName{Symbol(String(take!(sourcebuf)))}(),CodeLoc{filename,line,col}(),exprs...)
         else
-            push!(sourcebuffers,(takebuf_string(sourcebuf),filename,line,col))
+            push!(sourcebuffers,(String(take!(sourcebuf)),filename,line,col))
             id = length(sourcebuffers)
             build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
         end
     end
 end
+
+@generated function cxxstr_impl(CT, sourcebuf, args...)
+    C = instance(CT)
+    id = sourceid(sourcebuf)
+    buf, filename, line, col = sourcebuffers[id]
+
+    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
+    EmitTopLevelDecl(C,FD)
+
+    for T in args
+        if haskey(MappedTypes, T)
+            InstantiateSpecializationsForType(C, toctx(translation_unit(C)), T)
+        end
+    end
+
+    dne = CreateDeclRefExpr(C,FD)
+    argt = tuple(llvmargs...)
+    expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
+    expr
+end
+
 
 macro cxx_str(str,args...)
     esc(process_cxx_string(str,true,false,args...))
