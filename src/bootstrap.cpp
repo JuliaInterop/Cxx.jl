@@ -554,7 +554,8 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
                               const clang::CodeGen::CGFunctionInfo &FI,
                               clang::FunctionDecl *FD,
                               bool specsig, bool firstIsEnv,
-                              bool *needsbox, void **juliatypes) {
+                              bool *needsbox, void *jl_retty,
+                              void **juliatypes) {
   std::vector<Type*> ArgTypes;
   llvm::ValueToValueMapTy VMap;
 
@@ -686,8 +687,10 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
 
     Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
         builder.GetInsertPoint());
-    if (Call->getType()->isPointerTy() &&
-      cast<PointerType>(Call->getType())->getElementType()->isAggregateType()) {
+    bool isboxed = false;
+    Type *retty = f_julia_type_to_llvm(jl_retty, &isboxed);
+    if (isboxed || (Call->getType()->isPointerTy() &&
+      cast<PointerType>(Call->getType())->getElementType()->isAggregateType())) {
       Cxx->CGF->EmitAggregateCopy(Cxx->CGF->ReturnValue,
 #ifdef LLVM38
                                   clang::CodeGen::Address(Call,clang::CharUnits::fromQuantity(sizeof(void*))),
@@ -803,7 +806,7 @@ JL_DLLEXPORT void *DeleteUnusedArguments(llvm::Function *F, uint64_t *dtodelete,
 }
 
 
-JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool firstIsEnv, bool *needsbox, void **juliatypes)
+JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool firstIsEnv, bool *needsbox, void *retty, void **juliatypes)
 {
   const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
   llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
@@ -815,7 +818,7 @@ JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Functio
   llvm::ValueToValueMapTy VMap;
   llvm::ClonedCodeInfo CCI;
 
-  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,specsig,firstIsEnv,needsbox,juliatypes);
+  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,specsig,firstIsEnv,needsbox,retty,juliatypes);
   // TODO: Ideally we would delete the cloned function
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
@@ -1316,8 +1319,8 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
         Cxx->CI->getLangOpts().CPlusPlus = 1;
         Cxx->CI->getLangOpts().CPlusPlus11 = 1;
         Cxx->CI->getLangOpts().CPlusPlus14 = 1;
-        Cxx->CI->getLangOpts().RTTI = 0;
-        Cxx->CI->getLangOpts().RTTIData = 0;
+        Cxx->CI->getLangOpts().RTTI = 1;
+        Cxx->CI->getLangOpts().RTTIData = 1;
         Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
         Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
         Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions

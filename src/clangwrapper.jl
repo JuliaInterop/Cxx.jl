@@ -375,11 +375,12 @@ AddDeclToDeclCtx(DC::pcpp"clang::DeclContext",D::pcpp"clang::Decl") =
     ccall((:AddDeclToDeclCtx,libcxxffi),Void,(Ptr{Void},Ptr{Void}),DC,D)
 
 function ReplaceFunctionForDecl(C,sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Function";
-        DoInline = true, specsig = false, FirstIsEnv = false, NeedsBoxed = C_NULL, jts = C_NULL)
+        DoInline = true, specsig = false, FirstIsEnv = false, NeedsBoxed = C_NULL,
+        retty = Any, jts = C_NULL)
     @assert sv != C_NULL
     ccall((:ReplaceFunctionForDecl,libcxxffi),Void,
-        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Bool,Ptr{Bool},Ptr{Void}),
-        &C,sv,f,DoInline,specsig,FirstIsEnv,NeedsBoxed,jts)
+        (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Bool,Ptr{Bool},Any,Ptr{Void}),
+        &C,sv,f,DoInline,specsig,FirstIsEnv,NeedsBoxed,retty,jts)
 end
 
 function ReplaceFunctionForDecl(C,sv::pcpp"clang::CXXMethodDecl",f::pcpp"llvm::Function"; kwargs...)
@@ -535,7 +536,7 @@ CreateFunctionTemplateDecl(C, DC::pcpp"clang::DeclContext", Params, FD) =
 function getSpecializations(FTD::pcpp"clang::FunctionTemplateDecl")
     v = ccall((:newFDVector,libcxxffi),Ptr{Void},())
     ccall((:getSpecializations,libcxxffi),Void,(Ptr{Void},Ptr{Void}),FTD,v)
-    ret = Array(pcpp"clang::FunctionDecl",ccall((:getFDVectorSize,libcxxffi),Csize_t,(Ptr{Void},),v))
+    ret = Array{pcpp"clang::FunctionDecl"}(ccall((:getFDVectorSize,libcxxffi),Csize_t,(Ptr{Void},),v))
     ccall((:copyFDVector,libcxxffi),Void,(Ptr{Void},Ptr{Void}),ret,v);
     ccall((:deleteFDVector,libcxxffi),Void,(Ptr{Void},),v)
     ret
@@ -678,7 +679,7 @@ getParent(CxxMD::pcpp"clang::CXXMethodDecl") = pcpp"clang::CXXRecordDecl"(ccall(
 decouple_pch(C) = ccall((:decouple_pch,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
 
 function ParseParameterList(C,nparams)
-    params = Array(Ptr{Void},nparams)
+    params = Array{Ptr{Void}}(nparams)
     ccall((:ParseParameterList,Cxx.libcxxffi),Void,
         (Ptr{Cxx.ClangCompiler},Ptr{Void},Csize_t),&C,params,length(params))
     [pcpp"clang::ParmVarDecl"(p) for p in params]

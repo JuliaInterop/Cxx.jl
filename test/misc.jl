@@ -186,7 +186,7 @@ try
 catch e
     buf = IOBuffer();
     showerror(buf,e)
-    @assert takebuf_string(buf) == "20"
+    @assert String(take!(buf)) == "20"
 end
 
 cxx"""
@@ -209,7 +209,7 @@ try
 catch e
     buf = IOBuffer();
     showerror(buf,e)
-    @assert takebuf_string(buf) == "5"
+    @assert String(take!(buf)) == "5"
 end
 
 
@@ -282,7 +282,6 @@ struct foostruct {
 end
 
 @test icxx"foostruct{1,0}.Add1();" == 2
-
 
 @cxxm "struct foostruct foostruct::Add(struct foostruct other)" begin
     icxx"return foostruct{$this->x+$other.x,$this->y+$other.y};"

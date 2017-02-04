@@ -93,7 +93,7 @@ module CxxREPL
     end
 
     function isTopLevelExpression(C,data)
-        @assert data[end] == '\0'
+        @assert Int(data[end]) == 0
         if contains(data,":=")
             return false
         end

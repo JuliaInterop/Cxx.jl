@@ -147,6 +147,9 @@ include(pathfile)
 using Base.Meta
 using Core: svec
 
+import Compat
+using Compat.TypeUtils
+
 export cast,
        @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr, @cxxt_str,
        @cxx, @cxxnew, @jpcpp_str, @exception, @cxxm,

@@ -359,7 +359,7 @@ end
 #
 # Returns the list of processed arguments
 function llvmargs(C, builder, f, argt)
-    args = Array(pcpp"llvm::Value", length(argt))
+    args = Array{pcpp"llvm::Value"}(length(argt))
     for i in 1:length(argt)
         t = argt[i]
         args[i] = pcpp"llvm::Value"(ccall(
@@ -373,7 +373,8 @@ function llvmargs(C, builder, f, argt)
     args
 end
 
-cxxtransform(T,ex) = (T,ex)
+cxxtransform(T,ex) = (T, ex)
+cxxtransform(::Type{String},ex) = (Ptr{UInt8},:(pointer($ex)))
 
 function buildargexprs(C, argt; derefval = true)
     callargs = pcpp"clang::Expr"[]
@@ -436,74 +437,6 @@ function check_args(argt,f)
             !(t <: CxxBuiltinTs))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
-    end
-end
-
-
-#
-# Code generation for value references (basically everything that's not a call).
-# Syntactically, these are of the form
-#
-#   - @cxx foo
-#   - @cxx foo::bar
-#   - @cxx foo->bar
-#
-
-# Handle member references, i.e. syntax of the form `@cxx foo->bar`
-@generated function cxxmemref(CT::CxxInstance, expr, args...)
-    C = instance(CT)
-    this = args[1]
-    check_args([this], expr)
-    isaddrof = false
-    if expr <: CppAddr
-        expr = expr.parameters[1]
-        isaddrof = true
-    end
-    exprs, pvds = buildargexprs(C,[this])
-    me = BuildMemberReference(C, exprs[1], cpptype(C, this), this <: CppPtr,
-        expr.parameters[1])
-    isaddrof && (me = CreateAddrOfExpr(C,me))
-    emitRefExpr(C, me, pvds[1], this)
-end
-
-# Handle all other references. This is more complicated than the above for two
-# reasons.
-# a) We can reference types (e.g. `@cxx int`)
-# b) Clang cares about how the reference was qualified, so we need to deal with
-#    cxxscopes.
-@generated function cxxref(CT,expr)
-    C = instance(CT)
-    isaddrof = false
-    if expr <: CppAddr
-        expr = expr.parameters[1]
-        isaddrof = true
-    end
-
-    cxxscope = newCXXScopeSpec(C)
-    d = declfornns(C,expr,cxxscope)
-    @assert d != C_NULL
-
-    # If this is a typedef or something we'll try to get the primary one
-    primary_decl = to_decl(primary_ctx(toctx(d)))
-    if primary_decl != C_NULL
-        d = primary_decl
-    end
-
-    if isaValueDecl(d)
-        expr = dre = CreateDeclRefExpr(C, d;
-            islvalue = isaVarDecl(d) ||
-                (isaFunctionDecl(d) && !isaCXXMethodDecl(d)),
-            cxxscope=cxxscope)
-
-        deleteCXXScopeSpec(cxxscope)
-
-        if isaddrof
-            expr = CreateAddrOfExpr(C,dre)
-        end
-
-        return emitRefExpr(C, expr)
-    else
-        return :( $(juliatype(QualType(typeForDecl(d)))) )
     end
 end
 
@@ -688,10 +621,10 @@ end
 function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     builder = irbuilder(C)
     argt = Type[argt...]
-    map!(argt) do x
+    map!(argt, argt) do x
         (isCxxEquivalentType(x) || x <: CxxBuiltinTs) ? x : Ref{x}
     end
-    llvmargt = [argt...]
+    llvmargt = Type[argt...]
     issret = false
     rslot = C_NULL
     rt = C_NULL
@@ -822,6 +755,73 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         return B
     else
         return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),rett,Tuple{argt...},args2...)
+    end
+end
+
+#
+# Code generation for value references (basically everything that's not a call).
+# Syntactically, these are of the form
+#
+#   - @cxx foo
+#   - @cxx foo::bar
+#   - @cxx foo->bar
+#
+
+# Handle member references, i.e. syntax of the form `@cxx foo->bar`
+@generated function cxxmemref(CT::CxxInstance, expr, args...)
+    C = instance(CT)
+    this = args[1]
+    check_args([this], expr)
+    isaddrof = false
+    if expr <: CppAddr
+        expr = expr.parameters[1]
+        isaddrof = true
+    end
+    exprs, pvds = buildargexprs(C,[this])
+    me = BuildMemberReference(C, exprs[1], cpptype(C, this), this <: CppPtr,
+        expr.parameters[1])
+    isaddrof && (me = CreateAddrOfExpr(C,me))
+    emitRefExpr(C, me, pvds[1], this)
+end
+
+# Handle all other references. This is more complicated than the above for two
+# reasons.
+# a) We can reference types (e.g. `@cxx int`)
+# b) Clang cares about how the reference was qualified, so we need to deal with
+#    cxxscopes.
+@generated function cxxref(CT,expr)
+    C = instance(CT)
+    isaddrof = false
+    if expr <: CppAddr
+        expr = expr.parameters[1]
+        isaddrof = true
+    end
+
+    cxxscope = newCXXScopeSpec(C)
+    d = declfornns(C,expr,cxxscope)
+    @assert d != C_NULL
+
+    # If this is a typedef or something we'll try to get the primary one
+    primary_decl = to_decl(primary_ctx(toctx(d)))
+    if primary_decl != C_NULL
+        d = primary_decl
+    end
+
+    if isaValueDecl(d)
+        expr = dre = CreateDeclRefExpr(C, d;
+            islvalue = isaVarDecl(d) ||
+                (isaFunctionDecl(d) && !isaCXXMethodDecl(d)),
+            cxxscope=cxxscope)
+
+        deleteCXXScopeSpec(cxxscope)
+
+        if isaddrof
+            expr = CreateAddrOfExpr(C,dre)
+        end
+
+        return emitRefExpr(C, expr)
+    else
+        return :( $(juliatype(QualType(typeForDecl(d)))) )
     end
 end
 
