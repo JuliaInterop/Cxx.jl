@@ -16,36 +16,11 @@ In addition to the [system requirements](https://github.com/JuliaLang/julia#requ
 - *Debian/Ubuntu*: `libedit-dev`, `libncurses5-dev`
 - *RedHat/CentOS*: `libedit-devel`
 
-#### Building julia
-
-Get the latest git checkout from https://github.com/JuliaLang/julia.git then add (or add to) a ```Make.user``` file at the top level with the following lines:
-```sh
-#GCC >= 5 will not work
-#override USECLANG=1
-override BUILD_LLVM_CLANG=1
-override USE_LLVM_SHLIB=1
-# Optional, but recommended
-override LLVM_ASSERTIONS=1
-# For LLDB support also
-# override BUILD_LLDB=1
-# override LLDB_DISABLE_PYTHON=1
-```
-
-If you're feeling adventure adventurous, you may also use `LLVM_VER=svn` instead, directly pulls in the latest LLVM version.
-This configuration may have more features (and is the development version), but may break unexpectedly if upstream makes changes.
-
-Then build simply with `make`. 
-
-Test your build of julia with `make testall`.
-
-Optionally, also build the debug build of julia with `make debug`. If available, this will be used in the next step.
-
 #### Building Cxx
 
-Launch the julia you just built, and in the terminal type
+Launch julia (version 0.5 or greater), and in the terminal type
 ```julia
-Pkg.clone("https://github.com/Keno/Cxx.jl.git")
-Pkg.build("Cxx")   
+Pkg.add("Cxx")
 ```
 
 ### How it works
