@@ -484,9 +484,9 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         tt = juliatype(pt,quoted,typeargs)
         if isa(tt,Expr) ? tt.args[1] == :CppFunc : tt <: CppFunc
             return quoted ? :(CppFptr{$tt}) : CppFptr{tt}
-        elseif CVR != NullCVR || isa(tt,Expr) ?
+        elseif CVR != NullCVR || (isa(tt,Expr) ?
             (tt.args[1] == :CppValue || tt.args[1] == :CppPtr || tt.args[1] == :CppRef) :
-            (tt <: CppValue || tt <: CppPtr || tt <: CppRef)
+            (tt <: CppValue || tt <: CppPtr || tt <: CppRef))
             if isa(tt,Expr) ? tt.args[1] == :CppValue : tt <: CppValue
                 tt = isa(tt,Expr) ? tt.args[2] : extract_T(tt)
             end

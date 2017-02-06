@@ -427,3 +427,6 @@ template <typename T> struct bar303 {
 """
 @assert typeof(@cxx bar303{foo303}()) <: cxxt"bar303<foo303>"
 @assert typeof(@cxx bar303{ns303::nsedfoo303}()) <: cxxt"bar303<ns303::nsedfoo303>"
+
+# Type translation for pointer parameters
+@assert typeof(icxx"std::map<int *, int>{};") == cxxt"std::map<int *, int>"

@@ -13,6 +13,16 @@ const StdString = cxxt"std::string"
 const StdStringR = cxxt"std::string&"
 typealias StdVector{T} Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
 typealias StdMap{K,V} cxxt"std::map<$K,$V>"
+if isdefined(Core, :UnionAll)
+include_string("""
+const GenericStdMap =
+  Cxx.CppValue{Cxx.CxxQualType{Cxx.CppTemplate{
+    Cxx.CppBaseType{Symbol("std::map")},Stuff},
+    (false, false, false)},N} where N where Stuff
+""")
+else
+const GenericStdMap = StdMap
+end
 
 unsafe_string(str::Union{StdString,StdStringR}) = unsafe_string((@cxx str->data()),@cxx str->size())
 String(str::Union{StdString,StdStringR}) = unsafe_string(str)
@@ -79,14 +89,14 @@ Base.deleteat!(v::StdVector,idxs::UnitRange) =
 Base.push!(v::StdVector,i) = icxx"$v.push_back($i);"
 Base.resize!(v::StdVector, n) = icxx"$v.resize($n);"
 
-Base.start(map::StdMap) = icxx"$map.begin();"
-function Base.next(map::StdMap,i)
+Base.start(map::GenericStdMap) = icxx"$map.begin();"
+function Base.next(map::GenericStdMap,i)
     v = icxx"$i->first;" => icxx"$i->second;"
     icxx"++$i;"
     (v,i)
 end
-Base.done(map::StdMap,i) = icxx"$i == $map.end();"
-Base.length(map::StdMap) = icxx"$map.size();"
+Base.done(map::GenericStdMap,i) = icxx"$i == $map.end();"
+Base.length(map::GenericStdMap) = icxx"$map.size();"
 Base.eltype{K,V}(::Type{StdMap{K,V}}) = Pair{K,V}
 
 Base.pointer(v::StdVector) = pointer(v, 0)
