@@ -189,4 +189,4 @@ pcpp{T,N}(x::Type{CppValue{T,N}}) = CppPtr{T,NullCVR}
 pcpp{T}(x::Type{CppValue{T}}) = CppPtr{T,NullCVR}
 
 # Convert C++ QualType representation to julia representation
-Base.convert(::Type{QualType},T::vcpp"clang::QualType") = QualType(reinterpret(Ptr{UInt8}, T.data))
+QualType(T::vcpp"clang::QualType") = reinterpret(QualType, [T.data])[]

@@ -657,6 +657,11 @@ getUnderlyingTemplateDecl(TST) =
     pcpp"clang::TemplateDecl"(ccall((:getUnderlyingTemplateDecl,libcxxffi),Ptr{Void},(Ptr{Void},),TST))
 
 desugar(T::pcpp"clang::ElaboratedType") = QualType(ccall((:desugarElaboratedType,libcxxffi),Ptr{Void},(Ptr{Void},),T))
+function desugar(T::QualType)
+    T′ = extractTypePtr(T)
+    @assert isElaboratedType(T′)
+    QualType(ccall((:desugarElaboratedType,libcxxffi),Ptr{Void},(Ptr{Void},),T′))
+end
 
 getTTPTIndex(T::pcpp"clang::TemplateTypeParmType") = ccall((:getTTPTIndex, libcxxffi), Cuint, (Ptr{Void},), T)
 
