@@ -353,6 +353,11 @@ function initialize_instance!(C; register_boot = true)
     if !nostdcxx
         addStdHeaders(C)
     end
+    #user-configurable C++ runtime dirs in case nostdcxx was specified
+    header_dirs = split(get(ENV, "CXXJL_HEADER_DIRS", ""), ":")
+    for dir in header_dirs
+        addHeaderDir(C, dir, kind = C_System)
+    end
     addClangHeaders(C)
     register_boot && register_booth(C)
 end
