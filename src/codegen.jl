@@ -591,7 +591,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
                 end
             else
                 myctx = getContext(d)
-                while declKind(myctx) == LinkageSpec
+                while declKind(myctx) == kindLinkageSpec
                     myctx = getParentContext(myctx)
                 end
                 @assert myctx != C_NULL

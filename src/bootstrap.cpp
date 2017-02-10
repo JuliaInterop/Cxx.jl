@@ -15,9 +15,31 @@
 #undef NDEBUG
 #endif
 
+#include "llvm/Config/llvm-config.h"
+
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 6
+#define LLVM36 1
+#endif
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 8
+#define LLVM38 1
+#endif
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 9
+#define LLVM39 1
+#endif
+#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR >= 4
+#define LLVM36 1
+#define LLVM38 1
+#define LLVM39 1
+#define LLVM40 1
+#endif
+
 // LLVM includes
 #include "llvm/ADT/DenseMapInfo.h"
+#ifdef LLVM40
+#include "llvm/Bitcode/BitcodeWriter.h"
+#else
 #include "llvm/Bitcode/ReaderWriter.h"
+#endif
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Host.h"
@@ -86,16 +108,6 @@
 #else
 #define STDCALL
 #define JL_DLLEXPORT __attribute__ ((visibility("default")))
-#endif
-
-#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 6
-#define LLVM36 1
-#endif
-#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 8
-#define LLVM38 1
-#endif
-#if defined(LLVM_VERSION_MAJOR) && LLVM_VERSION_MAJOR == 3 && LLVM_VERSION_MINOR >= 9
-#define LLVM39 1
 #endif
 
 #ifndef OLD_NDEBUG
@@ -304,7 +316,8 @@ typedef llvm::IRBuilder<true> CxxIRBuilder;
 JL_DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
 {
     clang::CodeGen::CodeGenModule::CtorList &ctors = Cxx->CGM->getGlobalCtors();
-    if (ctors.empty()) {
+    GlobalVariable *GV = Cxx->shadow->getGlobalVariable("llvm.global_ctors");
+    if (ctors.empty() && !GV) {
         return NULL;
     }
 
@@ -314,13 +327,33 @@ JL_DLLEXPORT llvm::Function *CollectGlobalConstructors(C)
           llvm::Type::getVoidTy(jl_LLVMContext),
           false),
       llvm::GlobalValue::ExternalLinkage,
-      "",
+      "test",
       Cxx->shadow
       );
     CxxIRBuilder builder(BasicBlock::Create(jl_LLVMContext, "top", InitF));
 
+/*
     for (auto ctor : ctors) {
         builder.CreateCall(ctor.Initializer, {});
+    }
+*/
+
+    llvm::ConstantArray *List = llvm::dyn_cast<llvm::ConstantArray>(GV->getInitializer());
+    GV->eraseFromParent();
+
+    if (List != nullptr) {
+      for (auto &op : List->operands()) {
+        if (!llvm::isa<llvm::ConstantStruct>(op.get()))
+          continue;
+        llvm::Constant *TheFunction = llvm::cast<llvm::ConstantStruct>(op.get())->getOperand(1);
+        // Strip off constant expression casts.
+        if (llvm::ConstantExpr *CE = llvm::dyn_cast<llvm::ConstantExpr>(TheFunction))
+          if (CE->isCast())
+            TheFunction = CE->getOperand(0);
+        if (llvm::Function *F = llvm::dyn_cast<llvm::Function>(TheFunction)) {
+          builder.CreateCall(F, {});
+        }
+      }
     }
 
     builder.CreateRetVoid();
@@ -381,6 +414,20 @@ JL_DLLEXPORT bool BuildNNS(C, clang::CXXScopeSpec *spec, const char *Name)
   clang::Preprocessor &PP = Cxx->CI->getPreprocessor();
   // Get the identifier.
   clang::IdentifierInfo *Id = PP.getIdentifierInfo(Name);
+#ifdef LLVM40
+  clang::Sema::NestedNameSpecInfo NNSI(Id,
+    getTrivialSourceLocation(Cxx),
+    getTrivialSourceLocation(Cxx),
+    clang::QualType());
+    return Cxx->CI->getSema().BuildCXXNestedNameSpecifier(
+    nullptr, NNSI,
+    false,
+    *spec,
+    nullptr,
+    false,
+    nullptr
+  );
+#else
   return Cxx->CI->getSema().BuildCXXNestedNameSpecifier(
     nullptr, *Id,
     getTrivialSourceLocation(Cxx),
@@ -392,6 +439,7 @@ JL_DLLEXPORT bool BuildNNS(C, clang::CXXScopeSpec *spec, const char *Name)
     false,
     nullptr
   );
+#endif
 }
 
 JL_DLLEXPORT void *lookup_name(C, char *name, clang::DeclContext *ctx)
@@ -1020,7 +1068,11 @@ JL_DLLEXPORT void *BuildCXXNewExpr(C, clang::Type *type, clang::Expr **exprs, si
     NULL, clang::SourceRange(sm.getLocForStartOfFile(sm.getMainFileID()),
       sm.getLocForStartOfFile(sm.getMainFileID())),
     new (Cxx->CI->getASTContext()) clang::ParenListExpr(Cxx->CI->getASTContext(),getTrivialSourceLocation(Cxx),
-      ArrayRef<clang::Expr*>(exprs, nexprs), getTrivialSourceLocation(Cxx)), false).get();
+      ArrayRef<clang::Expr*>(exprs, nexprs), getTrivialSourceLocation(Cxx))
+#ifndef LLVM40
+      ,false
+#endif
+    ).get();
   //return (clang_astcontext) new clang::CXXNewExpr(clang_astcontext, false, nE, dE, )
 }
 
@@ -1261,11 +1313,21 @@ public:
     clang::Module *Module, StringRef isysroot,
     std::shared_ptr<clang::PCHBuffer> Buffer
 #ifdef LLVM38
-    ,ArrayRef<llvm::IntrusiveRefCntPtr<clang::ModuleFileExtension>> Extensions,
+    ,ArrayRef<
+#ifdef LLVM40
+    std::shared_ptr<
+#else
+    llvm::IntrusiveRefCntPtr<
+#endif
+    clang::ModuleFileExtension>> Extensions,
     bool IncludeTimestamps = true
 #endif
     ,bool AllowASTWithErrors = false) :
-  PCHGenerator(PP,OutputFile,Module,isysroot,Buffer,
+  PCHGenerator(PP,OutputFile,
+#ifndef LLVM40
+              Module,
+#endif
+              isysroot,Buffer,
 #ifdef LLVM38
                Extensions,
 #endif
@@ -1319,8 +1381,8 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
         Cxx->CI->getLangOpts().CPlusPlus = 1;
         Cxx->CI->getLangOpts().CPlusPlus11 = 1;
         Cxx->CI->getLangOpts().CPlusPlus14 = 1;
-        Cxx->CI->getLangOpts().RTTI = 1;
-        Cxx->CI->getLangOpts().RTTIData = 1;
+        Cxx->CI->getLangOpts().RTTI = 0;
+        Cxx->CI->getLangOpts().RTTIData = 0;
         Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
         Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
         Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
@@ -1476,7 +1538,11 @@ JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *CPU, co
 JL_DLLEXPORT void init_clang_instance_from_invocation(C, clang::CompilerInvocation *Inv)
 {
     Cxx->CI = new clang::CompilerInstance;
+#ifdef LLVM40
+    Cxx->CI->setInvocation(std::shared_ptr<clang::CompilerInvocation>(Inv));
+#else
     Cxx->CI->setInvocation(Inv);
+#endif
     set_common_options(Cxx);
     finish_clang_init(Cxx, false, nullptr);
 }
@@ -2569,7 +2635,11 @@ JL_DLLEXPORT void *CreateTemplateParameterList(C, clang::NamedDecl **D, size_t N
 {
 #ifdef LLVM38
   return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(),
-    clang::SourceLocation(), ArrayRef<clang::NamedDecl*>(D, ND), clang::SourceLocation());
+    clang::SourceLocation(), ArrayRef<clang::NamedDecl*>(D, ND), clang::SourceLocation()
+#ifdef LLVM40
+    , nullptr
+#endif
+    );
 #else
   return (void*)clang::TemplateParameterList::Create(Cxx->CI->getASTContext(), clang::SourceLocation(), clang::SourceLocation(), D, ND, clang::SourceLocation());
 #endif

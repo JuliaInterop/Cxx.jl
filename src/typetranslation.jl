@@ -463,7 +463,7 @@ end
 
 if isdefined(Core, :UnionAll)
 include_string("""
-extract_T(::Type{S}) where (T,S<:Cxx.CppValue{T,N} where N) = T
+extract_T(::Type{S}) where {T,S<:Cxx.CppValue{T,N} where N} = T
 """)
 else
 extract_T(S) = S.parameters[1]

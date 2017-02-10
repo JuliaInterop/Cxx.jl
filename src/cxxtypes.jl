@@ -80,10 +80,22 @@ end
 # The equivalent of a C++ on-stack value.
 # T is a CppBaseType or a CppTemplate
 # See note on CVR above
+if isdefined(Core, :UnionAll)
+include_string("""
+type CppValue{T,N}
+    data::NTuple{N,UInt8}
+    CppValue{T,N}(data::NTuple{N,UInt8}) where {T,N} = new(data)
+    CppValue{T,N}() where {T,N} = new()
+end
+""")
+else
+include_string("""
 type CppValue{T,N}
     data::NTuple{N,UInt8}
     CppValue(data::NTuple{N,UInt8}) = new(data)
     CppValue() = new()
+end
+""")
 end
 
 # The equivalent of a C++ reference
