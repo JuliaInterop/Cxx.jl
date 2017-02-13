@@ -46,11 +46,12 @@ LIBDIR := $(BASE_JULIA_BIN)/../lib
 endif
 
 CLANG_LIBS = clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse \
-	clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
-	clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers \
-	clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore \
-	clangCodeGen clangARCMigrate clangFormat
+        clangAST clangASTMatchers clangSema clangAnalysis clangEdit \
+        clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers \
+        clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore \
+        clangCodeGen clangARCMigrate clangFormat
 
+ifneq ($(PREBUILT_CI_BINARIES),1)
 # If clang is not built by base julia, build it ourselves 
 ifeq ($(BUILD_LLVM_CLANG),)
 ifeq ($(LLVM_VER),svn)
@@ -120,6 +121,16 @@ JULIA_LDFLAGS = -L$(BASE_JULIA_BIN)/../lib -L$(BASE_JULIA_BIN)/../lib/julia
 CXXJL_CPPFLAGS += -I$(JULIA_SRC)/deps/srccache/llvm-$(LLVM_VER)/tools/clang/lib \
 		-I$(JULIA_SRC)/deps/llvm-$(LLVM_VER)/tools/clang/lib
 endif
+else
+LLVM_SRC_DIR := src/llvm-$(LLVM_VER)
+CLANG_CMAKE_DEP = build/llvm-$(LLVM_VER)/bin/llvm-config
+LLVM_CONFIG = ../llvm-$(LLVM_VER)/bin/llvm-config
+JULIA_LDFLAGS += -Lbuild/clang-$(LLVM_VER)/lib
+LLVM_HEADER_DIRS = src/llvm-$(LLVM_VER)/include build/llvm-$(LLVM_VER)/include
+CXXJL_CPPFLAGS += -Isrc/clang-$(LLVM_VER)/lib -Ibuild/clang-$(LLVM_VER)/include \
+        -Isrc/clang-$(LLVM_VER)/include
+JULIA_LDFLAGS += -L$(BASE_JULIA_BIN)/../lib -L$(BASE_JULIA_BIN)/../lib/julia
+endif # PREBUILD_CI_BINARIES
 
 CXX_LLVM_VER := $(LLVM_VER)
 ifeq ($(CXX_LLVM_VER),svn)
