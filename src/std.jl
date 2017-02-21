@@ -11,8 +11,8 @@ cxxparse("""
 
 const StdString = cxxt"std::string"
 const StdStringR = cxxt"std::string&"
-typealias StdVector{T} Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
-typealias StdMap{K,V} cxxt"std::map<$K,$V>"
+@compat const StdVector{T} = Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
+@compat const StdMap{K,V} = cxxt"std::map<$K,$V>"
 if isdefined(Core, :UnionAll)
 include_string("""
 const GenericStdMap =
@@ -116,7 +116,7 @@ function Base.filter!(f, a::StdVector)
     return a
 end
 
-typealias CxxBuiltinVecTs Union{Float32,Float64,Int16,Int32,Int64,Int8,UInt16,UInt32,UInt64,UInt8}
+const CxxBuiltinVecTs = Union{Float32,Float64,Int16,Int32,Int64,Int8,UInt16,UInt32,UInt64,UInt8}
 
 Base.unsafe_wrap{T}(::Type{DenseArray}, v::StdVector{T}) = WrappedCppObjArray(pointer(v), length(v))
 Base.unsafe_wrap{T<:CxxBuiltinVecTs}(::Type{DenseArray}, v::StdVector{T}) = WrappedCppPrimArray(pointer(v), length(v))
@@ -142,10 +142,10 @@ function Base.convert{T}(::Type{cxxt"std::vector<$T>"}, x::AbstractArray)
 end
 
 
-abstract WrappedCppDenseValues{T} <: DenseArray{T,1}
+@compat abstract type WrappedCppDenseValues{T} <: DenseArray{T,1} end
 
 Base.size(A::WrappedCppDenseValues) = (length(A),)
-Base.linearindexing(::WrappedCppDenseValues) = Base.LinearFast()
+@compat Base.IndexStyle(::WrappedCppDenseValues) = Base.IndexLinear()
 
 
 @propagate_inbounds Base.setindex!{T}(A::WrappedCppDenseValues{T}, val, i::Integer) =

@@ -147,7 +147,7 @@ include(pathfile)
 using Base.Meta
 using Core: svec
 
-import Compat
+using Compat
 using Compat.TypeUtils
 
 export cast,
@@ -179,6 +179,7 @@ end
 module CxxStd
 
     using Cxx
+    using Compat
     include("show.jl")
     include("std.jl")
 

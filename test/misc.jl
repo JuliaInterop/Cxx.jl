@@ -1,4 +1,5 @@
 using Cxx
+using Compat
 using Base.Test
 
 # Issue 37 - Assertion failure when calling function declared `extern "C"`
@@ -402,7 +403,7 @@ public:
 @assert icxx"Template246<$(Val{5}())>().getI();" == 5
 
 # #256
-typealias SVP{T} cxxt"std::vector<$T>*"
+@compat const SVP{T} = cxxt"std::vector<$T>*"
 # This is a bug!
 # @assert SVP{cxxt"std::string"} == cxxt"std::vector<std::string>*"
 

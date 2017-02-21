@@ -101,7 +101,7 @@ end
 # The equivalent of a C++ reference
 # T can be any valid C++ type other than CppRef
 # See note on CVR above and note on bitstype below
-bitstype 8*sizeof(Ptr{Void}) CppRef{T,CVR}
+@compat primitive type CppRef{T,CVR} 8*sizeof(Ptr{Void}) end
 (::Type{CppRef{T,CVR}}){T,CVR}(p::Ptr{Void}) = reinterpret(CppRef{T,CVR}, p)
 
 cconvert(::Type{Ptr{Void}},p::CppRef) = reinterpret(Ptr{Void}, p)
@@ -116,7 +116,7 @@ Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
 #    ptr::Ptr{Void}
 # end
 # Make CppPtr and Ptr the same in the julia calling convention
-bitstype 8*sizeof(Ptr{Void}) CppPtr{T,CVR}
+@compat primitive type CppPtr{T,CVR} 8*sizeof(Ptr{Void}) end
 (::Type{CppPtr{T,CVR}}){T,CVR}(p::Ptr{Void}) = reinterpret(CppPtr{T,CVR}, p)
 
 cconvert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)

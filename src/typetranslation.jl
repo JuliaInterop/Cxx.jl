@@ -141,6 +141,7 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     bitwidths = zeros(UInt32,nparams)
     ts = Array{QualType}(nparams)
     for (i,t) in enumerate(targs.parameters)
+        (t <: Val) && (t = t.parameters[1])
         if isa(t,Type)
             ts[i] = cpptype(C,t)
         elseif isa(t,Integer) || isa(t,CppEnum)
@@ -422,7 +423,7 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}()
         elseif kind == KindIntegral
             val = getTargAsIntegralAtIdx(targs,i)
             t = getTargIntegralTypeAtIdx(targs,i)
-            push!(args,reinterpret(juliatype(t,quoted,typeargs),[val])[1])
+            push!(args,Val{reinterpret(juliatype(t,quoted,typeargs),[val])[1]})
         else
             error("Unhandled template argument kind ($kind)")
         end
