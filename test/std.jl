@@ -95,21 +95,21 @@ end
 
         @test length(w_cxx_int_v) == length(jl_int_v)
         @test size(w_cxx_int_v) == size(jl_int_v)
-        @compat @test Base.IndexStyle(w_cxx_int_v) == Base.IndexLinear()
+        #@test Base.IndexStyle(w_cxx_int_v) == Base.IndexLinear()
         @test pointer(w_cxx_int_v) == icxx"$cxx_int_v.data();"
         @test pointer(w_cxx_int_v, 3) == icxx"$cxx_int_v.data() + 2;"
         @test w_cxx_int_v == jl_int_v
 
         @test length(w_cxx_str_v) == length(jl_str_v)
         @test size(w_cxx_str_v) == size(jl_str_v)
-        @compat @test Base.IndexStyle(w_cxx_str_v) == Base.IndexLinear()
+        #@test Base.IndexStyle(w_cxx_str_v) == Base.IndexLinear()
         @test pointer(w_cxx_str_v) == icxx"$cxx_str_v.data();"
         @test pointer(w_cxx_str_v, 3) == icxx"$cxx_str_v.data() + 2;"
         @test String.(w_cxx_str_v) == jl_str_v
 
         @test length(w_cxx_bool_v) == length(jl_bool_v)
         @test size(w_cxx_bool_v) == size(jl_bool_v)
-        @compat @test Base.IndexStyle(w_cxx_bool_v) == Base.IndexLinear()
+        #@test Base.IndexStyle(w_cxx_bool_v) == Base.IndexLinear()
         @test w_cxx_bool_v == jl_bool_v
     end
 
