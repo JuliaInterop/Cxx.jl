@@ -145,7 +145,7 @@ end
 @compat abstract type WrappedCppDenseValues{T} <: DenseArray{T,1} end
 
 Base.size(A::WrappedCppDenseValues) = (length(A),)
-@compat Base.IndexStyle(::WrappedCppDenseValues) = Base.IndexLinear()
+@compat Base.IndexStyle(::WrappedCppDenseValues) = IndexLinear()
 
 
 @propagate_inbounds Base.setindex!{T}(A::WrappedCppDenseValues{T}, val, i::Integer) =

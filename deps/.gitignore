@@ -2,3 +2,4 @@ build
 usr
 src
 path.jl
+*.tgz
