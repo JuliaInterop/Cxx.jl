@@ -223,7 +223,7 @@ macro cxxm(str,expr)
     RT = gensym()
     esc(quote
         Cxx.EnterBuffer(Cxx.instance(__current_compiler__),$str)
-        $FD = pcpp"clang::FunctionDecl"(convert(Ptr{Void},Cxx.ParseDeclaration(Cxx.instance(__current_compiler__))))
+        $FD = Cxx.@pcpp_str("clang::FunctionDecl")(convert(Ptr{Void},Cxx.ParseDeclaration(Cxx.instance(__current_compiler__))))
         if $FD == C_NULL
             error("Failed to obtain declarator (see Clang Errors)")
         end
