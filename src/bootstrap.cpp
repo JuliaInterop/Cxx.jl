@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <dlfcn.h>
+#include <cstdlib>
 
 #ifdef NDEBUG
 #define OLD_NDEBUG
@@ -1378,11 +1379,15 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     Cxx->CI->getLangOpts().WChar = 1;
     Cxx->CI->getLangOpts().C99 = 1;
     if (!CCompiler) {
+        bool use_rtti = false;
+        const char* rtti_env_setting = getenv("JULIA_CXX_RTTI");
+        if (rtti_env_setting != nullptr) use_rtti = (atoi(rtti_env_setting) > 0);
+
         Cxx->CI->getLangOpts().CPlusPlus = 1;
         Cxx->CI->getLangOpts().CPlusPlus11 = 1;
         Cxx->CI->getLangOpts().CPlusPlus14 = 1;
-        Cxx->CI->getLangOpts().RTTI = 0;
-        Cxx->CI->getLangOpts().RTTIData = 0;
+        Cxx->CI->getLangOpts().RTTI = use_rtti;
+        Cxx->CI->getLangOpts().RTTIData = use_rtti;
         Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
         Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
         Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
