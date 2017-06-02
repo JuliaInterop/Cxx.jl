@@ -7,7 +7,7 @@ The Julia C++ Foreign Function Interface (FFI) and REPL.
 
 ### Installation
 
-You will need to install Julia v0.5-dev with some special options.
+You will need to install Julia v0.5 (or later).
 
 #### Build requirements
 
