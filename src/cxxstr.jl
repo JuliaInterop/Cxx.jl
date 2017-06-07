@@ -425,7 +425,8 @@ collect_icxx(compiler, s, icxxs) = s
 function collect_icxx(compiler, e::Expr,icxxs)
     if isexpr(e,:macrocall) && e.args[1] == Symbol("@icxx_str")
         x = Symbol(string("arg",length(icxxs)+1))
-        exprs, str = collect_exprs(e.args[2])
+        islineno = (isa(e.args[2], Expr) && e.args[2] == :line) || isa(e.args[2], LineNumberNode)
+        exprs, str = collect_exprs(islineno ? e.args[3] : e.args[2])
         push!(icxxs, (x,str,exprs))
         return Expr(:call, Cxx.lambdacall, compiler, x, [e[1] for e in exprs]...)
     else

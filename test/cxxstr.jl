@@ -104,7 +104,7 @@ void modify_a(foobar &fb) {
 
 fb = icxx"_foobar{1};"
 icxx"(void)++$fb.a;"
-@test reinterpret(Int32, [fb.data...])[1] == 2
+@test unsafe_load(Ptr{Int32}(pointer_from_objref(fb.data))) == 2
 
 # Splicing at global scope
 cxx"""const char *foostr = $(pointer("foo"));"""

@@ -3,9 +3,9 @@ const libcxx_dependent_class     = 0x434C4E47432B2B01
 const get_vendor_and_language    = 0xFFFFFFFFFFFFFF00
 
 const libstdcxx_class =
-  bswap(reinterpret(UInt64,UInt8['G','N','U','C','C','+','+','\0'])[1])
+  bswap(unsafe_load(Ptr{UInt64}(pointer("GNUCC++\0"))))
 const libstdcxx_depdendent_class =
-  bswap(reinterpret(UInt64,UInt8['G','N','U','C','C','+','+','\x1'])[1])
+  bswap(unsafe_load(Ptr{UInt64}(pointer("GNUCC++\x1"))))
 
 immutable _UnwindException
     class::UInt64
