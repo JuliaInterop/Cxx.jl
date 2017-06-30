@@ -611,10 +611,12 @@ function adjust_source(C, source)
     source
 end
 
-function process_cxx_string(str,global_scope = true,type_name = false,filename=Symbol(""),line=1,col=1;
+function process_cxx_string(str,global_scope = true,type_name = false,__source__=FakeLineNumberNode();
     compiler = :__current_compiler__, tojuliatype = true)
+    filename = __source__.file
+    col = isdefined(__source__, :col) ? __source__.col : 1
     startvarnum, sourcebuf, exprs, isexprs, icxxs =
-        process_body(compiler, str, global_scope, !global_scope && type_name, filename, line, col)
+        process_body(compiler, str, global_scope, !global_scope && type_name, __source__.file, __source__.line, col)
     if global_scope
         argsetup = Expr(:block)
         argcleanup = Expr(:block)
@@ -641,11 +643,11 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
             push!(postparse.args,:(Cxx.RealizeTemplates($instance,$ctx,$s)))
             startvarnum += 1
         end
-        parsecode = filename == "" ? :( cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name) ) :
+        parsecode = filename == Symbol("") ? :( Cxx.cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name) ) :
             :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,String(take!($sourcebuf))),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
-                $( line ),
+                $( __source__.line ),
                 $( col ),
                 $(type_name) ) )
         x = gensym()
@@ -683,9 +685,9 @@ function process_cxx_string(str,global_scope = true,type_name = false,filename=S
     else
         if type_name
             Expr(:call,Cxx.CxxType,:__current_compiler__,
-                CxxTypeName{Symbol(String(take!(sourcebuf)))}(),CodeLoc{filename,line,col}(),exprs...)
+                CxxTypeName{Symbol(String(take!(sourcebuf)))}(),CodeLoc{filename,__source__.line,col}(),exprs...)
         else
-            push!(sourcebuffers,(String(take!(sourcebuf)),filename,line,col))
+            push!(sourcebuffers,(String(take!(sourcebuf)),filename,__source__.line,col))
             id = length(sourcebuffers)
             build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
         end
@@ -712,26 +714,37 @@ end
     expr
 end
 
+# For < 0.7 compatibility
+struct FakeLineNumberNode
+    file::Symbol
+    line::Int
+    FakeLineNumberNode() = new(Symbol(""), 1)
+end
 
 macro cxx_str(str,args...)
-    esc(process_cxx_string(str,true,false,args...))
+    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    esc(process_cxx_string(str,true,false,__source__))
 end
 
 # Not exported
 macro cxxt_str(str,args...)
-    esc(process_cxx_string(str,false,true,args...))
+    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    esc(process_cxx_string(str,false,true,__source__))
 end
 
 macro icxx_str(str,args...)
-    esc(process_cxx_string(str,false,false,args...))
+    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    esc(process_cxx_string(str,false,false,__source__))
 end
 
 # Not exported
 macro gcxxt_str(str,args...)
-    esc(process_cxx_string(str,true,true,args...))
+    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    esc(process_cxx_string(str,true,true,__source__))
 end
 
 
 macro ccxxt_str(str,args...)
-    esc(process_cxx_string(str,true,true,args...; tojuliatype = false))
+    isdefined(__source__) || (__source__ = FakeLineNumberNode())
+    esc(process_cxx_string(str,true,true,__source__; tojuliatype = false))
 end
