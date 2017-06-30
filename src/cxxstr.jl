@@ -232,7 +232,7 @@ function ArgCleanup(C,e,sv)
     end
 end
 
-const sourcebuffers = Array{Tuple{AbstractString,Symbol,Int,Int}}(0)
+const sourcebuffers = Array{Tuple{AbstractString,Symbol,Int,Int,Bool}}(0)
 
 immutable SourceBuf{id}; end
 sourceid{id}(::Type{SourceBuf{id}}) = id
@@ -278,7 +278,7 @@ end
 # and the given types for embedded __juliavars
 #
 function CreateFunctionWithBody(C,body,args...; named_args = Any[],
-        filename::Symbol = Symbol(""), line::Int = 1, col::Int = 1)
+        filename::Symbol = Symbol(""), line::Int = 1, col::Int = 1, disable_ac = false)
     global icxxcounter
 
     argtypes = Tuple{Int,QualType}[]
@@ -328,6 +328,8 @@ function CreateFunctionWithBody(C,body,args...; named_args = Any[],
         EnterVirtualSource(C,body,VirtualFileName(filename))
     end
 
+    old = disable_ac && set_access_control_enabled(C, false)
+
     local FD
     local dne
     begin
@@ -360,6 +362,7 @@ function CreateFunctionWithBody(C,body,args...; named_args = Any[],
             ParseFunctionStatementBody(C,FD)
         finally
             ActOnFinishNamespaceDef(C,ND)
+            disable_ac && set_access_control_enabled(C, old)
         end
     end
 
@@ -611,8 +614,10 @@ function adjust_source(C, source)
     source
 end
 
-function process_cxx_string(str,global_scope = true,type_name = false,__source__=FakeLineNumberNode();
+function process_cxx_string(str,global_scope = true,type_name = false,__source__=FakeLineNumberNode(),
+    annotations = "";
     compiler = :__current_compiler__, tojuliatype = true)
+    disable_ac = 'p' in annotations
     filename = __source__.file
     col = isdefined(__source__, :col) ? __source__.col : 1
     startvarnum, sourcebuf, exprs, isexprs, icxxs =
@@ -643,13 +648,14 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
             push!(postparse.args,:(Cxx.RealizeTemplates($instance,$ctx,$s)))
             startvarnum += 1
         end
-        parsecode = filename == Symbol("") ? :( Cxx.cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name) ) :
+        parsecode = filename == Symbol("") ? :( Cxx.cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name,false,$disable_ac) ) :
             :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,String(take!($sourcebuf))),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( __source__.line ),
                 $( col ),
-                $(type_name) ) )
+                $(type_name),
+                $disable_ac ) )
         x = gensym()
         if type_name
           unshift!(argsetup.args,quote
@@ -687,7 +693,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
             Expr(:call,Cxx.CxxType,:__current_compiler__,
                 CxxTypeName{Symbol(String(take!(sourcebuf)))}(),CodeLoc{filename,__source__.line,col}(),exprs...)
         else
-            push!(sourcebuffers,(String(take!(sourcebuf)),filename,__source__.line,col))
+            push!(sourcebuffers,(String(take!(sourcebuf)),filename,__source__.line, col, disable_ac))
             id = length(sourcebuffers)
             build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
         end
@@ -697,9 +703,9 @@ end
 @generated function cxxstr_impl(CT, sourcebuf, args...)
     C = instance(CT)
     id = sourceid(sourcebuf)
-    buf, filename, line, col = sourcebuffers[id]
+    buf, filename, line, col, disable_ac = sourcebuffers[id]
 
-    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col)
+    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
     EmitTopLevelDecl(C,FD)
 
     for T in args
@@ -718,12 +724,13 @@ end
 struct FakeLineNumberNode
     file::Symbol
     line::Int
-    FakeLineNumberNode() = new(Symbol(""), 1)
 end
+FakeLineNumberNode() = FakeLineNumberNode(Symbol(""), 1)
 
 macro cxx_str(str,args...)
     isdefined(:__source__) || (__source__ = FakeLineNumberNode())
-    esc(process_cxx_string(str,true,false,__source__))
+    annotations = length(args) > 0 ? first(args) : ""
+    esc(process_cxx_string(str,true,false,__source__,annotations))
 end
 
 # Not exported
@@ -734,7 +741,8 @@ end
 
 macro icxx_str(str,args...)
     isdefined(:__source__) || (__source__ = FakeLineNumberNode())
-    esc(process_cxx_string(str,false,false,__source__))
+    annotations = length(args) > 0 ? first(args) : ""
+    esc(process_cxx_string(str,false,false,__source__,annotations))
 end
 
 # Not exported

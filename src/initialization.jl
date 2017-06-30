@@ -119,24 +119,29 @@ function ParseTypeName(C, ParseAlias = false)
     QualType(ret)
 end
 
-function cxxparse(C,string, isTypeName = false, ParseAlias = false)
+function cxxparse(C, string, isTypeName = false, ParseAlias = false, DisableAC = false)
     EnterBuffer(C,string)
+    old = DisableAC && set_access_control_enabled(C, false)
     if isTypeName
         ParseTypeName(C,ParseAlias)
     else
-        ParseToEndOfFile(C) || error("Could not parse string")
+        ok = ParseToEndOfFile(C)
+        DisableAC && set_access_control_enabled(C, old)
+        ok || error("Could not parse string")
     end
 end
 cxxparse(C::CxxInstance,string) = cxxparse(instance(C),string)
 cxxparse(string) = cxxparse(__default_compiler__,string)
 
-function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column, isTypeName = false)
+function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column, isTypeName = false, DisableAC = false)
     EnterVirtualSource(C,string, VirtualFileName)
+    old = DisableAC && set_access_control_enabled(C, false)
     if isTypeName
         ParseTypeName(C)
     else
-        ParseToEndOfFile(C) ||
-            error("Could not parse C++ code at $FileName:$Line:$Column")
+        ok = ParseToEndOfFile(C)
+        DisableAC && set_access_control_enabled(C, old)
+        ok || error("Could not parse C++ code at $FileName:$Line:$Column")
     end
 end
 

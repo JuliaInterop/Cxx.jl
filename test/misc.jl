@@ -431,3 +431,13 @@ template <typename T> struct bar303 {
 
 # Type translation for pointer parameters
 @assert typeof(icxx"std::map<int *, int>{};") <: cxxt"std::map<int *, int>"
+
+# Privilege annotations (override access control)
+cxx"""
+class privfoo {
+    int bar;
+public:
+    privfoo() : bar(1) {}
+};
+"""
+@assert icxx"privfoo{}.bar;"p == 1

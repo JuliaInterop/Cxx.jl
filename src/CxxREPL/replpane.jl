@@ -174,7 +174,7 @@ module CxxREPL
             end
             # Strip trailing semicolon (since we add one on the next line) to avoid unused result warning
             line = line[end] == ';' ? line[1:end-1] : line
-            ret = Cxx.process_cxx_string(string(line,"\n;"), isToplevel, false, :REPL, 1, 1;
+            ret = Cxx.process_cxx_string(string(line,"\n;"), isToplevel, false, Cxx.FakeLineNumberNode(:REPL, 1), "p";
     compiler = C)
             if isAssignment
                 ret = :($var = $ret)

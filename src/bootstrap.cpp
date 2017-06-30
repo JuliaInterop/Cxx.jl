@@ -1434,6 +1434,12 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     }
 }
 
+JL_DLLEXPORT int set_access_control_enabled(C, int enabled) {
+    int enabled_before = Cxx->CI->getLangOpts().AccessControl;
+    Cxx->CI->getLangOpts().AccessControl = enabled;
+    return enabled_before;
+}
+
 static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
     Cxx->CI->setTarget(clang::TargetInfo::CreateTargetInfo(
       Cxx->CI->getDiagnostics(),

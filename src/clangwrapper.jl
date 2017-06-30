@@ -762,3 +762,15 @@ function getTypeNameAsString(QT)
     Libc.free(ptr)
     str
 end
+
+function set_access_control_enabled(C, enabled::Bool)
+    ccall((:set_access_control_enabled, libcxxffi), Cint,
+        (Ptr{ClangCompiler}, Cint), &C, enabled) != 0
+end
+
+function without_ac(f, C)
+    old = set_access_control_enabled(C, false)
+    ret = f()
+    set_access_control_enabled(C, old)
+    ret
+end
