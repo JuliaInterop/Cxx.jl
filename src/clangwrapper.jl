@@ -681,7 +681,12 @@ getOriginalType(PVD::pcpp"clang::ParmVarDecl") = QualType(ccall((:getOriginalTyp
 
 getParent(CxxMD::pcpp"clang::CXXMethodDecl") = pcpp"clang::CXXRecordDecl"(ccall((:getCxxMDParent,libcxxffi),Ptr{Void},(Ptr{Void},),CxxMD))
 
-decouple_pch(C) = ccall((:decouple_pch,libcxxffi),Void,(Ptr{ClangCompiler},),&C)
+function decouple_pch(C)
+    size = ccall((:getPCHSize,libcxxffi),Csize_t,(Ptr{ClangCompiler},),&C)
+    data = Array{UInt8}(size)
+    ccall((:decouple_pch,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{UInt8}),&C,data)
+    data
+end
 
 function ParseParameterList(C,nparams)
     params = Array{Ptr{Void}}(nparams)

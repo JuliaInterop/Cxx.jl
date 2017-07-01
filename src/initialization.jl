@@ -10,10 +10,9 @@ depspath = joinpath(BASE_JULIA_SRC, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-push!(Libdl.DL_LOAD_PATH, joinpath(dirname(Base.source_path()),"../deps/usr/lib/"))
 
-const libcxxffi =
-    string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : "")
+const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/lib/",
+    string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
 
 # Set up Clang's global data structures
 function init_libcxxffi()
@@ -22,14 +21,21 @@ function init_libcxxffi()
 end
 init_libcxxffi()
 
-function setup_instance(UsePCH = C_NULL; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
-        useDefaultCxxABI=true)
+function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
+        useDefaultCxxABI=true, PCHTime = Base.Libc.TmStruct())
     x = Array{ClangCompiler}(1)
     sysroot = @static is_apple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
     EmitPCH = true
+    PCHPtr = C_NULL
+    PCHSize = 0
+    if !isempty(PCHBuffer)
+        PCHPtr = pointer(PCHBuffer)
+        PCHSize = sizeof(PCHBuffer)
+    end
     ccall((:init_clang_instance,libcxxffi),Void,
-        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Ptr{Void}),
-        x,target,CPU,sysroot,EmitPCH,makeCCompiler,UsePCH,julia_to_llvm(Any))
+        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Csize_t,Ptr{Base.Libc.TmStruct},Ptr{Void}),
+        x,target,CPU,sysroot,EmitPCH,makeCCompiler, PCHPtr, PCHSize, &PCHTime,
+        julia_to_llvm(Any))
     useDefaultCxxABI && ccall((:apply_default_abi, libcxxffi),
         Void, (Ptr{ClangCompiler},), &x[1])
     x[1]
@@ -257,7 +263,7 @@ function ScanLibDirForGCCTriple(base,triple)
     return (Version, VersionString, GccPath)
 end
 
-function AddLinuxHeaderPaths(C)
+function CollectLinuxHeaderPaths!(headers)
     # Taken from Clang's ToolChains.cpp
     const X86_64LibDirs = ["/lib64", "/lib"]
     const X86_64Triples = [
@@ -307,39 +313,39 @@ function AddLinuxHeaderPaths(C)
 
     incpath = Path * "/../include"
 
-    addHeaderDir(C, incpath, kind = C_System)
-    addHeaderDir(C, incpath * "/c++/" * VersionString, kind = C_System)
-    addHeaderDir(C, incpath * "/c++/" * VersionString * "/backward", kind = C_System)
+    push!(headers, (incpath, C_System))
+    push!(headers, (incpath * "/c++/" * VersionString, C_System))
+    push!(headers, (incpath * "/c++/" * VersionString * "/backward", C_System))
 
     # check which type of include dir we have
     if Triple == "i686-linux-gnu" && !isdir(incpath * "/" * Triple)
         Triple = "i386-linux-gnu"
     end
     if isdir(incpath * "/" * Triple)
-       addHeaderDir(C, incpath * "/" * Triple * "/c++/" * VersionString, kind = C_System)
-       addHeaderDir(C, incpath * "/" * Triple, kind = C_System)
+       push!(headers, (incpath * "/" * Triple * "/c++/" * VersionString, C_System))
+       push!(headers, (incpath * "/" * Triple, C_System))
     else
-       addHeaderDir(C, incpath * "/c++/" * VersionString * "/" * Triple, kind = C_System)
+       push!(headers, (incpath * "/c++/" * VersionString * "/" * Triple, C_System))
     end
 end
 
-@static if is_linux() function addStdHeaders(C)
-    AddLinuxHeaderPaths(C)
-    addHeaderDir(C,"/usr/include", kind = C_System);
+@static if is_linux() function collectStdHeaders!(headers)
+    CollectLinuxHeaderPaths!(headers)
+    push!(headers,("/usr/include", C_System));
 end # function addStdHeaders(C)
 end # is_linux
 
-@static if is_windows() function addStdHeaders(C)
+@static if is_windows() function collectStdHeaders!(headers)
       base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
-      addHeaderDir(C,joinpath(base,"x86_64-w64-mingw32/include"), kind = C_System)
+      push!(headers,(joinpath(base,"x86_64-w64-mingw32/include"), C_System))
       #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
-      addHeaderDir(C,joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), kind = C_System)
-      addHeaderDir(C,joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), kind = C_System)
+      push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), C_System))
+      push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), C_System))
 end #function addStdHeaders(C)
 end # is_windows
 
 # Also add clang's intrinsic headers
-function addClangHeaders(C)
+function collectClangHeaders!(headers)
     ver = Base.VersionNumber(Base.libllvm_version)
     ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)        
     baseclangdir = joinpath(BASE_JULIA_BIN,
@@ -347,18 +353,28 @@ function addClangHeaders(C)
     cxxclangdir = joinpath(dirname(@__FILE__),
         "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
     if isdir(baseclangdir)
-        addHeaderDir(C, baseclangdir, kind = C_ExternCSystem)
+        push!(headers, (baseclangdir, C_ExternCSystem))
     else
         @assert isdir(cxxclangdir)
-        addHeaderDir(C, cxxclangdir, kind = C_ExternCSystem)
+        push!(headers, (cxxclangdir, C_ExternCSystem))
     end
 end
 
-function initialize_instance!(C; register_boot = true)
-    if !nostdcxx
-        addStdHeaders(C)
+function collectAllHeaders!(headers, nostdcxx)
+    nostdcxx || collectStdHeaders!(headers)
+    collectClangHeaders!(headers)
+    headers
+end
+collectAllHeaders(nostdcxx) = collectAllHeaders!(Tuple{String,Cint}[], nostdcxx)
+
+function addHeaders(C, headers)
+    for (path, kind) in headers
+        addHeaderDir(C, path, kind = kind)
     end
-    addClangHeaders(C)
+end
+
+function initialize_instance!(C; register_boot = true, headers = collectAllHeaders(nostdcxx))
+    addHeaders(C, headers)
     register_boot && register_booth(C)
 end
 
@@ -367,16 +383,25 @@ function register_booth(C)
     cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
 end
 
-# As an optimzation, create a generic function per compiler instance,
-# to avoid having to create closures at the call site
-function __init__()
-    init_libcxxffi()
-    C = setup_instance()
-    initialize_instance!(C)
-    push!(active_instances, C)
+function setup_exception_callback()
     # Setup exception translation callback
     callback = cglobal((:process_cxx_exception,libcxxffi),Ptr{Void})
     unsafe_store!(callback, cfunction(process_cxx_exception,Union{},Tuple{UInt64,Ptr{Void}}))
+end
+
+# As an optimzation, create a generic function per compiler instance,
+# to avoid having to create closures at the call site
+const GlobalPCHBuffer = UInt8[]
+const PCHTime = Base.Libc.TmStruct()
+const GlobalHeaders = collectAllHeaders(nostdcxx)
+Base.Libc.time(PCHTime)
+function __init__()
+    init_libcxxffi()
+    empty!(active_instances)
+    C = setup_instance(GlobalPCHBuffer; PCHTime=PCHTime)
+    initialize_instance!(C, register_boot=isempty(GlobalPCHBuffer),
+        headers = GlobalHeaders)
+    push!(active_instances, C)
 end
 
 function new_clang_instance(register_boot = true, makeCCompiler = false; target = C_NULL, CPU = C_NULL)

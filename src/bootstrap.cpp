@@ -82,6 +82,7 @@
 #include "clang/Sema/PrettyDeclStackTrace.h"
 #include "clang/Serialization/ASTWriter.h"
 #include "clang/Frontend/MultiplexConsumer.h"
+#include "clang/Basic/VirtualFileSystem.h"
 #include "Sema/TypeLocBuilder.h"
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/CodeGenOptions.h>
@@ -125,6 +126,7 @@ extern llvm::LLVMContext &jl_LLVMContext;
 static llvm::Type *T_pvalue_llvmt;
 
 class JuliaCodeGenerator;
+class JuliaPCHGenerator;
 
 struct CxxInstance {
   llvm::Module *shadow;
@@ -133,7 +135,7 @@ struct CxxInstance {
   clang::CodeGen::CodeGenFunction *CGF;
   clang::Parser *Parser;
   JuliaCodeGenerator *JCodeGen;
-  clang::PCHGenerator *PCHGenerator;
+  JuliaPCHGenerator *PCHGenerator;
 };
 #define C CxxInstance *Cxx
 
@@ -1340,11 +1342,14 @@ public:
 
   void HandleTranslationUnit(clang::ASTContext &Ctx) {
     PCHGenerator::HandleTranslationUnit(Ctx);
-    std::error_code EC;
-    llvm::raw_fd_ostream OS("Cxx.pch",EC,llvm::sys::fs::F_None);
-    OS << getPCH();
-    OS.flush();
-    OS.close();
+  }
+
+  size_t getPCHSize() {
+    return getPCH().size();
+  }
+
+  char *getPCHData(char *data) {
+    memcpy(data, getPCH().data(), getPCH().size());
   }
 };
 
@@ -1440,13 +1445,28 @@ JL_DLLEXPORT int set_access_control_enabled(C, int enabled) {
     return enabled_before;
 }
 
-static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
+static void finish_clang_init(C, bool EmitPCH, const char *PCHBuffer, size_t PCHBufferSize, time_t PCHTime) {
     Cxx->CI->setTarget(clang::TargetInfo::CreateTargetInfo(
       Cxx->CI->getDiagnostics(),
       std::make_shared<clang::TargetOptions>(Cxx->CI->getTargetOpts())));
     clang::TargetInfo &tin = Cxx->CI->getTarget();
+    if (PCHBuffer) {
+        llvm::IntrusiveRefCntPtr<clang::vfs::OverlayFileSystem>
+          Overlay(new clang::vfs::OverlayFileSystem(
+            clang::vfs::getRealFileSystem()));
+        llvm::IntrusiveRefCntPtr<clang::vfs::InMemoryFileSystem> IMFS(
+          new clang::vfs::InMemoryFileSystem);
+        IMFS->addFile("/Cxx.pch", PCHTime, llvm::MemoryBuffer::getMemBuffer(
+          StringRef(PCHBuffer, PCHBufferSize), "Cxx.pch", false
+        ));
+        Overlay->pushOverlay(IMFS);
+        Cxx->CI->setVirtualFileSystem(Overlay);
+    }
     Cxx->CI->createFileManager();
     Cxx->CI->createSourceManager(Cxx->CI->getFileManager());
+    if (PCHBuffer) {
+        Cxx->CI->getPreprocessorOpts().ImplicitPCHInclude = "/Cxx.pch";
+    }
     Cxx->CI->createPreprocessor(clang::TU_Prefix);
     Cxx->CI->createASTContext();
     Cxx->shadow = new llvm::Module("clangShadow",jl_LLVMContext);
@@ -1497,12 +1517,12 @@ static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
       Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
     }
 
-    if (UsePCH) {
+    if (PCHBuffer) {
         clang::ASTDeserializationListener *DeserialListener =
             Cxx->CI->getASTConsumer().GetASTDeserializationListener();
         bool DeleteDeserialListener = false;
         Cxx->CI->createPCHExternalASTSource(
-          UsePCH,
+          "/Cxx.pch",
           Cxx->CI->getPreprocessorOpts().DisablePCHValidation,
           Cxx->CI->getPreprocessorOpts().AllowPCHWithCompilerErrors, DeserialListener,
           DeleteDeserialListener);
@@ -1528,10 +1548,19 @@ static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
     pp.enableIncrementalProcessing();
 
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
-    sm.setMainFileID(sm.createFileID(llvm::MemoryBuffer::getNewMemBuffer(0), clang::SrcMgr::C_User));
+    const char *fname = PCHBuffer ? "/Cxx.cpp" : "/Cxx.h";
+    const clang::FileEntry *MainFile = Cxx->CI->getFileManager().getVirtualFile(fname, 0, time(0));
+    sm.overrideFileContents(MainFile, llvm::MemoryBuffer::getNewMemBuffer(0, fname));
+    sm.setMainFileID(sm.createFileID(MainFile, clang::SourceLocation(), clang::SrcMgr::C_User));
 
     sema.getPreprocessor().EnterMainSourceFile();
     Cxx->Parser->Initialize();
+
+    clang::ExternalASTSource *External = Cxx->CI->getASTContext().getExternalSource();
+    if (External)
+        External->StartTranslationUnit(&Cxx->CI->getASTConsumer());
+
+    _cxxparse(Cxx);
 
     f_julia_type_to_llvm = (llvm::Type *(*)(void *, bool *))
       dlsym(RTLD_DEFAULT, "julia_type_to_llvm");
@@ -1539,11 +1568,14 @@ static void finish_clang_init(C, bool EmitPCH, const char *UsePCH) {
 }
 
 JL_DLLEXPORT void init_clang_instance(C, const char *Triple, const char *CPU, const char *SysRoot, bool EmitPCH,
-  bool CCompiler, const char *UsePCH, Type *_T_pvalue_llvmt) {
+  bool CCompiler, const char *PCHBuffer, size_t PCHBufferSize, struct tm *PCHTime, Type *_T_pvalue_llvmt) {
     Cxx->CI = new clang::CompilerInstance;
     set_common_options(Cxx);
     set_default_clang_options(Cxx, CCompiler, Triple, CPU, SysRoot, _T_pvalue_llvmt);
-    finish_clang_init(Cxx, EmitPCH, UsePCH);
+    time_t t = time(0);
+    if (PCHTime)
+        t = mktime(PCHTime);
+    finish_clang_init(Cxx, EmitPCH, PCHBuffer, PCHBufferSize, t);
 }
 
 JL_DLLEXPORT void init_clang_instance_from_invocation(C, clang::CompilerInvocation *Inv)
@@ -1555,7 +1587,8 @@ JL_DLLEXPORT void init_clang_instance_from_invocation(C, clang::CompilerInvocati
     Cxx->CI->setInvocation(Inv);
 #endif
     set_common_options(Cxx);
-    finish_clang_init(Cxx, false, nullptr);
+    time_t t(0);
+    finish_clang_init(Cxx, false, nullptr, 0, t);
 }
 
 #define xstringify(s) stringify(s)
@@ -1568,13 +1601,17 @@ JL_DLLEXPORT void apply_default_abi(C)
 #endif
 }
 
-void decouple_pch(C)
-{
+JL_DLLEXPORT size_t getPCHSize(C) {
   Cxx->PCHGenerator->HandleTranslationUnit(Cxx->CI->getASTContext());
+  return Cxx->PCHGenerator->getPCHSize();
+}
+
+void decouple_pch(C, char *data)
+{
+  Cxx->PCHGenerator->getPCHData(data);
   Cxx->JCodeGen = new JuliaCodeGenerator(Cxx);
   Cxx->CI->setASTConsumer(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
   Cxx->CI->getSema().Consumer = Cxx->CI->getASTConsumer();
-  Cxx->PCHGenerator = nullptr;
 }
 
 static llvm::Module *cur_module = NULL;
