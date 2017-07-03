@@ -19,16 +19,13 @@ addons:
 matrix:
     include:
        - language: julia
-         julia: 0.5
-         os: linux
-       - language: julia
          julia: 0.6
          os: linux
        - language: julia
          julia: nightly
          os: linux
        - language: julia
-         julia: 0.5
+         julia: 0.6
          os: osx
     allow_failures:
        - language: julia
