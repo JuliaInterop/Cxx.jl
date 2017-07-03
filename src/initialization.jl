@@ -196,13 +196,13 @@ defineMacro(Name) = defineMacro(__default_compiler__,Name)
 nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
-@static if is_apple() function addStdHeaders(C)
+@static if is_apple() function collectStdHeaders!(headers)
     xcode_path =
         "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
     didfind = false
     for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
         if isdir(joinpath(xcode_path,path))
-            addHeaderDir(C,joinpath(xcode_path,path), kind = C_ExternCSystem)
+            push!(headers, (joinpath(xcode_path,path), C_ExternCSystem))
             didfind = true
         end
     end

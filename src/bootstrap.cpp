@@ -1348,7 +1348,7 @@ public:
     return getPCH().size();
   }
 
-  char *getPCHData(char *data) {
+  void getPCHData(char *data) {
     memcpy(data, getPCH().data(), getPCH().size());
   }
 };
