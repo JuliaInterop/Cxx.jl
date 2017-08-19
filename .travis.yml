@@ -56,6 +56,8 @@ script:
     - mv $THE_PKG_DIR/Cxx-cache/deps/src $THE_PKG_DIR/Cxx/deps/src || true
     - mv $THE_PKG_DIR/Cxx-cache/deps/build $THE_PKG_DIR/Cxx/deps/build || true
     - if [ ! -f $HOME/early_abort ]; then PREBUILT_CI_BINARIES=1 julia -e 'Pkg.build("Cxx")' || false; fi
-    - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.test("Cxx")' || false; fi
+    - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.test("Cxx"; coverage=true)' || false; fi
+after_success:
+    - julia -e 'cd(Pkg.dir("Cxx")); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
 notifications:
   email: false
