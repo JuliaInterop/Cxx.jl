@@ -543,7 +543,7 @@ function getSpecializations(FTD::pcpp"clang::FunctionTemplateDecl")
 end
 
 function getMangledFunctionName(C, FD)
-    bytestring(ccall((:getMangledFunctionName,libcxxffi),Ptr{UInt8},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
+    unsafe_string(ccall((:getMangledFunctionName,libcxxffi),Ptr{UInt8},(Ptr{ClangCompiler},Ptr{Void}),&C,FD))
 end
 
 function templateParameters(FD)

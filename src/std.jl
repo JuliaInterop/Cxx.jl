@@ -45,7 +45,7 @@ end
 @exception function showerror(io::IO, e::cxxt"std::length_error&")
     try
         @show e
-        print(io, bytestring(icxx"$e.what();"))
+        print(io, unsafe_string(icxx"$e.what();"))
     catch w
         @show w
     end

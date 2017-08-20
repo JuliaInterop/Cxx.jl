@@ -27,7 +27,7 @@ function code_graph(f,args)
     graphf = code_llvmf(f,args)
     @cxx llvm::WriteGraph(os,graphf)
     @cxx os->flush()
-    bytestring(v)
+    String(v)
 end
 
 gt = code_graph(factorize,(typeof(rand(4,4)),))
