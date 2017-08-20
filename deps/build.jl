@@ -1,11 +1,9 @@
-if VERSION < v"0.5-dev"
-    error("Cxx requires Julia 0.5")
-end
+using Compat
 
 if haskey(ENV, "PREBUILT_CI_BINARIES") && ENV["PREBUILT_CI_BINARIES"] == "1"
     # Try to download pre-built binaries
     if !isdir("build") || length(readdir("build")) == 0
-        os_tag = is_apple() ? "osx" : "linux"
+        os_tag = Compat.Sys.isapple() ? "osx" : "linux"
         run(`rm -rf build/ src/`)
         filename = "llvm-$(os_tag)-$(Base.libllvm_version).tgz"
         run(`wget https://s3.amazonaws.com/julia-cxx/$filename`)
@@ -34,7 +32,7 @@ close(f)
 println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly at $BASE_JULIA_SRC")
 
 # Try to autodetect C++ ABI in use
-llvm_path = (is_apple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
+llvm_path = (Compat.Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
 
 llvm_lib_path = Libdl.dlpath(llvm_path)
 old_cxx_abi = searchindex(open(read, llvm_lib_path),Vector{UInt8}("_ZN4llvm3sys16getProcessTripleEv"),0) != 0
