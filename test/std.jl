@@ -224,5 +224,10 @@ end
         end
 
         @test convert(Vector{Bool}, cxx_bool_v) == jl_bool_v
+
+        let x = [true, false, true]
+            y = convert(cxxt"std::vector<$Int>", x)
+            @test collect(y) == Int[1, 0, 1]
+        end
     end
 end
