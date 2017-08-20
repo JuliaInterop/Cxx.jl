@@ -231,3 +231,16 @@ end
         end
     end
 end
+
+@testset "Exceptions" begin
+    @testset "std::length_error&" begin
+        v = icxx"std::vector<$Int>{1, 2, 3};"
+        try
+            icxx"$v.resize($v.max_size() + 1);"
+            error("unexpected")
+        catch err
+            @test err isa Cxx.CxxException{:St12length_error}
+            @test startswith(sprint(showerror, err), "vector")
+        end
+    end
+end
