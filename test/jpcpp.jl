@@ -6,7 +6,7 @@ cxx"""class Bill {
             int64_t b;
        };"""
 
- type Bill
+ mutable struct Bill
           a::Int
           b::Int
        end

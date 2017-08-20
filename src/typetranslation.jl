@@ -188,13 +188,13 @@ end
 # # The actual decl lookup
 # since we split out all the actual meat above, this is now simple
 
-function cppdecl{fname}(C,T::Type{CppBaseType{fname}})
+function cppdecl(C,T::Type{CppBaseType{fname}}) where fname
     # Let's get a clang level representation of this type
     lookup_ctx(C,fname)
 end
-cppdecl{T<:CppEnum}(C,p::Type{T}) = lookup_ctx(C,p.parameters[1])
+cppdecl(C,p::Type{T}) where {T<:CppEnum} = lookup_ctx(C,p.parameters[1])
 
-function cppdecl{T,targs}(C,TT::Type{CppTemplate{T,targs}})
+function cppdecl(C,TT::Type{CppTemplate{T,targs}}) where {T,targs}
     ctx = cppdecl(C,T)
 
     # Do the acutal template resolution
@@ -208,8 +208,8 @@ end
 
 # For getting the decl ignore the CVR qualifiers, pointer qualification, etc.
 # and just do the lookup on the base decl
-function cppdecl{T,CVR}(C,::Union{
-    Type{CppPtr{T,CVR}}, Type{CxxQualType{T,CVR}}, Type{CppRef{T,CVR}}})
+function cppdecl(C,::Union{
+    Type{CppPtr{T,CVR}}, Type{CxxQualType{T,CVR}}, Type{CppRef{T,CVR}}}) where {T,CVR}
     cppdecl(C,T)
 end
 
@@ -246,42 +246,42 @@ addQualifiers(clangT::pcpp"clang::Type",CVR) = addQualifiers(QualType(clangT),CV
 
 # And finally the actual definition of cpptype
 
-cpptype{T<:CppTemplate}(C,::Type{T}) = QualType(typeForDecl(cppdecl(C,T)))
-cpptype{T<:CppEnum}(C,p::Type{T}) = QualType(typeForDecl(cppdecl(C,p)))
-cpptype{T}(C,p::Type{CxxArrayType{T}}) = getIncompleteArrayType(C,cpptype(C,T))
-function cpptype{T,CVR}(C,p::Type{CppPtr{T,CVR}})
+cpptype(C,::Type{T}) where {T<:CppTemplate} = QualType(typeForDecl(cppdecl(C,T)))
+cpptype(C,p::Type{T}) where {T<:CppEnum} = QualType(typeForDecl(cppdecl(C,p)))
+cpptype(C,p::Type{CxxArrayType{T}}) where {T} = getIncompleteArrayType(C,cpptype(C,T))
+function cpptype(C,p::Type{CppPtr{T,CVR}}) where {T,CVR}
     addQualifiers(pointerTo(C,cpptype(C,T)),CVR)
 end
-function cpptype{T,CVR}(C,p::Type{CxxQualType{T,CVR}})
+function cpptype(C,p::Type{CxxQualType{T,CVR}}) where {T,CVR}
     addQualifiers(typeForDecl(cppdecl(C,T)),CVR)
 end
 # This is a hack, we should find a better way to do this
-function cpptype{T<:CppLambda,CVR}(C,p::Type{CxxQualType{T,CVR}})
+function cpptype(C,p::Type{CxxQualType{T,CVR}}) where {T<:CppLambda,CVR}
     addQualifiers(typeForLambda(T),CVR)
 end
-cpptype{T,N}(C,p::Type{CppValue{T,N}}) = cpptype(C,T)
-cpptype{T}(C,p::Type{CppValue{T}}) = cpptype(C,T)
-cpptype{s}(C,p::Type{CppBaseType{s}}) = QualType(typeForDecl(cppdecl(C,p)))
-function cpptype{T,CVR}(C,p::Type{CppRef{T,CVR}})
+cpptype(C,p::Type{CppValue{T,N}}) where {T,N} = cpptype(C,T)
+cpptype(C,p::Type{CppValue{T}}) where {T} = cpptype(C,T)
+cpptype(C,p::Type{CppBaseType{s}}) where {s} = QualType(typeForDecl(cppdecl(C,p)))
+function cpptype(C,p::Type{CppRef{T,CVR}}) where {T,CVR}
     referenceTo(C,addQualifiers(cpptype(C,T),CVR))
 end
 
-cpptype{T<:Ref}(C,::Type{T}) = referenceTo(C,cpptype(C,eltype(T)))
-cpptype{T}(C,p::Type{Ptr{T}}) = pointerTo(C,cpptype(C,T))
+cpptype(C,::Type{T}) where {T<:Ref} = referenceTo(C,cpptype(C,eltype(T)))
+cpptype(C,p::Type{Ptr{T}}) where {T} = pointerTo(C,cpptype(C,T))
 
-function cpptype{base,fptr}(C,p::Type{CppMFptr{base,fptr}})
+function cpptype(C,p::Type{CppMFptr{base,fptr}}) where {base,fptr}
     makeMemberFunctionType(C, cpptype(C,base), cpptype(C,fptr))
 end
-function cpptype{rt, args}(C,p::Type{CppFunc{rt,args}})
+function cpptype(C,p::Type{CppFunc{rt,args}}) where {rt, args}
     makeFunctionType(C, cpptype(C,rt),QualType[cpptype(C,arg) for arg in args.parameters])
 end
-cpptype{f}(C,p::Type{CppFptr{f}}) = pointerTo(C,cpptype(C,f))
+cpptype(C,p::Type{CppFptr{f}}) where {f} = pointerTo(C,cpptype(C,f))
 
 # # # # Exposing julia types to C++
 
 const MappedTypes = Dict{Type, QualType}()
 const InverseMappedTypes = Dict{QualType, Type}()
-function cpptype{T}(C,::Type{T})
+function cpptype(C,::Type{T}) where T
     (!(T === Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
     try
     if !haskey(MappedTypes, T)
