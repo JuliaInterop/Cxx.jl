@@ -27,6 +27,11 @@ end
 
 immutable CxxInstance{n}; end
 
+"""
+    __current_compiler__
+
+An instance of the Clang compiler current in use.
+"""
 const __current_compiler__ = CxxInstance{1}()
 const __default_compiler__ = __current_compiler__
 

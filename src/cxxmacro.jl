@@ -173,10 +173,36 @@ function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isne
     error("Unrecognized CPP Expression ",expr," (",expr.head,")")
 end
 
+"""
+    @cxx expr
+
+Evaluate the given expression as C++ code, punning on Julia syntax to
+avoid needing to wrap the C++ code in a string, as in `cxx""`. The
+three basic features provided by `@cxx` are:
+
+* Static function calls: `@cxx mynamespace::func(args...)`
+* Member calls: `@cxx m->foo(args...)`, where `m` is a `CppPtr`, `CppRef`,
+  or `CppValue`
+* Value references: `@cxx foo`
+
+Unary `*` inside a call, e.g. `@cxx foo(*(a))`, is treated as a dereference
+of `a` on the C++ side. Further, prefixing any value by `&` takes the
+address of the given value.
+
+!!! note
+    In `@cxx foo(*(a))`, the parentheses around `a` are necessary since
+    Julia syntax does not allow `*` in the unary operator position
+    otherwise.
+"""
 macro cxx(expr)
     cpps_impl(expr)
 end
 
+"""
+    @cxxnew expr
+
+Create a new instance of a C++ class.
+"""
 macro cxxnew(expr)
     cpps_impl(expr, Expr(:curly,Tuple), false, false, true)
 end

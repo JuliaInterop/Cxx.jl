@@ -59,5 +59,6 @@ script:
     - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.test("Cxx"; coverage=true)' || false; fi
 after_success:
     - julia -e 'cd(Pkg.dir("Cxx")); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
+    - julia -e 'cd(Pkg.dir("Cxx")); Pkg.add("Documenter"); include(joinpath("docs", "make.jl"))'
 notifications:
   email: false

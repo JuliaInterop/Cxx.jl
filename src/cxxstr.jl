@@ -727,6 +727,14 @@ struct FakeLineNumberNode
 end
 FakeLineNumberNode() = FakeLineNumberNode(Symbol(""), 1)
 
+"""
+    cxx"C++ code"
+
+Evaluate the given C++ code in the global scope. This can be used for
+declaring namespaces, classes, functions, global variables, etc.
+Unlike `@cxx`, `cxx""` does not require punning on Julia syntax, which
+means, e.g., that unary `*` for pointers does not require parentheses.
+"""
 macro cxx_str(str,args...)
     isdefined(:__source__) || (__source__ = FakeLineNumberNode())
     annotations = length(args) > 0 ? first(args) : ""
@@ -739,6 +747,12 @@ macro cxxt_str(str,args...)
     esc(process_cxx_string(str,false,true,__source__))
 end
 
+"""
+    icxx"C++ code"
+
+Evaluate the given C++ code at the function scope. This should be
+used for calling C++ functions and performing computations.
+"""
 macro icxx_str(str,args...)
     isdefined(:__source__) || (__source__ = FakeLineNumberNode())
     annotations = length(args) > 0 ? first(args) : ""

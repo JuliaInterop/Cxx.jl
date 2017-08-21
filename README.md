@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/Keno/Cxx.jl.svg?branch=master)](https://travis-ci.org/Keno/Cxx.jl)
 [![codecov.io](http://codecov.io/github/Keno/Cxx.jl/coverage.svg?branch=master)](http://codecov.io/github/Keno/Cxx.jl?branch=master)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://Keno.github.io/Cxx.jl/latest)
 
 The Julia C++ Foreign Function Interface (FFI) and REPL.
 
