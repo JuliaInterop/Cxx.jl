@@ -5,8 +5,8 @@ end
 if haskey(ENV, "PREBUILT_CI_BINARIES") && ENV["PREBUILT_CI_BINARIES"] == "1"
     # Try to download pre-built binaries
     if !isdir("build") || length(readdir("build")) == 0
-        os_tag = is_apple() ? "osx" : "linux"
-        run(`rm -rf build/ src/`)
+	os_tag = is_apple() ? "osx" : "linux"
+	run(`rm -rf build/ src/`)
         filename = "llvm-$(os_tag)-$(Base.libllvm_version).tgz"
         run(`wget https://s3.amazonaws.com/julia-cxx/$filename`)
         run(`tar xzf $filename --strip-components=1`)
@@ -16,15 +16,18 @@ end
 #in case we have specified the path to the julia installation
 #that contains the headers etc, use that
 BASE_JULIA_BIN = get(ENV, "BASE_JULIA_BIN", JULIA_HOME)
-BASE_JULIA_SRC = get(ENV, "BASE_JULIA_SRC", joinpath(BASE_JULIA_BIN, "..", ".."))
+BASE_JULIA_SRC = get(ENV, "BASE_JULIA_SRC", joinpath(BASE_JULIA_BIN, "../.."))
+
+BASE_JULIA_BIN = replace(BASE_JULIA_BIN ,"\\","\\\\")
+BASE_JULIA_SRC = replace(BASE_JULIA_SRC ,"\\","\\\\")
 
 #write a simple include file with that path
 println("writing path.jl file")
 s = """
-const BASE_JULIA_BIN=$(sprint(show, BASE_JULIA_BIN))
+const BASE_JULIA_BIN=\"$BASE_JULIA_BIN\"
 export BASE_JULIA_BIN
 
-const BASE_JULIA_SRC=$(sprint(show, BASE_JULIA_SRC))
+const BASE_JULIA_SRC=\"$BASE_JULIA_SRC\"
 export BASE_JULIA_SRC
 """
 f = open(joinpath(dirname(@__FILE__),"path.jl"), "w")
