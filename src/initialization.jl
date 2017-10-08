@@ -70,11 +70,14 @@ function RunGlobalConstructors(C)
     end
 end
 
-# Include a file names fname. Preserved for situations in which the
-# path of an include file needs to be assembled as a julia string. In all
-# other situations, it is advisable, to just use cxx"" with regular #include's
-# which makes the intent clear and has the same directory resolution logic
-# as C++
+"""
+    cxxinclude([C::CxxInstance,] fname; isAngled=false)
+
+Include the C++ file specified by `fname`. This should be used when the path
+of the included file needs to be assembled programmatically as a Julia string.
+In all other situations, it is avisable to just use `cxx"#include ..."`, which
+makes the intent clear and has the same directory resolution logic as C++.
+"""
 function cxxinclude(C, fname; isAngled = false)
     if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{ClangCompiler}, Ptr{UInt8}, Cint),
         &C, fname, isAngled) == 0
@@ -168,9 +171,19 @@ const C_System          = 1 # -isystem
 # Like -isystem, but the header gets explicitly wrapped in `extern "C"`
 const C_ExternCSystem   = 2
 
-# Add a directory to the clang include path
-# `kind` is one of the options above ans `isFramework` is the equivalent of the
-# `-F` option to clang.
+"""
+    addHeaderDir([C::CxxInstance,] dirname; kind=C_User, isFramework=false)
+
+Add a directory to the Clang `#include` path. The keyword argument `kind`
+specifies the kind of directory, and can be one of
+
+* `C_User` (like passing `-I` when compiling)
+* `C_System` (like `-isystem`)
+* `C_ExternCSystem` (like `-isystem`, but wrap in `extern "C"`)
+
+The `isFramework` argument is the equivalent of passing the `-F` option
+to Clang.
+"""
 function addHeaderDir(C, dirname; kind = C_User, isFramework = false)
     ccall((:add_directory, libcxxffi), Void,
         (Ptr{ClangCompiler}, Cint, Cint, Ptr{UInt8}), &C, kind, isFramework, dirname)
@@ -178,7 +191,11 @@ end
 addHeaderDir(C::CxxInstance, dirname; kwargs...) = addHeaderDir(instance(C),dirname; kwargs...)
 addHeaderDir(dirname; kwargs...) = addHeaderDir(__default_compiler__,dirname; kwargs...)
 
-# The equivalent of `#define $Name`
+"""
+    defineMacro([C::CxxInstance,] name)
+
+Define a C++ macro. Equivalent to `cxx"#define \$name"`.
+"""
 function defineMacro(C,Name)
     ccall((:defineMacro, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{UInt8},), &C, Name)
 end
