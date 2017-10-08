@@ -10,7 +10,7 @@ The Julia C++ Foreign Function Interface (FFI) and REPL.
 
 ### Installation
 
-You will need to install Julia v0.5 (or later).
+You will need to install Julia v0.6 (or later).
 
 #### Build requirements
 
@@ -21,7 +21,7 @@ In addition to the [system requirements](https://github.com/JuliaLang/julia#requ
 
 #### Building Cxx
 
-Launch julia (version 0.5 or greater), and in the terminal type
+Launch julia (version 0.6 or later), and in the terminal type
 ```julia
 Pkg.add("Cxx")
 ```
