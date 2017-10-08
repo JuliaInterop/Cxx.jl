@@ -2,7 +2,7 @@
 # contains the information about the actual type, as well as storing the CVR
 # qualifiers in the unused bits of the pointer. Here we just treat QualType
 # as an opaque struct with one pointer-sized member.
-immutable QualType
+struct QualType
     ptr::Ptr{Void}
 end
 Base.convert(::Type{Ptr{Void}}, QT::QualType) = QT.ptr
@@ -61,20 +61,20 @@ export @cpcpp_str, @pcpp_str, @vcpp_str, @rcpp_str
 # `s` is a symbol of the types fully qualified name, e.g. `int`, `char`
 # or `foo::bar`. It is usually used directly as a type, rather than as an
 # instance
-immutable CppBaseType{s}
+struct CppBaseType{s}
 end
 
 # A templated type where `T` is the CppBaseType to be templated and `targs`
 # is a tuple of template arguments
-immutable CppTemplate{T,targs}
+struct CppTemplate{T,targs}
 end
 
 # A base type with extra CVR qualifications
-immutable CxxQualType{T,CVR}
+struct CxxQualType{T,CVR}
 end
 
 # The abstract notion of a C++ array type
-immutable CxxArrayType{T}
+struct CxxArrayType{T}
 end
 
 # The equivalent of a C++ on-stack value.
@@ -101,12 +101,12 @@ end
 # The equivalent of a C++ reference
 # T can be any valid C++ type other than CppRef
 # See note on CVR above and note on bitstype below
-@compat primitive type CppRef{T,CVR} 8*sizeof(Ptr{Void}) end
-(::Type{CppRef{T,CVR}}){T,CVR}(p::Ptr{Void}) = reinterpret(CppRef{T,CVR}, p)
+primitive type CppRef{T,CVR} 8*sizeof(Ptr{Void}) end
+(::Type{CppRef{T,CVR}})(p::Ptr{Void}) where {T,CVR} = reinterpret(CppRef{T,CVR}, p)
 
 cconvert(::Type{Ptr{Void}},p::CppRef) = reinterpret(Ptr{Void}, p)
-Base.unsafe_load{T<:Union{CxxBuiltinTs,Ptr}}(p::CppRef{T}) = unsafe_load(reinterpret(Ptr{T}, p))
-Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
+Base.unsafe_load(p::CppRef{T}) where {T<:Union{CxxBuiltinTs,Ptr}} = unsafe_load(reinterpret(Ptr{T}, p))
+Base.convert(::Type{T},p::CppRef{T}) where {T<:CxxBuiltinTs} = unsafe_load(p)
 
 # The equivalent of a C++ pointer.
 # T can be a CppValue, CppPtr, etc. depending on the pointed to type,
@@ -116,8 +116,8 @@ Base.convert{T<:CxxBuiltinTs}(::Type{T},p::CppRef{T}) = unsafe_load(p)
 #    ptr::Ptr{Void}
 # end
 # Make CppPtr and Ptr the same in the julia calling convention
-@compat primitive type CppPtr{T,CVR} 8*sizeof(Ptr{Void}) end
-(::Type{CppPtr{T,CVR}}){T,CVR}(p::Ptr{Void}) = reinterpret(CppPtr{T,CVR}, p)
+primitive type CppPtr{T,CVR} 8*sizeof(Ptr{Void}) end
+(::Type{CppPtr{T,CVR}})(p::Ptr{Void}) where {T,CVR} = reinterpret(CppPtr{T,CVR}, p)
 
 cconvert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 Base.convert(::Type{Int},p::CppPtr) = convert(Int,reinterpret(Ptr{Void}, p))
@@ -127,36 +127,36 @@ Base.convert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 ==(p1::CppPtr,p2::Ptr) = convert(Ptr{Void}, p1) == p2
 ==(p1::Ptr,p2::CppPtr) = p1 == convert(Ptr{Void}, p2)
 
-Base.unsafe_load{T<:CppPtr}(p::CppRef{T}) = unsafe_load(reinterpret(Ptr{T}, p))
+Base.unsafe_load(p::CppRef{T}) where {T<:CppPtr} = unsafe_load(reinterpret(Ptr{T}, p))
 
 # Provides a common type for CppFptr and CppMFptr
-immutable CppFunc{rt, argt}; end
+struct CppFunc{rt, argt}; end
 
 # The equivalent of a C++ rt (*foo)(argt...)
-immutable CppFptr{func}
+struct CppFptr{func}
     ptr::Ptr{Void}
 end
 
 # A pointer to a C++ member function.
 # Refer to the Itanium ABI for its meaning
-immutable CppMFptr{base, fptr}
+struct CppMFptr{base, fptr}
     ptr::UInt64
     adj::UInt64
 end
 
 # Represent a C/C++ Enum. `S` is a symbol, representing the fully qualified name
 # of the enum, `T` the underlying type
-immutable CppEnum{S, T}
+struct CppEnum{S, T}
     val::T
 end
 ==(p1::CppEnum,p2::Integer) = p1.val == p2
 ==(p1::Integer,p2::CppEnum) = p1 == p2.val
 
-Base.unsafe_load{T<:CppEnum}(p::CppRef{T}) = unsafe_load(reinterpret(Ptr{Cint}, p))
+Base.unsafe_load(p::CppRef{T}) where {T<:CppEnum} = unsafe_load(reinterpret(Ptr{Cint}, p))
 
 # Representa a C++ Lambda. Since they are not nameable, we need to number them
 # and record the corresponding type
-immutable CppLambda{num}
+struct CppLambda{num}
     captureData::Ptr{Void}
 end
 
@@ -169,7 +169,7 @@ function lambdaForType(T)
     end
     CppLambda{lambdaIndxes[T]}
 end
-typeForLambda{N}(::Type{CppLambda{N}}) = lambdaTypes[N]
+typeForLambda(::Type{CppLambda{N}}) where {N} = lambdaTypes[N]
 
 # Convenience string literals for the above - part of the user facing
 # functionality. Due to the complexity of the representation hierarchy,
@@ -197,8 +197,8 @@ macro vcpp_str(s,args...)
     CppValue{simpleCppValue(s)}
 end
 
-pcpp{T,N}(x::Type{CppValue{T,N}}) = CppPtr{T,NullCVR}
-pcpp{T}(x::Type{CppValue{T}}) = CppPtr{T,NullCVR}
+pcpp(x::Type{CppValue{T,N}}) where {T,N} = CppPtr{T,NullCVR}
+pcpp(x::Type{CppValue{T}}) where {T} = CppPtr{T,NullCVR}
 
 # Convert C++ QualType representation to julia representation
 QualType(T::vcpp"clang::QualType") = reinterpret(QualType, [T.data])[]

@@ -228,7 +228,7 @@ finalize(X)
 @test icxx"testDestructCounter == 10;"
 
 # Template dispatch
-foo{T}(x::cxxt"std::vector<$T>") = icxx"$x.size();"
+foo(x::cxxt"std::vector<$T>") where {T} = icxx"$x.size();"
 @test foo(icxx"std::vector<uint64_t>{0};") == 1
 @test foo(icxx"std::vector<uint64_t>{};") == 0
 
@@ -403,7 +403,7 @@ public:
 @assert icxx"Template246<$(Val{5}())>().getI();" == 5
 
 # #256
-@compat const SVP{T} = cxxt"std::vector<$T>*"
+const SVP{T} = cxxt"std::vector<$T>*"
 # This is a bug!
 # @assert SVP{cxxt"std::string"} == cxxt"std::vector<std::string>*"
 

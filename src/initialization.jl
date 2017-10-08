@@ -24,7 +24,7 @@ init_libcxxffi()
 function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
         useDefaultCxxABI=true, PCHTime = Base.Libc.TmStruct())
     x = Array{ClangCompiler}(1)
-    sysroot = @static is_apple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
+    sysroot = @static isapple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
     EmitPCH = true
     PCHPtr = C_NULL
     PCHSize = 0
@@ -196,7 +196,7 @@ defineMacro(Name) = defineMacro(__default_compiler__,Name)
 nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
-@static if is_apple() function collectStdHeaders!(headers)
+@static if isapple() function collectStdHeaders!(headers)
     xcode_path =
         "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
     didfind = false
@@ -208,7 +208,7 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
     end
     didfind || error("Could not find C++ standard library. Is XCode installed?")
 end # function addStdHeaders(C)
-end # is_apple
+end # isapple
 
 # On linux the situation is a little more complicated as the system header is
 # generally shipped with GCC, which every distribution seems to put in a
@@ -329,25 +329,25 @@ function CollectLinuxHeaderPaths!(headers)
     end
 end
 
-@static if is_linux() function collectStdHeaders!(headers)
+@static if islinux() function collectStdHeaders!(headers)
     CollectLinuxHeaderPaths!(headers)
     push!(headers,("/usr/include", C_System));
 end # function addStdHeaders(C)
-end # is_linux
+end # islinux
 
-@static if is_windows() function collectStdHeaders!(headers)
+@static if iswindows() function collectStdHeaders!(headers)
       base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
       push!(headers,(joinpath(base,"x86_64-w64-mingw32/include"), C_System))
       #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
       push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), C_System))
       push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), C_System))
 end #function addStdHeaders(C)
-end # is_windows
+end # iswindows
 
 # Also add clang's intrinsic headers
 function collectClangHeaders!(headers)
     ver = Base.VersionNumber(Base.libllvm_version)
-    ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)        
+    ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)
     baseclangdir = joinpath(BASE_JULIA_BIN,
         "../lib/clang/$ver/include/")
     cxxclangdir = joinpath(dirname(@__FILE__),

@@ -1,6 +1,6 @@
 Base.unsafe_string(str::vcpp"llvm::StringRef") = Cxx.unsafe_string(icxx"$str.data();",icxx"$str.size();")
 typename(QT) = Cxx.getTypeNameAsString(QT)
-function typename{T<:Cxx.CxxQualType}(::Type{T})
+function typename(::Type{T}) where T<:Cxx.CxxQualType
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = Cxx.cpptype(C,T)
     typename(QT)
