@@ -411,9 +411,9 @@ end
 
 function irbuilder(C)
     pcpp"clang::CodeGen::CGBuilderTy"(
-        ccall((:clang_get_builder,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
+        ccall((:clang_get_builder,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
 end
-function julia_to_llvm(x::ANY)
+function julia_to_llvm(@nospecialize x)
     isboxed = Ref{UInt8}()
     pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(Any,Ref{UInt8}),x,isboxed))
 end

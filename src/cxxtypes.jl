@@ -80,29 +80,17 @@ end
 # The equivalent of a C++ on-stack value.
 # T is a CppBaseType or a CppTemplate
 # See note on CVR above
-if isdefined(Core, :UnionAll)
-include_string("""
-type CppValue{T,N}
+mutable struct CppValue{T,N}
     data::NTuple{N,UInt8}
-    CppValue{T,N}(data::NTuple{N,UInt8}) where {T,N} = new(data)
-    CppValue{T,N}() where {T,N} = new()
-end
-""")
-else
-include_string("""
-type CppValue{T,N}
-    data::NTuple{N,UInt8}
-    CppValue(data::NTuple{N,UInt8}) = new(data)
-    CppValue() = new()
-end
-""")
+    CppValue{T,N}(data::NTuple{N,UInt8}) where {T,N} = new{T,N}(data)
+    CppValue{T,N}() where {T,N} = new{T,N}()
 end
 
 # The equivalent of a C++ reference
 # T can be any valid C++ type other than CppRef
 # See note on CVR above and note on bitstype below
 primitive type CppRef{T,CVR} 8*sizeof(Ptr{Void}) end
-(::Type{CppRef{T,CVR}})(p::Ptr{Void}) where {T,CVR} = reinterpret(CppRef{T,CVR}, p)
+CppRef{T,CVR}(p::Ptr{Void}) where {T,CVR} = reinterpret(CppRef{T,CVR}, p)
 
 cconvert(::Type{Ptr{Void}},p::CppRef) = reinterpret(Ptr{Void}, p)
 Base.unsafe_load(p::CppRef{T}) where {T<:Union{CxxBuiltinTs,Ptr}} = unsafe_load(reinterpret(Ptr{T}, p))
@@ -112,12 +100,12 @@ Base.convert(::Type{T},p::CppRef{T}) where {T<:CxxBuiltinTs} = unsafe_load(p)
 # T can be a CppValue, CppPtr, etc. depending on the pointed to type,
 # but is never a CppBaseType or CppTemplate directly
 # TODO: Maybe use Ptr{CppValue} and Ptr{CppFunc} instead?
-# immutable CppPtr{T,CVR}
-#    ptr::Ptr{Void}
+# struct CppPtr{T,CVR}
+#     ptr::Ptr{Void}
 # end
 # Make CppPtr and Ptr the same in the julia calling convention
 primitive type CppPtr{T,CVR} 8*sizeof(Ptr{Void}) end
-(::Type{CppPtr{T,CVR}})(p::Ptr{Void}) where {T,CVR} = reinterpret(CppPtr{T,CVR}, p)
+CppPtr{T,CVR}(p::Ptr{Void}) where {T,CVR} = reinterpret(CppPtr{T,CVR}, p)
 
 cconvert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
 Base.convert(::Type{Int},p::CppPtr) = convert(Int,reinterpret(Ptr{Void}, p))

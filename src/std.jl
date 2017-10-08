@@ -1,5 +1,5 @@
 import Base: String, unsafe_string
-using Base.@propagate_inbounds
+using Base: @propagate_inbounds, uniontypes
 
 cxxparse("""
 #include <string>
@@ -13,16 +13,10 @@ const StdString = cxxt"std::string"
 const StdStringR = cxxt"std::string&"
 const StdVector{T} = Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
 const StdMap{K,V} = cxxt"std::map<$K,$V>"
-if isdefined(Core, :UnionAll)
-include_string("""
 const GenericStdMap =
   Cxx.CppValue{Cxx.CxxQualType{Cxx.CppTemplate{
     Cxx.CppBaseType{Symbol("std::map")},Stuff},
     (false, false, false)},N} where N where Stuff
-""")
-else
-const GenericStdMap = StdMap
-end
 
 unsafe_string(str::Union{StdString,StdStringR}) = unsafe_string((@cxx str->data()),@cxx str->size())
 String(str::Union{StdString,StdStringR}) = unsafe_string(str)
@@ -31,11 +25,6 @@ Base.convert(::Type{StdString}, x::AbstractString) = icxx"std::string s($(pointe
 
 import Base: showerror
 import Cxx: CppValue
-if !isdefined(Core, :UnionAll)
-    uniontypes(U) = U.types
-else
-    const uniontypes = Base.uniontypes
-end
 
 for T in uniontypes(Cxx.CxxBuiltinTypes)
     @eval @exception function showerror(io::IO, e::$(T.parameters[1]))

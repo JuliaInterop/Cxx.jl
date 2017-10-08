@@ -24,7 +24,7 @@ init_libcxxffi()
 function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
         useDefaultCxxABI=true, PCHTime = Base.Libc.TmStruct())
     x = Array{ClangCompiler}(1)
-    sysroot = @static isapple() ? strip(readstring(`xcodebuild -version -sdk macosx Path`)) : C_NULL
+    sysroot = @static isapple() ? strip(read(`xcodebuild -version -sdk macosx Path`, String)) : C_NULL
     EmitPCH = true
     PCHPtr = C_NULL
     PCHSize = 0
@@ -33,11 +33,11 @@ function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CP
         PCHSize = sizeof(PCHBuffer)
     end
     ccall((:init_clang_instance,libcxxffi),Void,
-        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Csize_t,Ptr{Base.Libc.TmStruct},Ptr{Void}),
-        x,target,CPU,sysroot,EmitPCH,makeCCompiler, PCHPtr, PCHSize, &PCHTime,
+        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Csize_t,Ref{Base.Libc.TmStruct},Ptr{Void}),
+        x,target,CPU,sysroot,EmitPCH,makeCCompiler, PCHPtr, PCHSize, PCHTime,
         julia_to_llvm(Any))
     useDefaultCxxABI && ccall((:apply_default_abi, libcxxffi),
-        Void, (Ptr{ClangCompiler},), &x[1])
+        Void, (Ref{ClangCompiler},), x[1])
     x[1]
 end
 
@@ -60,7 +60,7 @@ end
 import Base: llvmcall, cglobal
 
 CollectGlobalConstructors(C) = pcpp"llvm::Function"(
-    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
+    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
 
 function RunGlobalConstructors(C)
     p = convert(Ptr{Void}, CollectGlobalConstructors(C))
@@ -79,8 +79,8 @@ In all other situations, it is avisable to just use `cxx"#include ..."`, which
 makes the intent clear and has the same directory resolution logic as C++.
 """
 function cxxinclude(C, fname; isAngled = false)
-    if ccall((:cxxinclude, libcxxffi), Cint, (Ptr{ClangCompiler}, Ptr{UInt8}, Cint),
-        &C, fname, isAngled) == 0
+    if ccall((:cxxinclude, libcxxffi), Cint, (Ref{ClangCompiler}, Ptr{UInt8}, Cint),
+        C, fname, isAngled) == 0
         error("Could not include file $fname")
     end
     RunGlobalConstructors(C)
@@ -97,7 +97,7 @@ cxxinclude(fname; isAngled = false) = cxxinclude(__default_compiler__, fname; is
 # buffer and hence relative includes do not work.
 function EnterBuffer(C,buf)
     ccall((:EnterSourceFile,libcxxffi),Void,
-        (Ptr{ClangCompiler},Ptr{UInt8},Csize_t),&C,buf,sizeof(buf))
+        (Ref{ClangCompiler},Ptr{UInt8},Csize_t),C,buf,sizeof(buf))
 end
 
 # Enter's the buffer, while pretending it's the contents of the file at path
@@ -105,15 +105,15 @@ end
 # else, `buf` will be included instead.
 function EnterVirtualSource(C,buf,file::String)
     ccall((:EnterVirtualFile,libcxxffi),Void,
-        (Ptr{ClangCompiler},Ptr{UInt8},Csize_t,Ptr{UInt8},Csize_t),
-        &C,buf,sizeof(buf),file,sizeof(file))
+        (Ref{ClangCompiler},Ptr{UInt8},Csize_t,Ptr{UInt8},Csize_t),
+        C,buf,sizeof(buf),file,sizeof(file))
 end
 EnterVirtualSource(C,buf,file::Symbol) = EnterVirtualSource(C,buf,string(file))
 
 # Parses everything until the end of the currently entered source file
 # Returns true if the file was successfully parsed (i.e. no error occurred)
 function ParseToEndOfFile(C)
-    hadError = ccall((:_cxxparse,libcxxffi),Cint,(Ptr{ClangCompiler},),&C) == 0
+    hadError = ccall((:_cxxparse,libcxxffi),Cint,(Ref{ClangCompiler},),C) == 0
     if !hadError
         RunGlobalConstructors(C)
     end
@@ -121,7 +121,7 @@ function ParseToEndOfFile(C)
 end
 
 function ParseTypeName(C, ParseAlias = false)
-    ret = ccall((:ParseTypeName,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Cint),&C, ParseAlias)
+    ret = ccall((:ParseTypeName,libcxxffi),Ptr{Void},(Ref{ClangCompiler},Cint),C, ParseAlias)
     if ret == C_NULL
         error("Could not parse type name")
     end
@@ -155,10 +155,10 @@ function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column, isTypeN
 end
 
 setup_cpp_env(C, f::pcpp"llvm::Function") =
-    ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},Ptr{Void}),&C,f)
+    ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ref{ClangCompiler},Ptr{Void}),C,f)
 
 function cleanup_cpp_env(C, state)
-    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ptr{ClangCompiler}, Ptr{Void}),&C,state)
+    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ref{ClangCompiler}, Ptr{Void}),C,state)
     RunGlobalConstructors(C)
 end
 
@@ -186,7 +186,7 @@ to Clang.
 """
 function addHeaderDir(C, dirname; kind = C_User, isFramework = false)
     ccall((:add_directory, libcxxffi), Void,
-        (Ptr{ClangCompiler}, Cint, Cint, Ptr{UInt8}), &C, kind, isFramework, dirname)
+        (Ref{ClangCompiler}, Cint, Cint, Ptr{UInt8}), C, kind, isFramework, dirname)
 end
 addHeaderDir(C::CxxInstance, dirname; kwargs...) = addHeaderDir(instance(C),dirname; kwargs...)
 addHeaderDir(dirname; kwargs...) = addHeaderDir(__default_compiler__,dirname; kwargs...)
@@ -197,7 +197,7 @@ addHeaderDir(dirname; kwargs...) = addHeaderDir(__default_compiler__,dirname; kw
 Define a C++ macro. Equivalent to `cxx"#define \$name"`.
 """
 function defineMacro(C,Name)
-    ccall((:defineMacro, libcxxffi), Void, (Ptr{ClangCompiler},Ptr{UInt8},), &C, Name)
+    ccall((:defineMacro, libcxxffi), Void, (Ref{ClangCompiler},Ptr{UInt8},), C, Name)
 end
 defineMacro(C::CxxInstance,Name) = defineMacro(instance(C),Name)
 defineMacro(Name) = defineMacro(__default_compiler__,Name)
@@ -282,24 +282,24 @@ end
 
 function CollectLinuxHeaderPaths!(headers)
     # Taken from Clang's ToolChains.cpp
-    const X86_64LibDirs = ["/lib64", "/lib"]
-    const X86_64Triples = [
+    X86_64LibDirs = ["/lib64", "/lib"]
+    X86_64Triples = [
     "x86_64-linux-gnu", "x86_64-unknown-linux-gnu", "x86_64-pc-linux-gnu",
     "x86_64-redhat-linux6E", "x86_64-redhat-linux", "x86_64-suse-linux",
     "x86_64-manbo-linux-gnu", "x86_64-linux-gnu", "x86_64-slackware-linux",
     "x86_64-linux-android", "x86_64-unknown-linux"
     ]
 
-    const X86LibDirs = ["/lib32", "/lib"]
-    const X86Triples = ["i686-linux-gnu",       "i686-pc-linux-gnu",     "i486-linux-gnu",
-                        "i386-linux-gnu",       "i386-redhat-linux6E",   "i686-redhat-linux",
-                        "i586-redhat-linux",    "i386-redhat-linux",     "i586-suse-linux",
-                        "i486-slackware-linux", "i686-montavista-linux", "i686-linux-android",
-                        "i586-linux-gnu"]
+    X86LibDirs = ["/lib32", "/lib"]
+    X86Triples = ["i686-linux-gnu",       "i686-pc-linux-gnu",     "i486-linux-gnu",
+                  "i386-linux-gnu",       "i386-redhat-linux6E",   "i686-redhat-linux",
+                  "i586-redhat-linux",    "i386-redhat-linux",     "i586-suse-linux",
+                  "i486-slackware-linux", "i686-montavista-linux", "i686-linux-android",
+                  "i586-linux-gnu"]
 
 
     CXXJL_ROOTDIR = get(ENV, "CXXJL_ROOTDIR", "/usr")
-    const Prefixes = [ CXXJL_ROOTDIR ]
+    Prefixes = [ CXXJL_ROOTDIR ]
 
     LibDirs = (Int === Int64 ? X86_64LibDirs : X86LibDirs)
     Triples = (Int === Int64 ? X86_64Triples : X86Triples)
