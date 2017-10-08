@@ -49,4 +49,6 @@ else
     ENV["JULIA_BINARY_BUILD"] = "1"
     ENV["PATH"] = string(JULIA_HOME,":",ENV["PATH"])
 end
-run(`make -j$(Sys.CPU_CORES) -f BuildBootstrap.Makefile BASE_JULIA_BIN=$BASE_JULIA_BIN BASE_JULIA_SRC=$BASE_JULIA_SRC`)
+
+make = Compat.Sys.isbsd() && !Compat.Sys.isapple() ? `gmake` : `make`
+run(`$make -j$(Sys.CPU_CORES) -f BuildBootstrap.Makefile BASE_JULIA_BIN=$BASE_JULIA_BIN BASE_JULIA_SRC=$BASE_JULIA_SRC`)
