@@ -85,37 +85,26 @@ end
 const lambda_roots = Function[]
 
 function latest_world_return_type(tt)
-    if VERSION >= v"0.6-"
-        params = Core.Inference.InferenceParams(typemax(UInt))
-        rt = Union{}
-        for m in Base._methods_by_ftype(tt, -1, params.world)
-            ty = Core.Inference.typeinf_type(m[3], m[1], m[2], true, params)
-            ty === nothing && return Any
-            rt = Core.Inference.tmerge(rt, ty)
-            rt === Any && break
-        end
-        return rt
-    else
-        linfo = tt.parameters[1].name.mt.defs.func
-        (tree, retty) = Core.Inference.typeinf(linfo,tt,svec())
-        return retty
+    params = Core.Inference.InferenceParams(typemax(UInt))
+    rt = Union{}
+    for m in Base._methods_by_ftype(tt, -1, params.world)
+        ty = Core.Inference.typeinf_type(m[3], m[1], m[2], true, params)
+        ty === nothing && return Any
+        rt = Core.Inference.tmerge(rt, ty)
+        rt === Any && break
     end
+    return rt
 end
 
 function get_llvmf_decl(tt)
   # We can emit a direct llvm-level reference to this
-  if VERSION > v"0.6-"
-    params = Base.CodegenParams()
-    world = typemax(UInt)
-    (ti, env, meth) = Base._methods_by_ftype(tt, 1, world)[1]
-    #(ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
-    meth = Base.func_for_method_checked(meth, tt)
-    linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, tt, env, world)
-    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Void}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
-  else
-    f = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool),
-      tt, false, true))
-  end
+  params = Base.CodegenParams()
+  world = typemax(UInt)
+  (ti, env, meth) = Base._methods_by_ftype(tt, 1, world)[1]
+  #(ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
+  meth = Base.func_for_method_checked(meth, tt)
+  linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, tt, env, world)
+  f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Void}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
   f
 end
 
@@ -234,8 +223,8 @@ end
 
 const sourcebuffers = Array{Tuple{AbstractString,Symbol,Int,Int,Bool}}(0)
 
-immutable SourceBuf{id}; end
-sourceid{id}(::Type{SourceBuf{id}}) = id
+struct SourceBuf{id}; end
+sourceid(::Type{SourceBuf{id}}) where {id} = id
 
 icxxcounter = 0
 
@@ -534,10 +523,10 @@ end
     body
 end
 
-immutable CodeLoc{filename,line,col}
+struct CodeLoc{filename,line,col}
 end
 
-immutable CxxTypeName{name}
+struct CxxTypeName{name}
 end
 
 @generated function CxxType(CT, t::CxxTypeName, loc, args...)

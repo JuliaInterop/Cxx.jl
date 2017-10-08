@@ -140,7 +140,7 @@
 #
 __precompile__(true)
 module Cxx
-pathfile = joinpath(dirname(@__FILE__),"../deps/path.jl")
+pathfile = joinpath(dirname(@__FILE__), "..", "deps", "path.jl")
 isfile(pathfile) || error("path.jl not generated. Try running Pkg.build(\"Cxx\")")
 include(pathfile)
 
@@ -149,6 +149,7 @@ using Core: svec
 
 using Compat
 using Compat.TypeUtils
+using Compat.Sys: isapple, isbsd, islinux, isunix, iswindows
 
 export cast,
        @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr, @cxxt_str,

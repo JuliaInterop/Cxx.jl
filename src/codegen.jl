@@ -35,16 +35,16 @@
 
 # Pseudo-AST definitions
 
-immutable CppNNS{chain}; end
+struct CppNNS{chain}; end
 
-immutable CppExpr{T,targs}; end
+struct CppExpr{T,targs}; end
 
 # Force cast the data portion of a jl_value_t to the given C++
 # type
-immutable JLCppCast{T,JLT}
+struct JLCppCast{T,JLT}
     data::JLT
 end
-@generated function (::Type{JLCppCast{T}}){T,JLT}(data::JLT)
+@generated function JLCppCast{T}(data::JLT) where {T,JLT}
     JLT.mutable ||
         error("Can only pass pointers to mutable values. " *
               "To pass immutables, use an array instead.")
@@ -53,7 +53,7 @@ end
     end
 end
 
-cpptype{T,jlt}(C,p::Type{JLCppCast{T,jlt}}) = pointerTo(C,cpptype(C,T))
+cpptype(C,p::Type{JLCppCast{T,jlt}}) where {T,jlt} = pointerTo(C,cpptype(C,T))
 
 macro jpcpp_str(s,args...)
     JLCppCast{CppBaseType{Symbol(s)}}
@@ -62,59 +62,59 @@ end
 # Represents a forced cast form the value T
 # (which may be any C++ compatible value)
 # to the the C++ type To
-immutable CppCast{T,To}
+struct CppCast{T,To}
     from::T
 end
-CppCast{T,To}(from::T,::Type{To}) = CppCast{T,To}(from)
-cast{T,To}(from::T,::Type{To}) = CppCast{T,To}(from)
+CppCast(from::T,::Type{To}) where {T,To} = CppCast{T,To}(from)
+cast(from::T,::Type{To}) where {T,To} = CppCast{T,To}(from)
 
 # Represents a C++ Deference
-immutable CppDeref{T}
+struct CppDeref{T}
     val::T
 end
 
 # Represent a C++ addrof (&foo)
-immutable CppAddr{T}
+struct CppAddr{T}
     val::T
 end
 
 # On base types, don't do anything for stripmodifer/resolvemodifier. Since,
 # we'll be dealing with these directly
 
-stripmodifier{f}(cppfunc::Type{CppFptr{f}}) = cppfunc
-stripmodifier{T,CVR}(p::Union{Type{CppPtr{T,CVR}},
-    Type{CppRef{T,CVR}}}) = p
-stripmodifier{T <: CppValue}(p::Type{T}) = p
-stripmodifier{T<:CppEnum}(p::Type{T}) = p
-stripmodifier{base,fptr}(p::Type{CppMFptr{base,fptr}}) = p
+stripmodifier(cppfunc::Type{CppFptr{f}}) where {f} = cppfunc
+stripmodifier(p::Union{Type{CppPtr{T,CVR}},
+    Type{CppRef{T,CVR}}}) where {T,CVR} = p
+stripmodifier(p::Type{T}) where {T <: CppValue} = p
+stripmodifier(p::Type{T}) where {T<:CppEnum} = p
+stripmodifier(p::Type{CppMFptr{base,fptr}}) where {base,fptr} = p
 stripmodifier(p::CxxBuiltinTypes) = p
-stripmodifier{T<:Function}(p::Type{T}) = p
-stripmodifier{T}(p::Type{Ptr{T}}) = p
-stripmodifier{T<:Ref}(p::Type{T}) = p
-stripmodifier{T,JLT}(p::Type{JLCppCast{T,JLT}}) = p
-stripmodifier{T}(p::Type{T}) = p
+stripmodifier(p::Type{T}) where {T<:Function} = p
+stripmodifier(p::Type{Ptr{T}}) where {T} = p
+stripmodifier(p::Type{T}) where {T<:Ref} = p
+stripmodifier(p::Type{JLCppCast{T,JLT}}) where {T,JLT} = p
+stripmodifier(p::Type{T}) where {T} = p
 
-resolvemodifier{T,CVR}(C,p::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, e::pcpp"clang::Expr") = e
-resolvemodifier{T <: CppValue}(C, p::Type{T}, e::pcpp"clang::Expr") = e
+resolvemodifier(C,p::Union{Type{CppPtr{T,CVR}}, Type{CppRef{T,CVR}}}, e::pcpp"clang::Expr") where {T,CVR} = e
+resolvemodifier(C, p::Type{T}, e::pcpp"clang::Expr") where {T <: CppValue} = e
 resolvemodifier(C,p::CxxBuiltinTypes, e::pcpp"clang::Expr") = e
-resolvemodifier{T}(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") = e
-resolvemodifier{T<:Ref}(C,p::Type{T}, e::pcpp"clang::Expr") = e
-resolvemodifier{T<:CppEnum}(C,p::Type{T}, e::pcpp"clang::Expr") = e
-resolvemodifier{base,fptr}(C,p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") = e
-resolvemodifier{f}(C,cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") = e
-resolvemodifier{T,JLT}(C,p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") = e
-resolvemodifier{T}(C,p::Type{T}, e::pcpp"clang::Expr") = e
+resolvemodifier(C,p::Type{Ptr{T}}, e::pcpp"clang::Expr") where {T} = e
+resolvemodifier(C,p::Type{T}, e::pcpp"clang::Expr") where {T<:Ref} = e
+resolvemodifier(C,p::Type{T}, e::pcpp"clang::Expr") where {T<:CppEnum} = e
+resolvemodifier(C,p::Type{CppMFptr{base,fptr}}, e::pcpp"clang::Expr") where {base,fptr} = e
+resolvemodifier(C,cppfunc::Type{CppFptr{f}}, e::pcpp"clang::Expr") where {f} = e
+resolvemodifier(C,p::Type{JLCppCast{T,JLT}}, e::pcpp"clang::Expr") where {T,JLT} = e
+resolvemodifier(C,p::Type{T}, e::pcpp"clang::Expr") where {T} = e
 
 # For everything else, perform the appropriate transformation
-stripmodifier{T,To}(p::Type{CppCast{T,To}}) = T
-stripmodifier{T}(p::Type{CppDeref{T}}) = T
-stripmodifier{T}(p::Type{CppAddr{T}}) = T
+stripmodifier(p::Type{CppCast{T,To}}) where {T,To} = T
+stripmodifier(p::Type{CppDeref{T}}) where {T} = T
+stripmodifier(p::Type{CppAddr{T}}) where {T} = T
 
-resolvemodifier{T,To}(C,p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") =
+resolvemodifier(C,p::Type{CppCast{T,To}}, e::pcpp"clang::Expr") where {T,To} =
     createCast(C,e,cpptype(C,To),CK_BitCast)
-resolvemodifier{T}(C,p::Type{CppDeref{T}}, e::pcpp"clang::Expr") =
+resolvemodifier(C,p::Type{CppDeref{T}}, e::pcpp"clang::Expr") where {T} =
     createDerefExpr(C,e)
-resolvemodifier{T}(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
+resolvemodifier(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") where {T} =
     CreateAddrOfExpr(C,e)
 
 # The LLVM operations themselves are slightly more tricky, since we need
@@ -124,48 +124,48 @@ resolvemodifier{T}(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") =
 
 # Builtin types and plain pointers are easy - they are represented the
 # same in julia and Clang
-resolvemodifier_llvm{ptr}(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") = v
-resolvemodifier_llvm{T<:Ref}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") where {ptr} = v
+resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T<:Ref} = v
 resolvemodifier_llvm(C, builder, t::Type{Bool}, v::pcpp"llvm::Value") =
     CreateTrunc(builder, v, toLLVM(C, cpptype(C, Bool)))
 resolvemodifier_llvm(C, builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 
-resolvemodifier_llvm{T}(C, builder, t::Type{T}, v::pcpp"llvm::Value") = v
+resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T} = v
 
 
-function resolvemodifier_llvm{T,CVR}(C, builder,
-    t::Type{CppRef{T,CVR}}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm(C, builder,
+    t::Type{CppRef{T,CVR}}, v::pcpp"llvm::Value") where {T,CVR}
     ty = cpptype(C, t)
     IntToPtr(builder,v,toLLVM(C,ty))
 end
 
-function resolvemodifier_llvm{T,CVR}(C, builder, t::Type{CppPtr{T, CVR}}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm(C, builder, t::Type{CppPtr{T, CVR}}, v::pcpp"llvm::Value") where {T,CVR}
     ty = cpptype(C, t)
     IntToPtr(builder,v,getPointerTo(toLLVM(C,ty)))
 end
 
 # Same situation as the pointer case
-resolvemodifier_llvm{T<:CppEnum}(C, builder, t::Type{T}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T<:CppEnum} =
     ExtractValue(C,v,0)
-resolvemodifier_llvm{f}(C, builder, t::Type{CppFptr{f}}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm(C, builder, t::Type{CppFptr{f}}, v::pcpp"llvm::Value") where {f} =
     ExtractValue(C,v,0)
 
 # Very similar to the pointer case, but since there may be additional wrappers
 # hiding behind the T, we need to recursively call back into
 # resolvemodifier_llvm
-resolvemodifier_llvm{T,To}(C, builder, t::Type{CppCast{T,To}}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm(C, builder, t::Type{CppCast{T,To}}, v::pcpp"llvm::Value") where {T,To} =
     resolvemodifier_llvm(C,builder, T, ExtractValue(C,v,0))
-resolvemodifier_llvm{T}(C, builder, t::Type{CppDeref{T}}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm(C, builder, t::Type{CppDeref{T}}, v::pcpp"llvm::Value") where {T} =
     resolvemodifier_llvm(C,builder, T, ExtractValue(C,v,0))
-resolvemodifier_llvm{T}(C, builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") =
+resolvemodifier_llvm(C, builder, t::Type{CppAddr{T}}, v::pcpp"llvm::Value") where {T} =
     resolvemodifier_llvm(C,builder, T, ExtractValue(C,v,0))
 
 
 # We need to cast from a named struct with two fields to an anonymous struct
 # with two fields. This isn't bitcastable, so we need to use to sets of insert
 # and extract instructions
-function resolvemodifier_llvm{base,fptr}(C, builder,
-        t::Type{CppMFptr{base,fptr}}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm(C, builder,
+        t::Type{CppMFptr{base,fptr}}, v::pcpp"llvm::Value") where {base,fptr}
     t = getLLVMStructType([julia_to_llvm(UInt64),julia_to_llvm(UInt64)])
     undef = getUndefValue(t)
     i1 = InsertValue(builder, undef, ExtractValue(C,v,0), 0)
@@ -186,8 +186,8 @@ end
 # As of julia 0.4, jl_value_t pointers generally point to the data directly,
 # so we can just pass the pointer through.
 #
-function resolvemodifier_llvm{T,jlt}(C, builder,
-        t::Type{JLCppCast{T,jlt}}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm(C, builder,
+        t::Type{JLCppCast{T,jlt}}, v::pcpp"llvm::Value") where {T,jlt}
     return v
 end
 
@@ -204,8 +204,8 @@ end
 # \--We start here
 #
 
-function resolvemodifier_llvm{T <: CppValue}(C, builder,
-        t::Type{T}, v::pcpp"llvm::Value")
+function resolvemodifier_llvm(C, builder,
+        t::Type{T}, v::pcpp"llvm::Value") where T <: CppValue
     @assert v != C_NULL
     ty = cpptype(C, t)
     if !isPointerType(getType(v))
@@ -223,7 +223,7 @@ end
 # caveats named in typetranslation.jl still apply.
 #
 
-function typeForNNS{Tnns}(C,T::Type{CppNNS{Tnns}})
+function typeForNNS(C,T::Type{CppNNS{Tnns}}) where Tnns
     nns = isa(Tnns, Symbol) ? Tuple{Tnns} : Tnns
     nns2 = nns.parameters
     if length(nns2) == 1 && (isa(nns2[1], Type) &&
@@ -233,7 +233,7 @@ function typeForNNS{Tnns}(C,T::Type{CppNNS{Tnns}})
     typeForDecl(declfornns(C,T))
 end
 
-function declfornns{Tnns}(C,::Type{CppNNS{Tnns}},cxxscope=C_NULL)
+function declfornns(C,::Type{CppNNS{Tnns}},cxxscope=C_NULL) where Tnns
     nns = isa(Tnns, Symbol) ? Tuple{Tnns} : Tnns
     @assert nns <: Tuple
     d = tu = translation_unit(C)
@@ -274,7 +274,7 @@ function declfornns{Tnns}(C,::Type{CppNNS{Tnns}},cxxscope=C_NULL)
     d
 end
 
-function declfornns{T}(C,::Type{Val{T}})
+function declfornns(C,::Type{Val{T}}) where T
     return T
 end
 

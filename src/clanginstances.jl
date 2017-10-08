@@ -1,6 +1,6 @@
 export __current_compiler__
 
-immutable ClangCompiler
+struct ClangCompiler
     shadow::pcpp"llvm::Module"
     CI::pcpp"clang::CompilerInstance"
     CGM::pcpp"clang::CodeGen::CodeGenModule"
@@ -25,11 +25,11 @@ function get_destruct_for_instance(C)
 end
 
 
-immutable CxxInstance{n}; end
+struct CxxInstance{n}; end
 
 const __current_compiler__ = CxxInstance{1}()
 const __default_compiler__ = __current_compiler__
 
-instance{n}(::CxxInstance{n}) = active_instances[n]
-instance{n}(::Type{CxxInstance{n}}) = active_instances[n]
+instance(::CxxInstance{n}) where {n} = active_instances[n]
+instance(::Type{CxxInstance{n}}) where {n} = active_instances[n]
 instance(C::ClangCompiler) = C

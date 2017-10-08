@@ -10,64 +10,64 @@ import Graphs: is_directed, num_vertices, vertices,
 
 include(Pkg.dir("Cxx","test","llvmincludes.jl"))
 
-immutable LLVMGraph{GraphType,NodeType} <: AbstractGraph{NodeType,Edge{NodeType}}
+struct LLVMGraph{GraphType,NodeType} <: AbstractGraph{NodeType,Edge{NodeType}}
     g::GraphType
 end
 
-function LLVMGraph{GraphType}(g::GraphType)
+function LLVMGraph(g::GraphType) where GraphType
     LLVMGraph{GraphType,Cxx.pcpp(@cxx llvm::GraphTraits{$(GraphType)}::NodeType)}(g)
 end
 
 is_directed(g::LLVMGraph) = true
 println(:(@cxx GraphTraits{$(Expr(:$,:GraphType))}::size(g.g)))
 println(macroexpand(:(@cxx GraphTraits{$(Expr(:$,:GraphType))}::size(g.g))))
-num_vertices{GraphType}(g::LLVMGraph{GraphType}) = @cxx llvm::GraphTraits{$GraphType}::size(g.g)
+num_vertices(g::LLVMGraph{GraphType}) where {GraphType} = @cxx llvm::GraphTraits{$GraphType}::size(g.g)
 implements_vertex_list(::LLVMGraph) = true
 implements_vertex_map(::LLVMGraph) = true
 implements_adjacency_list(::LLVMGraph) = true
 
-immutable NodeIterator{GT}
+struct NodeIterator{GT}
     G::GT
 end
 
-iterator_type{GraphType}(::Type{NodeIterator{GraphType}}) = @cxx llvm::GraphTraits{$(GraphType)}::nodes_iterator
+iterator_type(::Type{NodeIterator{GraphType}}) where {GraphType} = @cxx llvm::GraphTraits{$(GraphType)}::nodes_iterator
 
-start{GraphType}(I::NodeIterator{GraphType}) =
+start(I::NodeIterator{GraphType}) where {GraphType} =
     @cxx llvm::GraphTraits{$GraphType}::nodes_begin(I.G)
 
-function next{GraphType}(I::NodeIterator{GraphType},s)
+function next(I::NodeIterator{GraphType},s) where GraphType
     @assert isa(s, iterator_type(typeof(I)))
     v = icxx"&*$s;"
     icxx"(void)++$s;"
     (v,s)
 end
 
-done{GraphType}(I::NodeIterator{GraphType},s) =
+done(I::NodeIterator{GraphType},s) where {GraphType} =
     icxx"$s == llvm::GraphTraits<$GraphType>::nodes_end($(I.G));"
 
-vertices{GraphType,NodeType}(g::LLVMGraph{GraphType,NodeType}) =
+vertices(g::LLVMGraph{GraphType,NodeType}) where {GraphType,NodeType} =
     NodeIterator{GraphType}(g.g)
 
-immutable EdgeIterator{GT,NT}
+struct EdgeIterator{GT,NT}
     N::NT
 end
 
-iterator_type{GT,NT}(::Type{EdgeIterator{GT,NT}}) = @cxx llvm::GraphTraits{$(GT)}::ChildIteratorType
+iterator_type(::Type{EdgeIterator{GT,NT}}) where {GT,NT} = @cxx llvm::GraphTraits{$(GT)}::ChildIteratorType
 
-start{GT,NT}(I::EdgeIterator{GT,NT}) =
+start(I::EdgeIterator{GT,NT}) where {GT,NT} =
     @cxx llvm::GraphTraits{$GT}::child_begin(I.N)
 
-function next{GT,NT}(I::EdgeIterator{GT,NT},s)
+function next(I::EdgeIterator{GT,NT},s) where {GT,NT}
     @assert isa(s, iterator_type(typeof(I)))
     v = icxx"*$s;"
     icxx"(void)++$s;"
     (v,s)
 end
 
-done{GT,NT}(I::EdgeIterator{GT,NT},s) =
+done(I::EdgeIterator{GT,NT},s) where {GT,NT} =
     icxx"$s == llvm::GraphTraits<$GT>::child_end($(I.N));"
 
-out_neighbors{GT,NT}(v::NT,g::LLVMGraph{GT,NT}) =
+out_neighbors(v::NT,g::LLVMGraph{GT,NT}) where {GT,NT} =
     EdgeIterator{GT,NT}(v)
 
 vertex_index(v,g) = reinterpret(UInt64, v.ptr)
