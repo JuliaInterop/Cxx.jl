@@ -39,6 +39,24 @@ end
         # @test eltype(cxx_str_v) == cxxt"std::string"
 
         @test eltype(cxx_bool_v) == Bool
+
+        let cxx_float_v = icxx"std::vector<float>{1.1, 2.2, 3.3};"
+            @test endof(cxx_float_v) == 2
+            @test eachindex(cxx_float_v) == 0:2
+
+            push!(cxx_float_v, 4.4)
+            @test collect(cxx_float_v)::Vector{Float32} == Float32[1.1, 2.2, 3.3, 4.4]
+
+            resize!(cxx_float_v, 3)
+            @test collect(cxx_float_v)::Vector{Float32} == Float32[1.1, 2.2, 3.3]
+
+            filter!(i -> i < 3, cxx_float_v)
+            @test collect(cxx_float_v)::Vector{Float32} == Float32[1.1, 2.2]
+
+            # FIXME: Currently throws a MethodError
+            # deleteat!(cxx_float_v, 1)
+            # @test collect(cxx_float_v)::Vector{Float32} == Float32[1.1]
+        end
     end
 
 
@@ -206,5 +224,23 @@ end
         end
 
         @test convert(Vector{Bool}, cxx_bool_v) == jl_bool_v
+
+        let x = [true, false, true]
+            y = convert(cxxt"std::vector<$Int>", x)
+            @test collect(y) == Int[1, 0, 1]
+        end
+    end
+end
+
+@testset "Exceptions" begin
+    @testset "std::length_error&" begin
+        v = icxx"std::vector<$Int>{1, 2, 3};"
+        try
+            icxx"$v.resize($v.max_size() + 1);"
+            error("unexpected")
+        catch err
+            @test err isa Cxx.CxxException{:St12length_error}
+            @test startswith(sprint(showerror, err), "vector")
+        end
     end
 end

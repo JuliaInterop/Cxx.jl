@@ -45,7 +45,7 @@ end
 @exception function showerror(io::IO, e::cxxt"std::length_error&")
     try
         @show e
-        print(io, bytestring(icxx"$e.what();"))
+        print(io, unsafe_string(icxx"$e.what();"))
     catch w
         @show w
     end
@@ -55,7 +55,9 @@ Base.start(v::StdVector) = 0
 Base.next(v::StdVector,i) = (v[i], i+1)
 Base.done(v::StdVector,i) = i >= length(v)
 Base.length(v::StdVector) = Int(icxx"$(v).size();")
+Base.endof(v::StdVector) = length(v) - 1
 Base.size(v::StdVector) = (length(v),)
+Base.eachindex(v::StdVector) = start(v):endof(v)
 Base.eltype(v::StdVector{T}) where {T} = T
 @inline Base.indices(v::StdVector) = (0:(length(v) - 1),)
 @inline Base.linearindices(v::StdVector) = indices(v)[1]
@@ -104,7 +106,7 @@ Base.pointer(v::StdVector, i::Integer) = icxx"&$v[$i];"
 
 function Base.filter!(f, a::StdVector)
     insrt = start(a)
-    for curr = start(a):length(a)
+    for curr = eachindex(a)
         if f(a[curr])
             icxx"$a[$insrt] = $a[$curr];"
             insrt += 1
