@@ -6,7 +6,7 @@
 
 The Julia C++ Foreign Function Interface (FFI) and REPL.
 
-![REPL Screenshot](doc/screenshot.png "C++ REPL Screenshot")
+![REPL Screenshot](docs/screenshot.png "C++ REPL Screenshot")
 
 
 ### Installation
