@@ -15,11 +15,11 @@ dump(t::pcpp"llvm::Type") = ccall((:llvmtdump,libcxxffi),Void,(Ptr{Void},),t)
 dump(t::QualType) = dump(canonicalType(extractTypePtr(t)))
 
 parser(C) = pcpp"clang::Parser"(
-    ccall((:clang_parser,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
+    ccall((:clang_parser,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
 compiler(C) = pcpp"clang::CompilerInstance"(
-    ccall((:clang_compiler,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C))
+    ccall((:clang_compiler,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
 shadow(C) = pcpp"llvm::Module"(
-    ccall((:clang_shadow_module,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)
+    ccall((:clang_shadow_module,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C)
     )
 parser(C::CxxInstance) = parser(instance(C))
 compiler(C::CxxInstance) = compiler(instance(C))

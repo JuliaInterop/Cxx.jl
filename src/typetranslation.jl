@@ -9,8 +9,8 @@ import Base: unsafe_string
 # of this type
 
 # # # Built-in clang types
-chartype(C) = QualType(pcpp"clang::Type"(ccall((:cT_cchar,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)))
-winttype(C) = QualType(pcpp"clang::Type"(ccall((:cT_wint,libcxxffi),Ptr{Void},(Ptr{ClangCompiler},),&C)))
+chartype(C) = QualType(pcpp"clang::Type"(ccall((:cT_cchar,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C)))
+winttype(C) = QualType(pcpp"clang::Type"(ccall((:cT_wint,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C)))
 cpptype(C,::Type{UInt8}) = chartype(C)
 
 # Mapping some basic julia bitstypes to C's intrinsic types
@@ -32,7 +32,7 @@ for (jlt, sym) in
     # For each type, do the mapping by loading the appropriate global
     @eval cpptype(C::ClangCompiler,::Type{$jlt}) = QualType(pcpp"clang::Type"(
         ccall(($(quot(sym)), libcxxffi),
-            Ptr{Void},(Ptr{ClangCompiler},),&C )))
+            Ptr{Void},(Ref{ClangCompiler},),C )))
 
 end
 
@@ -154,8 +154,8 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Ptr{UInt64},Ptr{UInt8},UInt32),
-            &C,convert(Ptr{Void},cxxt),[convert(Ptr{Void},p) for p in ts],
+            (Ref{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Ptr{UInt64},Ptr{UInt8},UInt32),
+            C,convert(Ptr{Void},cxxt),[convert(Ptr{Void},p) for p in ts],
             integralValues,integralValuesPresent,length(ts)))
     d
 end
@@ -179,7 +179,7 @@ function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ptr{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{UInt64},Ptr{UInt8},UInt32),&C,
+            (Ref{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{UInt64},Ptr{UInt8},UInt32),C,
             convert(Ptr{Void},cxxt),[convert(Ptr{Void},p) for p in ts],
             integralValues,integralValuesPresent,length(ts)))
     d
@@ -431,7 +431,7 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}()
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-include(joinpath(dirname(@__FILE__),"../deps/build/clang_constants.jl"))
+include(joinpath(dirname(@__FILE__), "..", "deps", "build", "clang_constants.jl"))
 
 # TODO: Autogenerate this from the appropriate header
 # Decl::Kind
@@ -462,13 +462,7 @@ function isCxxEquivalentType(t)
         (t <: Ref) || (t <: JLCppCast)
 end
 
-if isdefined(Core, :UnionAll)
-include_string("""
 extract_T(::Type{S}) where {T,S<:Cxx.CppValue{T,N} where N} = T
-""")
-else
-extract_T(S) = S.parameters[1]
-end
 
 function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         wrapvalue = true, valuecvr = true)

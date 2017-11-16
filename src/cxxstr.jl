@@ -7,7 +7,7 @@ const jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
 #
 # Takes a julia value and makes in into an llvm::Constant
 #
-function llvmconst(val::ANY)
+function llvmconst(@nospecialize val)
     T = typeof(val)
     if isbits(T)
         if !Base.isstructtype(T)
@@ -32,11 +32,11 @@ function llvmconst(val::ANY)
 end
 
 function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant")
-    ccall((:SetDeclInitializer,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void},Ptr{Void}),&C,decl,val)
+    ccall((:SetDeclInitializer,libcxxffi),Void,(Ref{ClangCompiler},Ptr{Void},Ptr{Void}),C,decl,val)
 end
 
 const specTypes = 8
-function ssv(C,e::ANY,ctx,varnum,sourcebuf,typeargs=Dict{Void,Void}())
+function ssv(C, @nospecialize(e), ctx, varnum, sourcebuf, typeargs=Dict{Void,Void}())
     iscc = isCCompiler(C)
     if isa(e,Type)
         QT = cpptype(C,e)
@@ -230,24 +230,24 @@ icxxcounter = 0
 
 function ActOnStartOfFunction(C,D,ScopeIsNull = false)
     pcpp"clang::Decl"(ccall((:ActOnStartOfFunction,libcxxffi),
-        Ptr{Void},(Ptr{ClangCompiler},Ptr{Void},Bool),&C,D,ScopeIsNull))
+        Ptr{Void},(Ref{ClangCompiler},Ptr{Void},Bool),C,D,ScopeIsNull))
 end
 function ParseFunctionStatementBody(C,D)
-    if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void}),&C,D) == 0
+    if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Void}),C,D) == 0
         error("A failure occured while parsing the function body")
     end
 end
 
 function ActOnStartNamespaceDef(C,name)
     pcpp"clang::Decl"(ccall((:ActOnStartNamespaceDef,libcxxffi),Ptr{Void},
-        (Ptr{ClangCompiler},Ptr{UInt8}),&C,name))
+        (Ref{ClangCompiler},Ptr{UInt8}),C,name))
 end
 function ActOnFinishNamespaceDef(C,D)
-    ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Ptr{ClangCompiler},Ptr{Void}),&C,D)
+    ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Ref{ClangCompiler},Ptr{Void}),C,D)
 end
 
 function EmitTopLevelDecl(C, D::pcpp"clang::Decl")
-    HadErrors = ccall((:EmitTopLevelDecl,libcxxffi),Bool,(Ptr{ClangCompiler},Ptr{Void}),&C,D)
+    HadErrors = ccall((:EmitTopLevelDecl,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Void}),C,D)
     if HadErrors
         error("Tried to Emit Invalid Decl")
     end
@@ -716,6 +716,10 @@ struct FakeLineNumberNode
 end
 FakeLineNumberNode() = FakeLineNumberNode(Symbol(""), 1)
 
+# When `__source__` is defined in macros
+# Gets around `isdefined(s)` deprecation in 0.7
+const macros_have_source_loc = VERSION >= v"0.7.0-DEV.357"
+
 """
     cxx"C++ code"
 
@@ -725,14 +729,14 @@ Unlike `@cxx`, `cxx""` does not require punning on Julia syntax, which
 means, e.g., that unary `*` for pointers does not require parentheses.
 """
 macro cxx_str(str,args...)
-    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    macros_have_source_loc || (__source__ = FakeLineNumberNode())
     annotations = length(args) > 0 ? first(args) : ""
     esc(process_cxx_string(str,true,false,__source__,annotations))
 end
 
 # Not exported
 macro cxxt_str(str,args...)
-    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    macros_have_source_loc || (__source__ = FakeLineNumberNode())
     esc(process_cxx_string(str,false,true,__source__))
 end
 
@@ -743,19 +747,19 @@ Evaluate the given C++ code at the function scope. This should be
 used for calling C++ functions and performing computations.
 """
 macro icxx_str(str,args...)
-    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    macros_have_source_loc || (__source__ = FakeLineNumberNode())
     annotations = length(args) > 0 ? first(args) : ""
     esc(process_cxx_string(str,false,false,__source__,annotations))
 end
 
 # Not exported
 macro gcxxt_str(str,args...)
-    isdefined(:__source__) || (__source__ = FakeLineNumberNode())
+    macros_have_source_loc || (__source__ = FakeLineNumberNode())
     esc(process_cxx_string(str,true,true,__source__))
 end
 
 
 macro ccxxt_str(str,args...)
-    isdefined(__source__) || (__source__ = FakeLineNumberNode())
+    macros_have_source_loc || (__source__ = FakeLineNumberNode())
     esc(process_cxx_string(str,true,true,__source__; tojuliatype = false))
 end
