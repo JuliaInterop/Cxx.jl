@@ -207,7 +207,7 @@ module CxxREPL
 
         b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap, LineEdit.escape_defaults]
         panel.keymap_dict = LineEdit.keymap(b)
-        
+
         panel
     end
 
@@ -219,7 +219,7 @@ module CxxREPL
         panel = CreateCxxREPL(C; prompt=prompt, name=name, repl=repl, onDoneCreator=onDoneCreator)
 
         # Install this mode into the main mode
-        const cxx_keymap = Dict{Any,Any}(
+        cxx_keymap = Dict{Any,Any}(
             key => function (s,args...)
                 if isempty(s) || position(LineEdit.buffer(s)) == 0
                     buf = copy(LineEdit.buffer(s))

@@ -393,7 +393,7 @@ function find_expr(sourcebuf,str,pos = 1)
     end
     write(sourcebuf,str[pos:(idx-1)])
     # Parse the first expression after `$`
-    expr,pos = parse(str, idx + 1; greedy=false)
+    expr,pos = Meta.parse(str, idx + 1; greedy=false)
     isexpr = (str[idx+1] == ':')
     expr, isexpr, pos
 end

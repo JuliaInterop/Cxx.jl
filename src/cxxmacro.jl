@@ -141,7 +141,7 @@ function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isne
         i = 1
         while !(isexpr(b,:call) || isa(b,Symbol))
             b = expr.args[2].args[i]
-            if !(isexpr(b,:call) || isexpr(b,:line) || isa(b,Symbol))
+            if !(isexpr(b,:call) || isexpr(b,:line) || isa(b,Symbol) || isa(b, LineNumberNode))
                 error("Malformed C++ call. Expected member not $b")
             end
             i += 1
