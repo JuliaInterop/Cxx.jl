@@ -198,6 +198,11 @@ module CxxREPL
         main_mode == mirepl.interface.modes[1] &&
             push!(mirepl.interface.modes,panel)
 
+        # 0.7 compat
+        if isdefined(main_mode, :repl)
+            panel.repl = main_mode.repl
+        end
+
         hp = main_mode.hist
         hp.mode_mapping[name] = panel
         panel.hist = hp
@@ -207,7 +212,7 @@ module CxxREPL
 
         b = Dict{Any,Any}[skeymap, mk, LineEdit.history_keymap, LineEdit.default_keymap, LineEdit.escape_defaults]
         panel.keymap_dict = LineEdit.keymap(b)
-        
+
         panel
     end
 
@@ -219,7 +224,7 @@ module CxxREPL
         panel = CreateCxxREPL(C; prompt=prompt, name=name, repl=repl, onDoneCreator=onDoneCreator)
 
         # Install this mode into the main mode
-        const cxx_keymap = Dict{Any,Any}(
+        cxx_keymap = Dict{Any,Any}(
             key => function (s,args...)
                 if isempty(s) || position(LineEdit.buffer(s)) == 0
                     buf = copy(LineEdit.buffer(s))

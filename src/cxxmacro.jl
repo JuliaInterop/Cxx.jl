@@ -50,7 +50,7 @@ end
 #       - this == :( m )
 #       - prefix = ""
 #
-function build_cpp_call(cexpr, this, nns, isnew = false)
+function build_cpp_call(mod, cexpr, this, nns, isnew = false)
     if !isexpr(cexpr,:call)
         error("Expected a :call not $cexpr")
     end
@@ -60,7 +60,9 @@ function build_cpp_call(cexpr, this, nns, isnew = false)
     # (and optionally type arguments)
     if isexpr(cexpr.args[1],:curly)
         nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1].args[1]))
-        targs = Expr(:curly, Tuple, map(expr_to_nns, map(macroexpand, copy(cexpr.args[1].args[2:end])))...)
+        targs = Expr(:curly, Tuple, map(expr_to_nns, map(
+            VERSION <= v"0.7-" ? macroexpand : x->macroexpand(mod, x),
+            copy(cexpr.args[1].args[2:end])))...)
     else
         nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1]))
         targs = Tuple{}
@@ -130,7 +132,7 @@ function to_prefix(expr, isaddrof=false)
     error("Invalid NNS $expr")
 end
 
-function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isnew=false)
+function cpps_impl(mod, expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isnew=false)
     if isa(expr,Symbol)
         @assert !isnew
         return cpp_ref(expr,nns,isaddrof)
@@ -141,13 +143,13 @@ function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isne
         i = 1
         while !(isexpr(b,:call) || isa(b,Symbol))
             b = expr.args[2].args[i]
-            if !(isexpr(b,:call) || isexpr(b,:line) || isa(b,Symbol))
+            if !(isexpr(b,:call) || isexpr(b,:line) || isa(b,Symbol) || isa(b, LineNumberNode))
                 error("Malformed C++ call. Expected member not $b")
             end
             i += 1
         end
         if isexpr(b,:call)
-            return build_cpp_call(b,a,nns)
+            return build_cpp_call(mod, b,a,nns)
         else
             if isexpr(a,:&)
                 a = a.args[1]
@@ -160,15 +162,15 @@ function cpps_impl(expr,nns=Expr(:curly,Tuple),isaddrof=false,isderef=false,isne
         error("Unimplemented")
     elseif isexpr(expr,:(::))
         nns2, isaddrof = to_prefix(expr.args[1])
-        return cpps_impl(expr.args[2],Expr(:curly,Tuple,nns.args[2:end]...,nns2.args[2:end]...),
+        return cpps_impl(mod, expr.args[2],Expr(:curly,Tuple,nns.args[2:end]...,nns2.args[2:end]...),
             isaddrof,isderef,isnew)
     elseif isexpr(expr,:&)
-        return cpps_impl(expr.args[1],nns,true,isderef,isnew)
+        return cpps_impl(mod, expr.args[1],nns,true,isderef,isnew)
     elseif isexpr(expr,:call)
         if expr.args[1] == :* && length(expr.args) == 2
-            return cpps_impl(expr.args[2],nns,isaddrof,true,isnew)
+            return cpps_impl(mod, expr.args[2],nns,isaddrof,true,isnew)
         end
-        return build_cpp_call(expr,nothing,nns,isnew)
+        return build_cpp_call(mod, expr,nothing,nns,isnew)
     end
     error("Unrecognized CPP Expression ",expr," (",expr.head,")")
 end
@@ -195,7 +197,7 @@ address of the given value.
     otherwise.
 """
 macro cxx(expr)
-    cpps_impl(expr)
+    cpps_impl(VERSION <= v"0.7-" ? Cxx : __module__, expr)
 end
 
 """
@@ -204,7 +206,8 @@ end
 Create a new instance of a C++ class.
 """
 macro cxxnew(expr)
-    cpps_impl(expr, Expr(:curly,Tuple), false, false, true)
+    cpps_impl(VERSION <= v"0.7-" ? Cxx : __module__, expr,
+        Expr(:curly,Tuple), false, false, true)
 end
 
 function extract_params(C,FD)

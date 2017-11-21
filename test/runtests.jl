@@ -1,4 +1,8 @@
-using Base.Test
+if VERSION >= v"0.7-"
+    using Test
+else
+    using Base.Test
+end
 
 # #316 test that import Cxx works without also using Cxx
 # this test must run before `using Cxx` is executed

@@ -281,6 +281,8 @@ cpptype(C,p::Type{CppFptr{f}}) where {f} = pointerTo(C,cpptype(C,f))
 
 const MappedTypes = Dict{Type, QualType}()
 const InverseMappedTypes = Dict{QualType, Type}()
+isbits_spec(T, allow_singleton = true) = isbits(T) && isconcrete(T) &&
+    (allow_singleton || (sizeof(T) > 0 || fieldcount(T) > 0))
 function cpptype(C,::Type{T}) where T
     (!(T === Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
     try
@@ -321,7 +323,9 @@ function cpptype(C,::Type{T}) where T
                 f = get_llvmf_decl(tt)
                 @assert f != C_NULL
                 FinalizeAnonClass(C, AnonClass)
-                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = isbits(T) || isbits(retty),
+                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = 
+                    VERSION < v"0.7-" ? (isbits(T) || isbits(retty)) :
+                    isbits_spec(T, false) || isbits_spec(retty, false),
                     NeedsBoxed = [false], FirstIsEnv = true, retty = retty, jts = Any[T])
             else
                 Params = CreateTemplateParameterList(C,TPs)

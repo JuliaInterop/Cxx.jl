@@ -1,5 +1,10 @@
 using Cxx
-using Base.Test
+import CxxStd
+if VERSION <= v"0.7-"
+    using Base.Test
+else
+    using Test
+end
 
 @testset "StdString" begin
     cxx_str = icxx"""std::string("Hello, World!");"""
@@ -27,10 +32,14 @@ end
         @test eltype(cxx_int_v) == Int32
         @test indices(cxx_int_v) == (0:6,)
         @test linearindices(cxx_int_v) == 0:6
-        @test try (checkbounds(cxx_int_v, -1); false) catch e typeof(e) == BoundsError end
+        let e
+            @test try (checkbounds(cxx_int_v, -1); false) catch e typeof(e) == BoundsError end
+        end
         @test (checkbounds(cxx_int_v, 0); true)
         @test (checkbounds(cxx_int_v, 6); true)
-        @test try (checkbounds(cxx_int_v, 7); false) catch e typeof(e) == BoundsError end
+        let e
+            @test try (checkbounds(cxx_int_v, 7); false) catch e typeof(e) == BoundsError end
+        end
         @test pointer(cxx_int_v) == icxx"$cxx_int_v.data();"
         @test pointer(cxx_int_v, 2) == icxx"$cxx_int_v.data() + 2;"
 
@@ -63,7 +72,9 @@ end
     @testset "StdVector iteration" begin
         @test begin
             s = zero(cxx_int_v[0])
-            for x in cxx_int_v s += x end
+            let x
+                for x in cxx_int_v s += x end
+            end
             s == sum(jl_int_v)
         end
     end
@@ -226,8 +237,9 @@ end
         @test convert(Vector{Bool}, cxx_bool_v) == jl_bool_v
 
         let x = [true, false, true]
-            y = convert(cxxt"std::vector<$Int>", x)
-            @test collect(y) == Int[1, 0, 1]
+            let y = convert(cxxt"std::vector<$Int>", x)
+                @test collect(y) == Int[1, 0, 1]
+            end
         end
     end
 end
