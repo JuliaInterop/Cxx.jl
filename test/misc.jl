@@ -1,6 +1,10 @@
 using Cxx
 using Compat
-using Base.Test
+if VERSION <= v"0.7-"
+    using Base.Test
+else
+    using Test
+end
 
 # Issue 37 - Assertion failure when calling function declared `extern "C"`
 cxx"""

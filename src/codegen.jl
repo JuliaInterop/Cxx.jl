@@ -124,14 +124,22 @@ resolvemodifier(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") where {T} =
 
 # Builtin types and plain pointers are easy - they are represented the
 # same in julia and Clang
-resolvemodifier_llvm(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") where {ptr} = v
-resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T<:Ref} = v
+if VERSION <= v"0.7-"
+    resolvemodifier_llvm(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") where {ptr} = v
+else
+    resolvemodifier_llvm(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") where {ptr} = IntToPtr(builder,v,toLLVM(C,cpptype(C, Ptr{ptr})))
+end
+function resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T<:Ref}
+    if VERSION >= v"0.7-"
+        v = CreatePointerFromObjref(C, builder, v)
+    end
+    v    
+end
 resolvemodifier_llvm(C, builder, t::Type{Bool}, v::pcpp"llvm::Value") =
     CreateTrunc(builder, v, toLLVM(C, cpptype(C, Bool)))
 resolvemodifier_llvm(C, builder, t::CxxBuiltinTypes, v::pcpp"llvm::Value") = v
 
 resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T} = v
-
 
 function resolvemodifier_llvm(C, builder,
     t::Type{CppRef{T,CVR}}, v::pcpp"llvm::Value") where {T,CVR}
@@ -211,6 +219,9 @@ function resolvemodifier_llvm(C, builder,
     if !isPointerType(getType(v))
         dump(v)
         error("Value is not of pointer type")
+    end
+    if VERSION >= v"0.7-"
+        v = CreatePointerFromObjref(C, builder, v)
     end
     return CreateBitCast(builder,v,getPointerTo(getPointerTo(toLLVM(C,ty))))
 end
@@ -700,12 +711,13 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         if rett == Void || isVoidTy(llvmrt)
             CreateRetVoid(builder)
         else
-            if  rett <: CppEnum || rett <: CppFptr
+            if rett <: CppEnum || rett <: CppFptr
                 undef = getUndefValue(llvmrt)
                 elty = getStructElementType(llvmrt,0)
                 ret = CreateBitCast(builder,ret,elty)
                 ret = InsertValue(builder, undef, ret, 0)
-            elseif rett <: CppRef || rett <: CppPtr
+            elseif rett <: CppRef || rett <: CppPtr || 
+                    (VERSION >= v"0.7-" && rett <: Ptr)
                 ret = PtrToInt(builder, ret, llvmrt)
             elseif rett <: CppMFptr
                 undef = getUndefValue(llvmrt)
@@ -738,7 +750,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
             push!(args2,arg)
         end
     end
-
+    
     if (rett != Union{}) && rett <: CppValue
         arguments = vcat([:r], args2)
         size = cxxsizeof(C,rt)
@@ -749,7 +761,11 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         D = getAsCXXRecordDecl(T)
         if D != C_NULL && !hasTrivialDestructor(C,D)
             # Need to call the destructor
-            push!(B.args,:( finalizer(r, $(get_destruct_for_instance(C))) ))
+            if VERSION <= v"0.7-"
+                push!(B.args,:( finalizer(r, $(get_destruct_for_instance(C))) ))
+            else
+                push!(B.args,:( finalizer($(get_destruct_for_instance(C)), r) ))
+            end
         end
         push!(B.args,:r)
         return B

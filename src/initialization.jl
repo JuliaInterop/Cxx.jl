@@ -223,6 +223,7 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
             didfind = true
         end
     end
+    push!(headers,("/usr/include", C_System))
     didfind || error("Could not find C++ standard library. Is XCode installed?")
 end # function addStdHeaders(C)
 end # isapple

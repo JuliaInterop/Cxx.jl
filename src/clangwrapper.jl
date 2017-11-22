@@ -221,6 +221,10 @@ CreateZext(builder,val,ty) =
 CreateTrunc(builder,val,ty) =
     pcpp"llvm::Value"(ccall((:CreateTrunc,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void},Ptr{Void}),builder,val,ty))
 
+CreatePointerFromObjref(C, builder, val) =
+    pcpp"llvm::Value"(ccall((:CreatePointerFromObjref,libcxxffi),Ptr{Void},
+        (Ref{ClangCompiler},Ptr{Void},Ptr{Void}),C,builder,val))
+
 getConstantIntToPtr(C::pcpp"llvm::Constant", ty) =
     pcpp"llvm::Constant"(ccall((:getConstantIntToPtr,libcxxffi),Ptr{Void},(Ptr{Void},Ptr{Void}),C,ty))
 
@@ -379,8 +383,8 @@ function ReplaceFunctionForDecl(C,sv::pcpp"clang::FunctionDecl",f::pcpp"llvm::Fu
         retty = Any, jts = C_NULL)
     @assert sv != C_NULL
     ccall((:ReplaceFunctionForDecl,libcxxffi),Void,
-        (Ref{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Bool,Ptr{Bool},Any,Ptr{Void}),
-        C,sv,f,DoInline,specsig,FirstIsEnv,NeedsBoxed,retty,jts)
+        (Ref{ClangCompiler},Ptr{Void},Ptr{Void},Bool,Bool,Bool,Ptr{Bool},Any,Ptr{Void},Bool),
+        C,sv,f,DoInline,specsig,FirstIsEnv,NeedsBoxed,retty,jts,VERSION >= v"0.7-")
 end
 
 function ReplaceFunctionForDecl(C,sv::pcpp"clang::CXXMethodDecl",f::pcpp"llvm::Function"; kwargs...)

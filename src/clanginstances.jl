@@ -16,7 +16,11 @@ destructs = Dict{ClangCompiler,Function}()
 
 function get_destruct_for_instance(C)
     if !haskey(destructs, C)
-        idx = findfirst(active_instances, C)
+        if VERSION <= v"0.7-"
+            idx = findfirst(active_instances, C)
+        else
+            idx = findfirst(equalto(C), active_instances)            
+        end
         destructs[C] = function destruct_C(x)
             destruct(CxxInstance{idx}(), x)
         end

@@ -124,6 +124,19 @@ extern llvm::LLVMContext jl_LLVMContext;
 extern llvm::LLVMContext &jl_LLVMContext;
 #endif
 static llvm::Type *T_pvalue_llvmt;
+static llvm::Type *T_pjlvalue;
+static llvm::Type *T_prjlvalue;
+
+// From julia's codegen_shared.h
+enum AddressSpace {
+    Generic = 0,
+    Tracked = 10, Derived = 11, CalleeRooted = 12,
+    FirstSpecial = Tracked,
+    LastSpecial = CalleeRooted,
+};
+
+#define JLCALL_CC (CallingConv::ID)36
+#define JLCALL_F_CC (CallingConv::ID)37
 
 class JuliaCodeGenerator;
 class JuliaPCHGenerator;
@@ -606,7 +619,8 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
                               clang::FunctionDecl *FD,
                               bool specsig, bool firstIsEnv,
                               bool *needsbox, void *jl_retty,
-                              void **juliatypes) {
+                              void **juliatypes,
+                              bool newgc) {
   std::vector<Type*> ArgTypes;
   llvm::ValueToValueMapTy VMap;
 
@@ -618,124 +632,217 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
   PointerType *T_pint8 = Type::getInt8PtrTy(jl_LLVMContext,0);
   Type *T_int32 = Type::getInt32Ty(jl_LLVMContext);
   Type *T_int64 = Type::getInt64Ty(jl_LLVMContext);
-
+  Type *T_size;
+  if (sizeof(size_t) == 8)
+      T_size = T_int64;
+  else
+      T_size = T_int32;
+  
   if (needsbox) {
-    // Ok, we need to go through and box the arguments.
-    // Let's first let's clang take care of the function prologue.
     cppcall_state_t *state = (cppcall_state_t *)setup_cpp_env(Cxx,NewF);
-    builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
-      Cxx->CGF->Builder.GetInsertPoint());
-    Cxx->CGF->CurGD = clang::GlobalDecl(FD);
-    clang::CodeGen::FunctionArgList Args;
-    const clang::CXXMethodDecl *MD = clang::dyn_cast<clang::CXXMethodDecl>(FD);
-    if (MD && MD->isInstance()) {
-      Cxx->CGM->getCXXABI().buildThisParam(*Cxx->CGF, Args);
-    }
+    // Julia 0.7 Implementation
 #ifdef LLVM39
-    for (auto *PVD : FD->parameters()) {
-#else
-    for (auto *PVD : FD->params()) {
-#endif
-      Args.push_back(PVD);
-    }
-    size_t n_roots = 0;
-    for (size_t i = 0; i < Args.size(); ++i)
-      n_roots += needsbox[i] | !specsig;
-    Cxx->CGF->EmitFunctionProlog(FI, NewF, Args);
-    builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
-      Cxx->CGF->Builder.GetInsertBlock()->begin());
-    Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
-    llvm::Value *gcframe = nullptr, *envroot = nullptr, *envptr = nullptr;
-    bool first = true;
-
-    // Construct the GC frame
-    Function *ConstructFrame = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.jlcall_frame_decl",
-      FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{T_int32},false)));
-    Function *RootDecl = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.gc_root_decl",
-      FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{})));
-    Function *PTLSStates = cast<Function>(Cxx->shadow->getOrInsertFunction("jl_get_ptls_states",
-      FunctionType::get(PointerType::get(PointerType::get(T_pvalue_llvmt,0),0),{})));
-    assert(ConstructFrame);
-    BasicBlock *InsertBlock = builder.GetInsertBlock();
-    if (n_roots != 0) {
-      envroot = builder.CreateCall(RootDecl, {});
-      if (n_roots-firstIsEnv != 0)
-        gcframe = builder.CreateCall(ConstructFrame, {ConstantInt::get(T_int32,n_roots-firstIsEnv)});
-      builder.CreateCall(PTLSStates, {});
-      builder.SetInsertPoint(InsertBlock);
-      InsertBlock = BasicBlock::Create(Cxx->shadow->getContext(), "main", InsertBlock->getParent());
-      builder.CreateBr(InsertBlock);
-      builder.SetInsertPoint(InsertBlock);
-    }
-
-    size_t i = 0;
-    std::vector<llvm::Value*> CallArgs;
-    Function::arg_iterator DestI = F->arg_begin();
-    size_t cur_root = 0;
-    for (auto *PVD : Args) {
-#ifdef LLVM38
-      llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD).getPointer()
-#else
-      llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD)
-#endif
-      ;
-      if (needsbox[i]) {
-        llvm::Function *AllocFunc = Cxx->shadow->getFunction("jl_gc_allocobj");
-        assert(AllocFunc);
-        llvm::Value *Box = builder.CreateBitCast(builder.CreateCall(AllocFunc,
-          {ConstantInt::get(T_int64,cxxsizeofType(Cxx,(void*)PVD->getType().getTypePtr()))}),
-          PointerType::get(T_pint8,0));
-        jl_(juliatypes[i]);
-        builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),(uint64_t)juliatypes[i++])),
-          builder.CreateConstGEP1_32(Box,-1));
-        builder.CreateStore(builder.CreateBitCast(Box,T_pvalue_llvmt),builder.CreateConstGEP1_32(gcframe,cur_root++));
-        llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
-        ArgPtr->replaceAllUsesWith(Replacement);
-        CallArgs.push_back(Replacement);
-      } else {
-        bool isboxed;
-        if (f_julia_type_to_llvm(juliatypes[i], &isboxed)->isVoidTy())
-          continue;
-        llvm::IRBuilderBase::InsertPoint IP = builder.saveIP();
-        // Go to end of block
-        builder.SetInsertPoint(builder.GetInsertBlock());
-        if (specsig) {
-          if (DestI->getType()->isPointerTy() && !cast<PointerType>(ArgPtr->getType())->getElementType()->isPointerTy())
-            CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
-          else
-            CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
-        } else {
-          // Assume this is already a box. All we need to do is store it in the callframe
-          if (first && firstIsEnv) {
-            envptr = builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt);
-            builder.CreateStore(envptr, envroot);
-          } else {
-            assert(gcframe);
-            builder.CreateStore(builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt),
-              builder.CreateConstGEP1_32(gcframe,cur_root++));
-          }
-          first = false;
-        }
-        builder.restoreIP(IP);
+    if (newgc) {
+      // Ok, we need to go through and box the arguments.
+      // Let's first let's clang take care of the function prologue.
+      builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+        Cxx->CGF->Builder.GetInsertPoint());
+      Cxx->CGF->CurGD = clang::GlobalDecl(FD);
+      clang::CodeGen::FunctionArgList Args;
+      const clang::CXXMethodDecl *MD = clang::dyn_cast<clang::CXXMethodDecl>(FD);
+      if (MD && MD->isInstance()) {
+        Cxx->CGM->getCXXABI().buildThisParam(*Cxx->CGF, Args);
       }
-      DestI++;
-    }
-    builder.SetInsertPoint(InsertBlock,
-      InsertBlock->end());
-
-    if (specsig) {
-      Call = builder.CreateCall(F,CallArgs);
+      for (auto *PVD : FD->parameters()) {
+        Args.push_back(PVD);
+      }
+      Cxx->CGF->EmitFunctionProlog(FI, NewF, Args);
+      Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
+      builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+        Cxx->CGF->Builder.GetInsertPoint());
+      Function *PTLSStates = cast<Function>(
+        Cxx->shadow->getOrInsertFunction("julia.ptls_states",
+        FunctionType::get(PointerType::get(PointerType::get(T_pjlvalue,0),0),{})));
+      Function *jl_alloc_obj_func = Function::Create(FunctionType::get(T_prjlvalue,
+                                            {T_pint8, T_size, T_prjlvalue}, false),
+                                             Function::ExternalLinkage,
+                                             "julia.gc_alloc_obj");
+      // Unconditionally emit the PTLSStates call into the entry block, otherwise
+      // julia's passes may ignore it.
+      Value *ptls_ptr = builder.CreateCall(PTLSStates, {});
+      
+      std::vector<llvm::Value*> CallArgs;
+      Function::arg_iterator DestI = F->arg_begin();
+      size_t i = 0;
+      for (auto *PVD : Args) {
+        llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD).getPointer();
+        if (needsbox[i]) {
+          Value *Box = builder.CreateCall(jl_alloc_obj_func,
+            {
+             cast<Value>(builder.CreateBitCast(ptls_ptr, T_pint8)),
+             cast<Value>(Constant::getIntegerValue(T_size, APInt(8*sizeof(size_t), cxxsizeofType(Cxx,(void*)PVD->getType().getTypePtr())))),
+             cast<Value>(Constant::getIntegerValue(T_prjlvalue,APInt(8*sizeof(void*),(uint64_t)juliatypes[i++])))
+            }
+          );
+          llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
+          ArgPtr->replaceAllUsesWith(Replacement);
+          CallArgs.push_back(Replacement);
+        } else {
+          bool isboxed;
+          if (f_julia_type_to_llvm(juliatypes[i++], &isboxed)->isVoidTy())
+            continue;
+          llvm::IRBuilderBase::InsertPoint IP = builder.saveIP();
+          // Go to end of block
+          builder.SetInsertPoint(builder.GetInsertBlock());
+          if (specsig) {
+            if (DestI->getType()->isPointerTy() && !cast<PointerType>(ArgPtr->getType())->getElementType()->isPointerTy())
+              CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
+            else
+              CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
+          } else {
+            CallArgs.push_back(builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_prjlvalue));
+          }
+          builder.restoreIP(IP);
+        }
+        DestI++;
+      }
+      
+      if (specsig) {
+        Call = builder.CreateCall(F,CallArgs);
+      } else {
+        SmallVector<Type *, 3> argsT;
+        for (size_t i = 0; i < CallArgs.size(); i++) {
+            argsT.push_back(T_prjlvalue);
+        }
+        FunctionType *FTy = FunctionType::get(T_prjlvalue, argsT, false);
+        Call = builder.CreateCall(FTy,
+          builder.CreateBitCast(F, FTy->getPointerTo()),
+          CallArgs);
+        if (firstIsEnv)
+            Call->setCallingConv(JLCALL_F_CC);
+        else
+            Call->setCallingConv(JLCALL_CC);
+      }
+      
     } else {
-      auto it = F->arg_begin();
-      llvm::Argument *First = &*(it++);
-      llvm::Argument *Second = &*(it++);
-      Call = builder.CreateCall(F,{
-        envroot ? envptr :
-        builder.CreateBitCast(ConstantPointerNull::get(T_pint8),First->getType()),
-        cur_root == 0 ? ConstantPointerNull::get(cast<PointerType>(Second->getType())) :
-        builder.CreateBitCast(gcframe,Second->getType()), ConstantInt::get(T_int32,cur_root)});
-    }
+      // 0.6 Code: Delete when we drop 0.6 support
+#endif
+      // Ok, we need to go through and box the arguments.
+      // Let's first let's clang take care of the function prologue.
+      builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+        Cxx->CGF->Builder.GetInsertPoint());
+      Cxx->CGF->CurGD = clang::GlobalDecl(FD);
+      clang::CodeGen::FunctionArgList Args;
+      const clang::CXXMethodDecl *MD = clang::dyn_cast<clang::CXXMethodDecl>(FD);
+      if (MD && MD->isInstance()) {
+        Cxx->CGM->getCXXABI().buildThisParam(*Cxx->CGF, Args);
+      }
+  #ifdef LLVM39
+      for (auto *PVD : FD->parameters()) {
+  #else
+      for (auto *PVD : FD->params()) {
+  #endif
+        Args.push_back(PVD);
+      }
+      size_t n_roots = 0;
+      for (size_t i = 0; i < Args.size(); ++i)
+        n_roots += needsbox[i] | !specsig;
+      Cxx->CGF->EmitFunctionProlog(FI, NewF, Args);
+      builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
+        Cxx->CGF->Builder.GetInsertBlock()->begin());
+      Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
+      llvm::Value *gcframe = nullptr, *envroot = nullptr, *envptr = nullptr;
+      bool first = true;
 
+      // Construct the GC frame
+      Function *ConstructFrame = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.jlcall_frame_decl",
+        FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{T_int32},false)));
+      Function *RootDecl = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.gc_root_decl",
+        FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{})));
+      Function *PTLSStates = cast<Function>(Cxx->shadow->getOrInsertFunction("jl_get_ptls_states",
+        FunctionType::get(PointerType::get(PointerType::get(T_pvalue_llvmt,0),0),{})));
+      assert(ConstructFrame);
+      BasicBlock *InsertBlock = builder.GetInsertBlock();
+      if (n_roots != 0) {
+        envroot = builder.CreateCall(RootDecl, {});
+        if (n_roots-firstIsEnv != 0)
+          gcframe = builder.CreateCall(ConstructFrame, {ConstantInt::get(T_int32,n_roots-firstIsEnv)});
+        builder.CreateCall(PTLSStates, {});
+        builder.SetInsertPoint(InsertBlock);
+        InsertBlock = BasicBlock::Create(Cxx->shadow->getContext(), "main", InsertBlock->getParent());
+        builder.CreateBr(InsertBlock);
+        builder.SetInsertPoint(InsertBlock);
+      }
+
+      size_t i = 0;
+      std::vector<llvm::Value*> CallArgs;
+      Function::arg_iterator DestI = F->arg_begin();
+      size_t cur_root = 0;
+      for (auto *PVD : Args) {
+  #ifdef LLVM38
+        llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD).getPointer()
+  #else
+        llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD)
+  #endif
+        ;
+        if (needsbox[i]) {
+          llvm::Function *AllocFunc = Cxx->shadow->getFunction("jl_gc_allocobj");
+          assert(AllocFunc);
+          llvm::Value *Box = builder.CreateBitCast(builder.CreateCall(AllocFunc,
+            {ConstantInt::get(T_int64,cxxsizeofType(Cxx,(void*)PVD->getType().getTypePtr()))}),
+            PointerType::get(T_pint8,0));
+          jl_(juliatypes[i]);
+          builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),(uint64_t)juliatypes[i++])),
+            builder.CreateConstGEP1_32(Box,-1));
+          builder.CreateStore(builder.CreateBitCast(Box,T_pvalue_llvmt),builder.CreateConstGEP1_32(gcframe,cur_root++));
+          llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
+          ArgPtr->replaceAllUsesWith(Replacement);
+          CallArgs.push_back(Replacement);
+        } else {
+          bool isboxed;
+          if (f_julia_type_to_llvm(juliatypes[i++], &isboxed)->isVoidTy())
+            continue;
+          llvm::IRBuilderBase::InsertPoint IP = builder.saveIP();
+          // Go to end of block
+          builder.SetInsertPoint(builder.GetInsertBlock());
+          if (specsig) {
+            if (DestI->getType()->isPointerTy() && !cast<PointerType>(ArgPtr->getType())->getElementType()->isPointerTy())
+              CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
+            else
+              CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
+          } else {
+            // Assume this is already a box. All we need to do is store it in the callframe
+            if (first && firstIsEnv) {
+              envptr = builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt);
+              builder.CreateStore(envptr, envroot);
+            } else {
+              assert(gcframe);
+              builder.CreateStore(builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt),
+                builder.CreateConstGEP1_32(gcframe,cur_root++));
+            }
+            first = false;
+          }
+          builder.restoreIP(IP);
+        }
+        DestI++;
+      }
+      builder.SetInsertPoint(InsertBlock,
+        InsertBlock->end());
+
+      if (specsig) {
+        Call = builder.CreateCall(F,CallArgs);
+      } else {
+        auto it = F->arg_begin();
+        llvm::Argument *First = &*(it++);
+        llvm::Argument *Second = &*(it++);
+        Call = builder.CreateCall(F,{
+          envroot ? envptr :
+          builder.CreateBitCast(ConstantPointerNull::get(T_pint8),First->getType()),
+          cur_root == 0 ? ConstantPointerNull::get(cast<PointerType>(Second->getType())) :
+          builder.CreateBitCast(gcframe,Second->getType()), ConstantInt::get(T_int32,cur_root)});
+      }
+    }
+    
     Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
         builder.GetInsertPoint());
     bool isboxed = false;
@@ -857,7 +964,7 @@ JL_DLLEXPORT void *DeleteUnusedArguments(llvm::Function *F, uint64_t *dtodelete,
 }
 
 
-JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool firstIsEnv, bool *needsbox, void *retty, void **juliatypes)
+JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Function *F, bool DoInline, bool specsig, bool firstIsEnv, bool *needsbox, void *retty, void **juliatypes, bool newgc)
 {
   const clang::CodeGen::CGFunctionInfo &FI = Cxx->CGM->getTypes().arrangeGlobalDeclaration(D);
   llvm::FunctionType *Ty = Cxx->CGM->getTypes().GetFunctionType(FI);
@@ -869,7 +976,7 @@ JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Functio
   llvm::ValueToValueMapTy VMap;
   llvm::ClonedCodeInfo CCI;
 
-  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,specsig,firstIsEnv,needsbox,retty,juliatypes);
+  llvm::Function *NF = CloneFunctionAndAdjust(Cxx,F,Ty,true,&CCI,FI,D,specsig,firstIsEnv,needsbox,retty,juliatypes,newgc);
   // TODO: Ideally we would delete the cloned function
   // once we're done with the inlineing, but clang delays
   // emitting some functions (e.g. constructors) until
@@ -1373,6 +1480,10 @@ static void set_common_options(C)
 static void set_default_clang_options(C, bool CCompiler, const char *Triple, const char *CPU, const char *SysRoot, Type *_T_pvalue_llvmt)
 {
     T_pvalue_llvmt = _T_pvalue_llvmt;
+    T_pjlvalue = PointerType::get(
+      cast<PointerType>(T_pvalue_llvmt)->getElementType(), 0);
+    T_prjlvalue = PointerType::get(
+      cast<PointerType>(T_pvalue_llvmt)->getElementType(), AddressSpace::Tracked);
 
     llvm::Triple target = llvm::Triple(Triple == NULL ?
         llvm::Triple::normalize(llvm::sys::getProcessTriple()) : llvm::Triple::normalize(Triple));
@@ -2361,6 +2472,15 @@ JL_DLLEXPORT void *CreateBitCast(CxxIRBuilder *builder, llvm::Value *val, llvm::
 {
   return (void*)builder->CreateBitCast(val,type);
 }
+
+#ifdef LLVM39
+JL_DLLEXPORT void *CreatePointerFromObjref(C, CxxIRBuilder *builder, llvm::Value *val)
+{
+  Function *PFO = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.pointer_from_objref",
+                                    FunctionType::get(T_pjlvalue, {T_prjlvalue}, false)));
+  return (void*)builder->CreateCall(PFO, {val});
+}
+#endif
 
 JL_DLLEXPORT void *CreateZext(CxxIRBuilder *builder, llvm::Value *val, llvm::Type *type)
 {
