@@ -35,7 +35,7 @@ println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly 
 llvm_path = (Compat.Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
 
 llvm_lib_path = Libdl.dlpath(llvm_path)
-old_cxx_abi = searchindex(String(open(read, llvm_lib_path)),"_ZN4llvm3sys16getProcessTripleEv",0) != 0
+old_cxx_abi = findnext("_ZN4llvm3sys16getProcessTripleEv", String(open(read, llvm_lib_path)),0) != 0:-1
 old_cxx_abi && (ENV["OLD_CXX_ABI"] = "1")
 
 llvm_config_path = joinpath(BASE_JULIA_BIN,"..","tools","llvm-config")
