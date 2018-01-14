@@ -13,7 +13,7 @@ end
 
 #in case we have specified the path to the julia installation
 #that contains the headers etc, use that
-BASE_JULIA_BIN = get(ENV, "BASE_JULIA_BIN", Sys.BINDIR)
+BASE_JULIA_BIN = get(ENV, "BASE_JULIA_BIN", Compat.Sys.BINDIR)
 BASE_JULIA_SRC = get(ENV, "BASE_JULIA_SRC", joinpath(BASE_JULIA_BIN, "..", ".."))
 
 #write a simple include file with that path
@@ -35,7 +35,7 @@ println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly 
 llvm_path = (Compat.Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
 
 llvm_lib_path = Libdl.dlpath(llvm_path)
-old_cxx_abi = findnext("_ZN4llvm3sys16getProcessTripleEv", String(open(read, llvm_lib_path)),0) != 0:-1
+old_cxx_abi = contains(read(llvm_lib_path, String), "_ZN4llvm3sys16getProcessTripleEv")
 old_cxx_abi && (ENV["OLD_CXX_ABI"] = "1")
 
 llvm_config_path = joinpath(BASE_JULIA_BIN,"..","tools","llvm-config")
@@ -47,7 +47,7 @@ else
     info("Building julia binary build")
     ENV["LLVM_VER"] = Base.libllvm_version
     ENV["JULIA_BINARY_BUILD"] = "1"
-    ENV["PATH"] = string(Sys.BINDIR,":",ENV["PATH"])
+    ENV["PATH"] = string(Compat.Sys.BINDIR,":",ENV["PATH"])
 end
 
 make = Compat.Sys.isbsd() && !Compat.Sys.isapple() ? `gmake` : `make`
