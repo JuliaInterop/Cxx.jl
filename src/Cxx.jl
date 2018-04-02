@@ -176,12 +176,14 @@ end
 
 include("CxxREPL/replpane.jl")
 
+eval(Main, :(const Cxx = $Cxx))
+
 end
 
 # C++ standard library helpers
 module CxxStd
 
-    using Cxx
+    using .Main.Cxx
     using Compat
     include("show.jl")
     include("std.jl")
@@ -189,8 +191,8 @@ module CxxStd
 end
 
 module CxxREPLInit
-    using Cxx
-    using Cxx.CxxREPL
+    using .Main.Cxx
+    using .Cxx.CxxREPL
     function __init__()
         if isdefined(Base, :active_repl)
             CxxREPL.RunCxxREPL(Cxx.__current_compiler__)
@@ -199,13 +201,13 @@ module CxxREPLInit
 end
 
 module CxxExceptionInit
-    using Cxx
+    using .Main.Cxx
     __init__() = ccall(:jl_generating_output, Cint, ()) == 0 &&
         eval(:(Cxx.setup_exception_callback()))
 end
 
 module CxxDumpPCH
-    using Cxx
+    using .Main.Cxx
     # Now that we've loaded Cxx, save everything we just did into a PCH
     if ccall(:jl_generating_output, Cint, ()) != 0
         append!(Cxx.GlobalPCHBuffer, Cxx.decouple_pch(Cxx.instance(Cxx.__current_compiler__)))

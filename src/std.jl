@@ -24,7 +24,7 @@ Base.convert(::Type{String}, x::Union{StdString,StdStringR}) = String(x)
 Base.convert(::Type{StdString}, x::AbstractString) = icxx"std::string s($(pointer(x)), $(sizeof(x))); s;"
 
 import Base: showerror
-import Cxx: CppValue
+import .Cxx: CppValue
 
 for T in uniontypes(Cxx.CxxBuiltinTypes)
     @eval @exception function showerror(io::IO, e::$(T.parameters[1]))
