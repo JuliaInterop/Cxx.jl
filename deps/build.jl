@@ -13,7 +13,7 @@ end
 
 #in case we have specified the path to the julia installation
 #that contains the headers etc, use that
-BASE_JULIA_BIN = get(ENV, "BASE_JULIA_BIN", JULIA_HOME)
+BASE_JULIA_BIN = get(ENV, "BASE_JULIA_BIN", isdefined(:JULIA_HOME) ? JULIA_HOME : Sys.BINDIR)
 BASE_JULIA_SRC = get(ENV, "BASE_JULIA_SRC", joinpath(BASE_JULIA_BIN, "..", ".."))
 
 #write a simple include file with that path
@@ -35,7 +35,15 @@ println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly 
 llvm_path = (Compat.Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
 
 llvm_lib_path = Libdl.dlpath(llvm_path)
-old_cxx_abi = searchindex(open(read, llvm_lib_path),Vector{UInt8}("_ZN4llvm3sys16getProcessTripleEv"),0) != 0
+needle = Vector{UInt8}("_ZN4llvm3sys16getProcessTripleEv")
+haystack = open(read, llvm_lib_path)
+old_cxx_abi = false
+for i = 0:(length(haystack)-length(needle)-1)
+     if (@view haystack[(1:length(needle)) .+ i]) == needle
+         old_cxx_abi = true
+     end
+end
+@Base.show (llvm_path, llvm_lib_path, old_cxx_abi)
 old_cxx_abi && (ENV["OLD_CXX_ABI"] = "1")
 
 llvm_config_path = joinpath(BASE_JULIA_BIN,"..","tools","llvm-config")

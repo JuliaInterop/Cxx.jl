@@ -420,13 +420,19 @@ end
 
 # Some utilities
 
+T_prjlvalue() = pcpp"llvm::Type"(ccall(:jl_get_prjlvalue,Ptr{Void},()))
 function irbuilder(C)
     pcpp"clang::CodeGen::CGBuilderTy"(
         ccall((:clang_get_builder,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
 end
+_julia_to_llvm(@nospecialize(x), isboxed=Ref{UInt8}()) = pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(Any,Ref{UInt8}),x,isboxed))
 function julia_to_llvm(@nospecialize x)
     isboxed = Ref{UInt8}()
-    pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(Any,Ref{UInt8}),x,isboxed))
+    typ = _julia_to_llvm(x, isboxed)
+    if isboxed[] != 0
+        return T_prjlvalue()
+    end
+    return typ
 end
 
 # @cxx llvm::dyn_cast{vcpp"clang::ClassTemplateDecl"}

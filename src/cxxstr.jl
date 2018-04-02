@@ -85,12 +85,12 @@ end
 const lambda_roots = Function[]
 
 function latest_world_return_type(tt)
-    params = Core.Inference.InferenceParams(typemax(UInt))
+    params = Core.Compiler.Params(typemax(UInt))
     rt = Union{}
     for m in Base._methods_by_ftype(tt, -1, params.world)
-        ty = Core.Inference.typeinf_type(m[3], m[1], m[2], true, params)
+        ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], true, params)
         ty === nothing && return Any
-        rt = Core.Inference.tmerge(rt, ty)
+        rt = Core.Compiler.tmerge(rt, ty)
         rt === Any && break
     end
     return rt

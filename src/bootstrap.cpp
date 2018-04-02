@@ -2337,6 +2337,11 @@ JL_DLLEXPORT void *jl_get_llvmc()
     return &jl_LLVMContext;
 }
 
+JL_DLLEXPORT void *jl_get_prjlvalue()
+{
+    return (void*)T_prjlvalue;
+}
+
 JL_DLLEXPORT void cdump(void *decl)
 {
     ((clang::Decl*) decl)->dump();
@@ -2476,9 +2481,16 @@ JL_DLLEXPORT void *CreateBitCast(CxxIRBuilder *builder, llvm::Value *val, llvm::
 #ifdef LLVM39
 JL_DLLEXPORT void *CreatePointerFromObjref(C, CxxIRBuilder *builder, llvm::Value *val)
 {
+  if (val->getType() != T_prjlvalue) {
+     val->dump();
+     builder->GetInsertBlock()->getParent()->dump();
+     return (void*)val;
+  }
+  Type *DestTy = PointerType::get(cast<PointerType>(T_pjlvalue)->getElementType(), AddressSpace::Derived);
   Function *PFO = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.pointer_from_objref",
-                                    FunctionType::get(T_pjlvalue, {T_prjlvalue}, false)));
-  return (void*)builder->CreateCall(PFO, {val});
+                                    FunctionType::get(T_pjlvalue, {DestTy}, false)));
+  Value *decayed = builder->CreateAddrSpaceCast(val, DestTy);
+  return (void*)builder->CreateCall(PFO, {decayed});
 }
 #endif
 

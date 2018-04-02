@@ -35,7 +35,7 @@ function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CP
     ccall((:init_clang_instance,libcxxffi),Void,
         (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Csize_t,Ref{Base.Libc.TmStruct},Ptr{Void}),
         x,target,CPU,sysroot,EmitPCH,makeCCompiler, PCHPtr, PCHSize, PCHTime,
-        julia_to_llvm(Any))
+        _julia_to_llvm(Any))
     useDefaultCxxABI && ccall((:apply_default_abi, libcxxffi),
         Void, (Ref{ClangCompiler},), x[1])
     x[1]

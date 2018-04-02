@@ -298,7 +298,10 @@ function cpptype(C,::Type{T}) where T
             nargt = length(sig.parameters)-1
             tt = Tuple{T, (Any for _ in 1:nargt)...}
             retty = latest_world_return_type(tt)
-            if isa(retty,Union) || isabstract(retty) || retty === Union{}
+	    if retty === Union{}
+	        retty = Nothing
+	    end
+            if isa(retty,Union) || Base.isabstract(retty)
               error("Inferred Union or abstract type $retty for return value of lambda")
             end
             # Ok, now we need to figure out what arguments we need to declare to C++. For that purpose,
