@@ -296,8 +296,11 @@ function cpptype(C,::Type{T}) where T
             nargt = length(sig.parameters)-1
             tt = Tuple{T, (Any for _ in 1:nargt)...}
             retty = latest_world_return_type(tt)
-            if isa(retty,Union) || isabstract(retty) || retty === Union{}
-              error("Inferred Union or abstract type $retty for return value of lambda")
+            if retty === Union{}
+                retty = Nothing
+            end
+            if isa(retty,Union) || isabstract(retty)
+                error("Inferred Union or abstract type $retty for return value of lambda")
             end
             # Ok, now we need to figure out what arguments we need to declare to C++. For that purpose,
             # go through the list of defined arguments. Any type that's concrete will be declared as such
