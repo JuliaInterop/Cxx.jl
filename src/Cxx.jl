@@ -170,9 +170,7 @@ include("exceptions.jl")
 include("autowrap.jl")
 
 # In precompilation mode, we do still need clang, so do it manually
-if ccall(:jl_generating_output, Cint, ()) != 0
-    __init__()
-end
+__init__()
 
 include("CxxREPL/replpane.jl")
 
@@ -210,4 +208,8 @@ module CxxDumpPCH
     if ccall(:jl_generating_output, Cint, ()) != 0
         append!(Cxx.GlobalPCHBuffer, Cxx.decouple_pch(Cxx.instance(Cxx.__current_compiler__)))
     end
+end
+
+if ccall(:jl_generating_output, Cint, ()) != 0
+    Cxx.reset_init!()
 end

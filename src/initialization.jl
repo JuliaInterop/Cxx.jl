@@ -412,16 +412,24 @@ end
 # As an optimzation, create a generic function per compiler instance,
 # to avoid having to create closures at the call site
 const GlobalPCHBuffer = UInt8[]
+const inited = Ref{Bool}(false)
 const PCHTime = Base.Libc.TmStruct()
 const GlobalHeaders = collectAllHeaders(nostdcxx)
 Base.Libc.time(PCHTime)
 function __init__()
+    inited[] && return
+    inited[] = true
     init_libcxxffi()
     empty!(active_instances)
     C = setup_instance(GlobalPCHBuffer; PCHTime=PCHTime)
     initialize_instance!(C, register_boot=isempty(GlobalPCHBuffer),
         headers = GlobalHeaders)
     push!(active_instances, C)
+end
+
+function reset_init!()
+    empty!(active_instances)
+    inited[] = false
 end
 
 function new_clang_instance(register_boot = true, makeCCompiler = false; target = C_NULL, CPU = C_NULL)
