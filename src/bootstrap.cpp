@@ -2206,6 +2206,11 @@ JL_DLLEXPORT void *getTargIntegralTypeAtIdx(clang::TemplateArgumentList *targs, 
     return getTargIntegralType(&targs->get(i));
 }
 
+JL_DLLEXPORT void *getTSTTargIntegralTypeAtIdx(clang::TemplateSpecializationType *TST, size_t i)
+{
+    return getTargIntegralType(&TST->getArg(i));
+}
+
 JL_DLLEXPORT int getTargKind(const clang::TemplateArgument *targ)
 {
     return targ->getKind();
@@ -2234,6 +2239,11 @@ JL_DLLEXPORT void *getTargPackAtIdxTargAtIdx(clang::TemplateArgumentList *targs,
 JL_DLLEXPORT int64_t getTargAsIntegralAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return targs->get(i).getAsIntegral().getSExtValue();
+}
+
+JL_DLLEXPORT int64_t getTSTTargAsIntegralAtIdx(clang::TemplateSpecializationType *TST, size_t i)
+{
+    return TST->getArg(i).getAsIntegral().getSExtValue();
 }
 
 void *getTargPackBegin(clang::TemplateArgument *targ)
