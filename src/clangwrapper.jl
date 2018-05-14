@@ -191,8 +191,15 @@ getTargKind(targ) =
 getTargAsIntegralAtIdx(targs::rcpp"clang::TemplateArgumentList", i) =
     ccall((:getTargAsIntegralAtIdx,libcxxffi),Int64,(Ptr{Void},Csize_t),targs,i)
 
-getTargIntegralTypeAtIdx(targs, i) =
+getTargAsIntegralAtIdx(targs::pcpp"clang::TemplateSpecializationType", i) =
+   ccall((:getTSTTargAsIntegralAtIdx,libcxxffi),Int64,(Ptr{Void},Csize_t),targs,i)
+
+getTargIntegralTypeAtIdx(targs::Union{rcpp"clang::TemplateArgumentList",
+                                        pcpp"clang::TemplateArgumentList"}, i) =
     QualType(ccall((:getTargIntegralTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
+
+getTargIntegralTypeAtIdx(targs::pcpp"clang::TemplateSpecializationType", i) =
+    QualType(ccall((:getTSTTargIntegralTypeAtIdx,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),targs,i))
 
 getTargPackAtIdxSize(targs, i) =
     ccall((:getTargPackAtIdxSize, libcxxffi), Csize_t, (Ptr{Void}, Csize_t), targs, i)
