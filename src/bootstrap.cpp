@@ -2206,8 +2206,16 @@ JL_DLLEXPORT void *getTargIntegralTypeAtIdx(clang::TemplateArgumentList *targs, 
     return getTargIntegralType(&targs->get(i));
 }
 
+JL_DLLEXPORT void *getTSTTargIntegralTypeAtIdx(clang::TemplateSpecializationType *TST, size_t i)
+{
+    return getTargIntegralType(&TST->getArg(i));
+}
+
 JL_DLLEXPORT int getTargKind(const clang::TemplateArgument *targ)
 {
+    std::cerr << "dumping targ:" << std::endl;
+    targ->dump();
+    std::cerr << std::endl;
     return targ->getKind();
 }
 
@@ -2234,6 +2242,11 @@ JL_DLLEXPORT void *getTargPackAtIdxTargAtIdx(clang::TemplateArgumentList *targs,
 JL_DLLEXPORT int64_t getTargAsIntegralAtIdx(clang::TemplateArgumentList *targs, size_t i)
 {
     return targs->get(i).getAsIntegral().getSExtValue();
+}
+
+JL_DLLEXPORT int64_t getTSTTargAsIntegralAtIdx(clang::TemplateSpecializationType *TST, size_t i)
+{
+    return TST->getArg(i).getAsIntegral().getSExtValue();
 }
 
 void *getTargPackBegin(clang::TemplateArgument *targ)
@@ -2792,6 +2805,39 @@ JL_DLLEXPORT void *ActOnTypeParameterParserScope(C, char *Name, unsigned Positio
                                     clang::SourceLocation(), DefaultArg);
   //sema.ActOnPopScope(clang::SourceLocation(),&S);
   return ret;
+}
+
+JL_DLLEXPORT void *ActOnNonTypeParameterParserScope(C, char *Name, unsigned Position)
+{
+  // ActOnNonTypeTemplateParameter (Scope *S, Declarator &D, unsigned Depth, unsigned Position, SourceLocation EqualLoc, Expr *DefaultArg)
+  // ActOnTypeParameter (Scope *S, bool Typename, SourceLocation EllipsisLoc, SourceLocation KeyLoc, IdentifierInfo *ParamName, SourceLocation ParamNameLoc, unsigned Depth, unsigned Position, SourceLocation EqualLoc, ParsedType DefaultArg)
+  clang::Sema &sema = Cxx->CI->getSema();
+  clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
+
+  // clang::DeclSpec DS(Cxx->Parser->getAttrFactory());
+  // unsigned DiagID = 0;
+  // const char* PrevSpec = "";
+  // DS.SetTypeSpecType(clang::DeclSpec::TST_int, clang::SourceLocation(), PrevSpec, DiagID, Cxx->CI->getASTContext().getPrintingPolicy());
+  // std::cout << clang::DeclSpec::getSpecifierName(DS.getTypeSpecType(),Cxx->CI->getASTContext().getPrintingPolicy()) << std::endl;
+  // clang::Declarator D(DS, clang::Declarator::TemplateParamContext);
+  // D.getName().setIdentifier(PP.getIdentifierInfo(Name),clang::SourceLocation());
+
+  // void *ret = (void*)sema.ActOnNonTypeTemplateParameter(Cxx->Parser->getCurScope(), D, 0, Position, clang::SourceLocation(), nullptr);
+  // return ret;
+
+  clang::QualType QT = sema.getASTContext().IntTy;
+  
+  clang::NonTypeTemplateParmDecl* Param = clang::NonTypeTemplateParmDecl::Create(sema.getASTContext(),
+                                         sema.getASTContext().getTranslationUnitDecl(),
+                                         clang::SourceLocation(),
+                                         clang::SourceLocation(),
+                                         0, Position, PP.getIdentifierInfo(Name),
+                                         QT, false, sema.getASTContext().getTrivialTypeSourceInfo(QT));
+
+  Param->setAccess(clang::AS_public);
+  Cxx->Parser->getCurScope()->AddDecl(Param);
+  sema.IdResolver.AddDecl(Param);
+  return (void*)Param;
 }
 
 JL_DLLEXPORT void ExitParserScope(C)

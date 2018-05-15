@@ -546,11 +546,17 @@ end
     else
         ctx = Cxx.to_ctx(translation_unit(C))
     end
+    isnontypeparam(arg) = (arg <: Type && arg.parameters[1] <: Val)
     for (i,arg) in enumerate(args)
-        if arg == TypeVar || arg <: Integer
+    @show arg
+        if arg == TypeVar || arg <: Integer || isnontypeparam(arg)
             name = string(iscc ? "__juliavar" : "var",varnum)
             typename = replace(typename, string(iscc ? "__juliavar" : "__julia::var",i), name)
-            ActOnTypeParameterParserScope(C,name,varnum)
+            if isnontypeparam(arg)
+                ActOnNonTypeParameterParserScope(C,name,varnum)
+            else
+                ActOnTypeParameterParserScope(C,name,varnum)
+            end
             mapping[varnum] = :(args[$i])
             varnum += 1
         elseif arg <: Type
