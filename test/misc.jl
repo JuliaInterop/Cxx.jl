@@ -445,3 +445,12 @@ public:
 };
 """
 @assert icxx"privfoo{}.bar;"p == 1
+
+# Test TemplateSpecializationType for cxxt
+cxx"""
+    template<typename T, int R, int C=5>
+    struct LikeEigen { T val = 5.0; };
+"""
+
+const LikeEigen{T} = cxxt"LikeEigen<$T,2>"
+@test icxx"$(LikeEigen{Float64})().val" == 5.0
