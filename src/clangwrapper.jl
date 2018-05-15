@@ -664,6 +664,9 @@ ExitParserScope(C) = ccall((:ExitParserScope,libcxxffi),Void,(Ref{ClangCompiler}
 ActOnTypeParameterParserScope(C, Name, pos) =
     pcpp"clang::Decl"(ccall((:ActOnTypeParameterParserScope,libcxxffi),Ptr{Void},(Ref{ClangCompiler},Ptr{UInt8},Cint),C,Name,pos))
 
+ActOnNonTypeParameterParserScope(C, Name, pos) =
+    pcpp"clang::Decl"(ccall((:ActOnNonTypeParameterParserScope,libcxxffi),Ptr{Void},(Ref{ClangCompiler},Ptr{UInt8},Cint),C,Name,pos))
+
 getUnderlyingTemplateDecl(TST) =
     pcpp"clang::TemplateDecl"(ccall((:getUnderlyingTemplateDecl,libcxxffi),Ptr{Void},(Ptr{Void},),TST))
 

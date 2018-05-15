@@ -421,8 +421,12 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}()
     args = Any[]
     for i = 0:(getTargsSize(targs)-1)
         kind = getTargKindAtIdx(targs,i)
+        @show kind
         if kind == KindType
             T = juliatype(getTargTypeAtIdx(targs,i),quoted,typeargs; wrapvalue = false)
+            push!(args,T)
+        elseif kind == KindExpression
+            @show T = typeargs[i]
             push!(args,T)
         elseif kind == KindIntegral
             val = getTargAsIntegralAtIdx(targs,i)
