@@ -1,14 +1,12 @@
 using Base.Meta
 
-for binop in keys(cxx_binops)
+for binop in keys(CxxCore.cxx_binops)
     @eval (Base.$binop)(x::Union{CppValue,CppRef},y::Union{CppValue,CppRef}) = @cxx ($binop)(x,y)
 end
 
 macro list(t)
     q = quote
-        Base.start(it::$t) = 0
-        Base.next(it::$t,i) = (it[i], i+1)
-        Base.done(it::$t,i) = i >= length(it)
+        Base.iterate(it::$t, i=0) = i >= length(it) ? nothing : (it[i], i+1)
     end
     if isexpr(t,:macrocall)
         if t.args[1] == Symbol("@pcpp_str")

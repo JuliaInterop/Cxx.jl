@@ -1,10 +1,6 @@
 using Cxx
-import CxxStd
-if VERSION <= v"0.7-"
-    using Base.Test
-else
-    using Test
-end
+import Cxx.CxxStd
+using Test
 
 @testset "StdString" begin
     cxx_str = icxx"""std::string("Hello, World!");"""
@@ -30,8 +26,8 @@ end
         @test length(cxx_int_v) == length(jl_int_v)
         @test size(cxx_int_v) == size(jl_int_v)
         @test eltype(cxx_int_v) == Int32
-        @test indices(cxx_int_v) == (0:6,)
-        @test linearindices(cxx_int_v) == 0:6
+        @test axes(cxx_int_v) == (0:6,)
+        @test eachindex(cxx_int_v) == 0:6
         let e
             @test try (checkbounds(cxx_int_v, -1); false) catch e typeof(e) == BoundsError end
         end
@@ -50,7 +46,7 @@ end
         @test eltype(cxx_bool_v) == Bool
 
         let cxx_float_v = icxx"std::vector<float>{1.1, 2.2, 3.3};"
-            @test endof(cxx_float_v) == 2
+            @test lastindex(cxx_float_v) == 2
             @test eachindex(cxx_float_v) == 0:2
 
             push!(cxx_float_v, 4.4)
@@ -94,7 +90,7 @@ end
 
         cxx_str_v2 = icxx"std::vector<std::string> v($cxx_str_v); v;";
         @test String(cxx_str_v2[1]) == "bar"
-        @test typeof(cxx_str_v2[1]) == cxxt"std::string&"
+        @test typeof(cxx_str_v2[1]) <: cxxt"std::string"
         @test begin
             cxx_str_v2[1] = "baz"
             String(cxx_str_v2[1]) == "baz"
@@ -179,7 +175,7 @@ end
         end
     end
 
-    @testset "StdVector copy! and convert" begin
+    @testset "StdVector copy(to)! and convert" begin
         @test begin
             dest = zeros(Int32, 7)
             copy!(dest, cxx_int_v)
@@ -194,13 +190,13 @@ end
 
         @test begin
             dest = [41, 0, 0, 0, 42]
-            copy!(dest, 2, cxx_int_v, 3, 3)
+            copyto!(dest, 2, cxx_int_v, 3, 3)
             dest == [41, 8, 10, 12, 42]
         end
 
         @test begin
             dest = icxx"""std::vector<int32_t>{41, 0, 0, 0, 42};"""
-            copy!(dest, 1, jl_int_v, 4, 3)
+            copyto!(dest, 1, jl_int_v, 4, 3)
             icxx"""$dest == std::vector<int32_t>{41, 8, 10, 12, 42};"""
         end
 
@@ -208,7 +204,7 @@ end
 
 
         @test begin
-            dest = Vector{String}(3)
+            dest = Vector{String}(undef, 3)
             copy!(dest, cxx_str_v)
             dest == jl_str_v
         end
@@ -251,7 +247,7 @@ end
             icxx"$v.resize($v.max_size() + 1);"
             error("unexpected")
         catch err
-            @test err isa Cxx.CxxException{:St12length_error}
+            @test err isa CxxException{:St12length_error}
             @test startswith(sprint(showerror, err), "vector")
         end
     end

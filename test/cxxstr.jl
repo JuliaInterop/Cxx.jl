@@ -1,9 +1,5 @@
 using Cxx
-if VERSION <= v"0.7-"
-    using Base.Test
-else
-    using Test
-end
+using Test
 
 
 cxx"""
@@ -108,13 +104,14 @@ void modify_a(foobar &fb) {
 """
 
 fb = icxx"_foobar{1};"
-icxx"(void)++$fb.a;"
-@test unsafe_load(Ptr{Int32}(pointer_from_objref(fb.data))) == 2
+icxx"(void)++$fb.a;";
+@test unsafe_load(Ptr{Int32}(pointer_from_objref(fb))) == 2
 
 # Splicing at global scope
 cxx"""const char *foostr = $(pointer("foo"));"""
 
 #cxxt
+using Cxx.CxxCore
 @test cxxt"int" == Int32
 cxx"""
 template <typename T>
@@ -122,7 +119,7 @@ struct foo_cxxt {
   T x;
 };
 """
-@test cxxt"foo_cxxt<int>" <: Cxx.CppValue{Cxx.CxxQualType{Cxx.CppTemplate{Cxx.CppBaseType{:foo_cxxt},Tuple{Int32}},(false,false,false)}}
+@test cxxt"foo_cxxt<int>" <: CppValue{CxxQualType{CppTemplate{CppBaseType{:foo_cxxt},Tuple{Int32}},(false,false,false)}}
 
 
 # #103
@@ -140,7 +137,7 @@ $:(push!(test103::Vector{Int32},icxx"return x;"); nothing);
 @test test103 == [5,5]
 
 # The same thing with two arguments
-test2_103 = Array{Tuple{Int32,Int32}}(0)
+test2_103 = Vector{Tuple{Int32,Int32}}(undef, 0)
 cxx"""
 void foo2_103() {
 int x = 5;

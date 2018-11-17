@@ -9,7 +9,7 @@ const libstdcxx_depdendent_class =
 
 struct _UnwindException
     class::UInt64
-    cleanup::Ptr{Void}
+    cleanup::Ptr{Cvoid}
     private1::UInt
     private2::UInt
 end
@@ -17,16 +17,16 @@ end
 struct LibCxxException
     referenceCount::Csize_t
     exceptionType::pcpp"std::type_info"
-    exceptionDestructor::Ptr{Void}
-    unexpectedHandler::Ptr{Void}
-    terminate_handler::Ptr{Void}
-    nextException::Ptr{Void}
+    exceptionDestructor::Ptr{Cvoid}
+    unexpectedHandler::Ptr{Cvoid}
+    terminate_handler::Ptr{Cvoid}
+    nextException::Ptr{Cvoid}
     handlerCount::Cint
     handlerSwitchValue::Cint
     actionRecord::Ptr{UInt8}
     lsa::Ptr{UInt8}
-    catchTemp::Ptr{Void}
-    adjustedPtr::Ptr{Void}
+    catchTemp::Ptr{Cvoid}
+    adjustedPtr::Ptr{Cvoid}
     unwindHeader::_UnwindException
 end
 
@@ -41,7 +41,7 @@ function exceptionObject(e::CxxException,T)
 end
 
 function exceptionObject(e::CxxException,::Type{T}) where T<:CppRef
-    T(convert(Ptr{Void},(e.exception+sizeof(LibCxxException))))
+    T(convert(Ptr{Cvoid},(e.exception+sizeof(LibCxxException))))
 end
 
 function show_cxx_backtrace(io::IO, t, limit=typemax(Int))
@@ -69,7 +69,7 @@ function showerror(io::IO, e::CxxException{kind}, bt) where kind
     show_cxx_backtrace(io, bt)
 end
 
-function process_cxx_exception(code::UInt64, e::Ptr{Void})
+function process_cxx_exception(code::UInt64, e::Ptr{Cvoid})
     e = Ptr{_UnwindException}(e)
     if (code & get_vendor_and_language) == libcxx_class
         # This is a libc++ exception
@@ -111,8 +111,8 @@ macro exception(e)
         argsym = exarg.args[1]
         argtype = exarg.args[2]
         isexpr(exarg,:(::)) || error("The exception argument needs a type annotation")
-        e.args[1].args[3] = :( $argsym::Cxx.CxxException{Cxx.typename(__current_compiler__,Val{$argtype}())} )
-        unshift!(e.args[2].args, :( $argsym = Cxx.exceptionObject($argsym,$argtype) ))
+        e.args[1].args[3] = :( $argsym::$(CxxException){$(typename)(__current_compiler__,Val{$argtype}())} )
+        pushfirst!(e.args[2].args, :( $argsym = $(exceptionObject)($argsym,$argtype) ))
         return esc(e)
     end
     error("@exception used on something other than a function")

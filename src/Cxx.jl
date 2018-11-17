@@ -140,6 +140,8 @@
 #
 __precompile__(true)
 module Cxx
+
+module CxxCore
 pathfile = joinpath(dirname(@__FILE__), "..", "deps", "path.jl")
 isfile(pathfile) || error("path.jl not generated. Try running Pkg.build(\"Cxx\")")
 include(pathfile)
@@ -147,15 +149,19 @@ include(pathfile)
 using Base.Meta
 using Core: svec
 
-using Compat
-using Compat.TypeUtils
-using Compat.Sys: isapple, isbsd, islinux, isunix, iswindows
+using Base.Sys: isapple, isbsd, islinux, isunix, iswindows
 
+# These are re-exported from Cxx
 export cast,
        @cxx_str, @cxx_mstr, @icxx_str, @icxx_mstr, @cxxt_str,
        @cxx, @cxxnew, @jpcpp_str, @exception, @cxxm,
        addHeaderDir, defineMacro, cxxinclude, cxxparse, new_clang_instance,
        C_User, C_System, C_ExternCSystem
+
+# These are internal but useful for hacking
+export CppValue, CppRef, CppPtr, cpptype, CxxQualType, CppBaseType,
+    CppTemplate, CxxBuiltinTypes, CxxBuiltinTs, CxxException, CppFptr, CppMFptr
+
 
 include("cxxtypes.jl")
 include("clanginstances.jl")
@@ -167,49 +173,74 @@ include("cxxmacro.jl")
 include("cxxstr.jl")
 include("utils.jl")
 include("exceptions.jl")
-include("autowrap.jl")
 
 # In precompilation mode, we do still need clang, so do it manually
 __init__()
 
-include("CxxREPL/replpane.jl")
-
 end
+
+# Make these available as Cxx.
+import .CxxCore: __default_compiler__, instance, compiler
+
+# This is meant to be overriden before using Cxx in the current
+# module if one wants to use a compiler with non standard options.
+import .CxxCore: __current_compiler__
+export __current_compiler__
+
+# Re-export these
+import .CxxCore: cast,
+       @cxx_str, @icxx_str, @cxxt_str,
+       @cxx, @cxxnew, @pcpp_str, @jpcpp_str, @exception, @cxxm,
+       addHeaderDir, defineMacro, cxxinclude, cxxparse, new_clang_instance,
+       C_User, C_System, C_ExternCSystem
+export cast,
+       @cxx_str, @icxx_str, @cxxt_str,
+       @cxx, @cxxnew, @pcpp_str, @jpcpp_str, @exception, @cxxm,
+       addHeaderDir, defineMacro, cxxinclude, cxxparse, new_clang_instance,
+       C_User, C_System, C_ExternCSystem
+
+include("CxxREPL/replpane.jl")
 
 # C++ standard library helpers
 module CxxStd
 
-    using Cxx
-    using Compat
+    using ..CxxCore
+    using ..Cxx
     include("show.jl")
+    include("autowrap.jl")
     include("std.jl")
 
 end
 
+# Use as Cxx.
+import .CxxStd: @list
+
 module CxxREPLInit
-    using Cxx
-    using Cxx.CxxREPL
+    using ..CxxCore
+    using ..CxxREPL
     function __init__()
         if isdefined(Base, :active_repl)
-            CxxREPL.RunCxxREPL(Cxx.__current_compiler__)
+            CxxREPL.RunCxxREPL(CxxCore.__current_compiler__)
         end
     end
 end
 
 module CxxExceptionInit
-    using Cxx
+    using ..CxxCore
     __init__() = ccall(:jl_generating_output, Cint, ()) == 0 &&
-        eval(:(Cxx.setup_exception_callback()))
+        eval(:(CxxCore.setup_exception_callback()))
 end
 
 module CxxDumpPCH
-    using Cxx
+    using ..CxxCore
     # Now that we've loaded Cxx, save everything we just did into a PCH
     if ccall(:jl_generating_output, Cint, ()) != 0
-        append!(Cxx.GlobalPCHBuffer, Cxx.decouple_pch(Cxx.instance(Cxx.__current_compiler__)))
+        append!(CxxCore.GlobalPCHBuffer, CxxCore.decouple_pch(CxxCore.instance(CxxCore.__current_compiler__)))
     end
 end
 
 if ccall(:jl_generating_output, Cint, ()) != 0
-    Cxx.reset_init!()
+    CxxCore.reset_init!()
+end
+
 end

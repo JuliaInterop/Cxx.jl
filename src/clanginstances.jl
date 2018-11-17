@@ -9,18 +9,14 @@ struct ClangCompiler
     JCodeGen::pcpp"JuliaCodeGenerator"
     PCHGenerator::pcpp"clang::PCHGenerator"
 end
-@assert Base.isbits(ClangCompiler)
+@assert Base.isbitstype(ClangCompiler)
 
 active_instances = ClangCompiler[]
 destructs = Dict{ClangCompiler,Function}()
 
 function get_destruct_for_instance(C)
     if !haskey(destructs, C)
-        if VERSION <= v"0.7-"
-            idx = findfirst(active_instances, C)
-        else
-            idx = findfirst(equalto(C), active_instances)            
-        end
+        idx = findfirst(==(C), active_instances)
         destructs[C] = function destruct_C(x)
             destruct(CxxInstance{idx}(), x)
         end

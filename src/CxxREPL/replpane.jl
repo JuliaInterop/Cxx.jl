@@ -1,6 +1,7 @@
 module CxxREPL
-    import Base: LineEdit, REPL
-    using Cxx
+    using REPL
+    using REPL.LineEdit
+    using ..Cxx
 
     # Some of this code is derived from cling.
     # Copyright (c) 2007-2014 by the Authors.
@@ -59,7 +60,7 @@ module CxxREPL
         addHeaderDir(cxxllvmdir)
         addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
     end
-    addHeaderDir(joinpath(BASE_JULIA_BIN,"../include"))
+    addHeaderDir(joinpath(Sys.BINDIR,"../include"))
 
     cxx"""
     #define __STDC_LIMIT_MACROS
@@ -83,7 +84,7 @@ module CxxREPL
         @assert data[end] == '\0'
         icxx"""
             const char *BufferStart = $(pointer(data));
-            const char *BufferEnd = BufferStart+$(endof(data))-1;
+            const char *BufferEnd = BufferStart+$(lastindex(data))-1;
             clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
@@ -94,7 +95,7 @@ module CxxREPL
 
     function isTopLevelExpression(C,data)
         @assert Int(data[end]) == 0
-        if contains(data,":=")
+        if occursin(":=", data)
             return false
         end
         x = [Cxx.instance(C)]
@@ -102,7 +103,7 @@ module CxxREPL
             clang::Parser *P = $(Cxx.parser(C));
             clang::Preprocessor *PP = &P->getPreprocessor();
             clang::Parser::TentativeParsingAction TA(*P);
-            EnterSourceFile((CxxInstance*)$(convert(Ptr{Void},pointer(x))),
+            EnterSourceFile((CxxInstance*)$(convert(Ptr{Cvoid},pointer(x))),
                 $(pointer(data)),$(sizeof(data))-1);
             clang::PreprocessorLexer *L = PP->getCurrentLexer();
             P->ConsumeToken();
@@ -128,7 +129,7 @@ module CxxREPL
         @assert data[end] == UInt8('\0')
         icxx"""
             const char *BufferStart = $(pointer(data));
-            const char *BufferEnd = BufferStart+$(endof(data))-1;
+            const char *BufferEnd = BufferStart+$(lastindex(data))-1;
             clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
@@ -163,7 +164,7 @@ module CxxREPL
         function(line)
             isToplevel = isTopLevelExpression(C,"$line\0")
             isAssignment = false
-            if contains(line,":=")
+            if occursin(":=", line)
                 parts = split(line,":=")
                 if length(parts) > 2
                     error("Only one julia-assignment operator allowed per expression")
@@ -174,7 +175,7 @@ module CxxREPL
             end
             # Strip trailing semicolon (since we add one on the next line) to avoid unused result warning
             line = line[end] == ';' ? line[1:end-1] : line
-            ret = Cxx.process_cxx_string(string(line,"\n;"), isToplevel, false, Cxx.FakeLineNumberNode(:REPL, 1), "p";
+            ret = CxxCore.process_cxx_string(string(line,"\n;"), isToplevel, false, CxxCore.FakeLineNumberNode(:REPL, 1), "p";
     compiler = C)
             if isAssignment
                 ret = :($var = $ret)

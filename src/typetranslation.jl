@@ -9,15 +9,15 @@ import Base: unsafe_string
 # of this type
 
 # # # Built-in clang types
-chartype(C) = QualType(pcpp"clang::Type"(ccall((:cT_cchar,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C)))
-winttype(C) = QualType(pcpp"clang::Type"(ccall((:cT_wint,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C)))
+chartype(C) = QualType(pcpp"clang::Type"(ccall((:cT_cchar,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C)))
+winttype(C) = QualType(pcpp"clang::Type"(ccall((:cT_wint,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C)))
 cpptype(C,::Type{UInt8}) = chartype(C)
 
 # Mapping some basic julia bitstypes to C's intrinsic types
 # We could use Cint, etc. here, but we actually already do that
 # in the C++ side, which makes this easy:
 for (jlt, sym) in
-    ((Void, :cT_void),
+    ((Cvoid, :cT_void),
      (Int8, :cT_int8),
      (Int16, :cT_int16),
      (UInt16, :cT_uint16),
@@ -32,7 +32,7 @@ for (jlt, sym) in
     # For each type, do the mapping by loading the appropriate global
     @eval cpptype(C::ClangCompiler,::Type{$jlt}) = QualType(pcpp"clang::Type"(
         ccall(($(quot(sym)), libcxxffi),
-            Ptr{Void},(Ref{ClangCompiler},),C )))
+            Ptr{Cvoid},(Ref{ClangCompiler},),C )))
 
 end
 
@@ -139,7 +139,7 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     integralValues = zeros(UInt64,nparams)
     integralValuesPresent = zeros(UInt8,nparams)
     bitwidths = zeros(UInt32,nparams)
-    ts = Array{QualType}(nparams)
+    ts = Vector{QualType}(undef, nparams)
     for (i,t) in enumerate(targs.parameters)
         (t <: Val) && (t = t.parameters[1])
         if isa(t,Type)
@@ -153,9 +153,9 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
             error("Unhandled template parameter type ($t)")
         end
     end
-    d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ref{ClangCompiler},Ptr{Void},Ptr{Ptr{Void}},Ptr{UInt64},Ptr{UInt8},UInt32),
-            C,convert(Ptr{Void},cxxt),[convert(Ptr{Void},p) for p in ts],
+    d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Cvoid},
+            (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Ptr{Cvoid}},Ptr{UInt64},Ptr{UInt8},UInt32),
+            C,convert(Ptr{Cvoid},cxxt),[convert(Ptr{Cvoid},p) for p in ts],
             integralValues,integralValuesPresent,length(ts)))
     d
 end
@@ -165,7 +165,7 @@ function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
     integralValues = zeros(UInt64,length(targs))
     integralValuesPresent = zeros(UInt8,length(targs))
     bitwidths = zeros(UInt32,length(targs))
-    ts = Array{QualType}(length(targs))
+    ts = Vector{QualType}(undef, length(targs))
     for (i,t) in enumerate(targs)
         if isa(t,pcpp"clang::Type") || isa(t,QualType)
             ts[i] = QualType(t)
@@ -178,9 +178,9 @@ function specialize_template_clang(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
             error("Unhandled template parameter type ($t)")
         end
     end
-    d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Void},
-            (Ref{ClangCompiler},Ptr{Void},Ptr{Void},Ptr{UInt64},Ptr{UInt8},UInt32),C,
-            convert(Ptr{Void},cxxt),[convert(Ptr{Void},p) for p in ts],
+    d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Cvoid},
+            (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Cvoid},Ptr{UInt64},Ptr{UInt8},UInt32),C,
+            convert(Ptr{Cvoid},cxxt),[convert(Ptr{Cvoid},p) for p in ts],
             integralValues,integralValuesPresent,length(ts)))
     d
 end
@@ -221,12 +221,12 @@ function typeForDecl(d::Union{
         pcpp"clang::Decl",pcpp"clang::CXXRecordDecl",
         pcpp"clang::ClassTemplateSpecializationDecl"})
     @assert d != C_NULL
-    pcpp"clang::Type"(ccall((:typeForDecl,libcxxffi),Ptr{Void},(Ptr{Void},),d))
+    pcpp"clang::Type"(ccall((:typeForDecl,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},),d))
 end
 
 for sym in (:withConst, :withVolatile, :withRestrict)
     @eval ($sym)(T::QualType) =
-        QualType(ccall(($(quot(sym)),libcxxffi),Ptr{Void},(Ptr{Void},),T))
+        QualType(ccall(($(quot(sym)),libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},),T))
 end
 
 function addQualifiers(clangT::QualType,CVR)
@@ -281,7 +281,7 @@ cpptype(C,p::Type{CppFptr{f}}) where {f} = pointerTo(C,cpptype(C,f))
 
 const MappedTypes = Dict{Type, QualType}()
 const InverseMappedTypes = Dict{QualType, Type}()
-isbits_spec(T, allow_singleton = true) = isbits(T) && isconcrete(T) &&
+isbits_spec(T, allow_singleton = true) = isbitstype(T) && isconcretetype(T) &&
     (allow_singleton || (sizeof(T) > 0 || fieldcount(T) > 0))
 function cpptype(C,::Type{T}) where T
     (!(T === Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
@@ -298,7 +298,7 @@ function cpptype(C,::Type{T}) where T
             nargt = length(sig.parameters)-1
             tt = Tuple{T, (Any for _ in 1:nargt)...}
             retty = latest_world_return_type(tt)
-            if isa(retty,Union) || isabstract(retty) || retty === Union{}
+            if isa(retty,Union) || isabstracttype(retty) || retty === Union{}
               error("Inferred Union or abstract type $retty for return value of lambda")
             end
             # Ok, now we need to figure out what arguments we need to declare to C++. For that purpose,
@@ -324,7 +324,6 @@ function cpptype(C,::Type{T}) where T
                 @assert f != C_NULL
                 FinalizeAnonClass(C, AnonClass)
                 ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = 
-                    VERSION < v"0.7-" ? (isbits(T) || isbits(retty)) :
                     isbits_spec(T, false) || isbits_spec(retty, false),
                     NeedsBoxed = [false], FirstIsEnv = true, retty = retty, jts = Any[T])
             else
@@ -334,7 +333,7 @@ function cpptype(C,::Type{T}) where T
                     CreateParmVarDecl(C, argt,string("__juliavar",i)) for (i,argt) in enumerate(argtQTs)]
                 SetFDParams(Method,params)
                 D = CreateFunctionTemplateDecl(C,toctx(AnonClass),Params,Method)
-                AddDeclToDeclCtx(toctx(AnonClass),pcpp"clang::Decl"(convert(Ptr{Void}, D)))
+                AddDeclToDeclCtx(toctx(AnonClass),pcpp"clang::Decl"(convert(Ptr{Cvoid}, D)))
                 FinalizeAnonClass(C, AnonClass)
             end
         end
@@ -358,7 +357,7 @@ end
 
 function __decl_name(d)
     @assert d != C_NULL
-    ccall((:decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
+    ccall((:decl_name,libcxxffi),Ptr{UInt8},(Ptr{Cvoid},),d)
 end
 
 function _decl_name(d)
@@ -369,7 +368,7 @@ function _decl_name(d)
 end
 
 function simple_decl_name(d)
-    s = ccall((:simple_decl_name,libcxxffi),Ptr{UInt8},(Ptr{Void},),d)
+    s = ccall((:simple_decl_name,libcxxffi),Ptr{UInt8},(Ptr{Cvoid},),d)
     ret = unsafe_string(s)
     Libc.free(s)
     ret
@@ -408,11 +407,13 @@ const KindTemplateExpansion = 6
 const KindExpression        = 7
 const KindPack              = 8
 
-function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Void}())
+function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}())
     targt = Tuple{}
-    if isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Void},cxxd)))
-        tmplt = dcastClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Void},cxxd)))
-    elseif isa(cxxd,pcpp"clang::CXXRecordDecl")
+    if isa(cxxd, pcpp"clang::TemplateSpecializationType")
+        tmplt = cxxd
+    elseif isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},cxxd)))
+        tmplt = dcastClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},cxxd)))
+    elseif isa(cxxd, pcpp"clang::CXXRecordDecl")
         return Tuple{}
     else
         tmplt = cxxd
@@ -442,9 +443,9 @@ include(joinpath(dirname(@__FILE__), "..", "deps", "build", "clang_constants.jl"
 const LinkageSpec = 10
 
 
-getPointeeType(t::pcpp"clang::Type") = QualType(ccall((:getPointeeType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+getPointeeType(t::pcpp"clang::Type") = QualType(ccall((:getPointeeType,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},),t))
 getPointeeType(t::QualType) = getPointeeType(extractTypePtr(t))
-canonicalType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Void},(Ptr{Void},),t))
+canonicalType(t::pcpp"clang::Type") = pcpp"clang::Type"(ccall((:canonicalType,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},),t))
 
 function toBaseType(t::pcpp"clang::Type")
     T = CppBaseType{Symbol(get_name(t))}
@@ -466,16 +467,16 @@ function isCxxEquivalentType(t)
         (t <: Ref) || (t <: JLCppCast)
 end
 
-extract_T(::Type{S}) where {T,S<:Cxx.CppValue{T,N} where N} = T
+extract_T(::Type{S}) where {T,S<:CppValue{T,N} where N} = T
 
-function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
+function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Cvoid}();
         wrapvalue = true, valuecvr = true)
     CVR = extractCVR(t)
     t = extractTypePtr(t)
     t = canonicalType(t)
     local T::Type
     if isVoidType(t)
-        T = Void
+        T = Cvoid
     elseif isBooleanType(t)
         T = Bool
     elseif isPointerType(t)
@@ -504,7 +505,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
     elseif isFunctionType(t)
         @assert !quoted
         if isFunctionProtoType(t)
-            t = pcpp"clang::FunctionProtoType"(convert(Ptr{Void},t))
+            t = pcpp"clang::FunctionProtoType"(convert(Ptr{Cvoid},t))
             rt = getReturnType(t)
             args = QualType[]
             for i = 0:(getNumParams(t)-1)
@@ -554,7 +555,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         elseif kind == cSChar
             T = Int8
         else
-            ccall(:jl_,Void,(Any,),kind)
+            ccall(:jl_,Cvoid,(Any,),kind)
             dump(t)
             error("Unrecognized Integer type")
         end
@@ -574,16 +575,16 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Void}();
         return CxxArrayType{juliatype(getArrayElementType(t),quoted,typeargs)}
     # If this is not dependent, the generic logic handles it fine
     elseif isElaboratedType(t) && isDependentType(t)
-        return juliatype(desugar(pcpp"clang::ElaboratedType"(convert(Ptr{Void},t))), quoted, typeargs)
+        return juliatype(desugar(pcpp"clang::ElaboratedType"(convert(Ptr{Cvoid},t))), quoted, typeargs)
     elseif isTemplateTypeParmType(t)
-        t = pcpp"clang::TemplateTypeParmType"(convert(Ptr{Void},t))
+        t = pcpp"clang::TemplateTypeParmType"(convert(Ptr{Cvoid},t))
         idx = getTTPTIndex(t)
         if !haskey(typeargs, idx)
             error("No translation for typearg")
         end
         return typeargs[idx]
     elseif isTemplateSpecializationType(t) && isDependentType(t)
-        t = pcpp"clang::TemplateSpecializationType"(convert(Ptr{Void},t))
+        t = pcpp"clang::TemplateSpecializationType"(convert(Ptr{Cvoid},t))
         TD = getUnderlyingTemplateDecl(t)
         TDargs = getTemplateParameters(t,quoted,typeargs)
         T = CppBaseType{Symbol(get_name(TD))}

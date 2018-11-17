@@ -1,18 +1,18 @@
 function cpp_ref(expr,nns,isaddrof)
     @assert isa(expr, Symbol)
     nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(expr))
-    x = :(Cxx.CppNNS{$nns}())
-    ret = esc(Expr(:call, :(Cxx.cxxref), :__current_compiler__, isaddrof ? :(Cxx.CppAddr($x)) : x))
+    x = :($(CppNNS){$nns}())
+    ret = esc(Expr(:call, cxxref, :__current_compiler__, isaddrof ? :($(CppAddr)($x)) : x))
 end
 
 function refderefarg(arg)
     if isexpr(arg,:call)
         # is unary *
         if length(arg.args) == 2 && arg.args[1] == :*
-            return :( Cxx.CppDeref($(refderefarg(arg.args[2]))) )
+            return :( $(CppDeref)($(refderefarg(arg.args[2]))) )
         end
     elseif isexpr(arg,:&)
-        return :( Cxx.CppAddr($(refderefarg(arg.args[1]))) )
+        return :( $(CppAddr)($(refderefarg(arg.args[1]))) )
     end
     arg
 end
@@ -29,7 +29,7 @@ end
 function expr_to_nns(x)
   args = Any[]
   add_to_nns_list!(args, x)
-  :( Cxx.CppNNS{$(Expr(:curly, Tuple, map(quot, args)...))} )
+  :( $(CppNNS){$(Expr(:curly, Tuple, map(quot, args)...))} )
 end
 
 # Builds a call to the cppcall staged functions that represents a
@@ -61,7 +61,7 @@ function build_cpp_call(mod, cexpr, this, nns, isnew = false)
     if isexpr(cexpr.args[1],:curly)
         nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1].args[1]))
         targs = Expr(:curly, Tuple, map(expr_to_nns, map(
-            VERSION <= v"0.7-" ? macroexpand : x->macroexpand(mod, x),
+            x->macroexpand(mod, x),
             copy(cexpr.args[1].args[2:end])))...)
     else
         nns = Expr(:curly,Tuple,nns.args[2:end]...,quot(cexpr.args[1]))
@@ -76,18 +76,18 @@ function build_cpp_call(mod, cexpr, this, nns, isnew = false)
     end
 
     # Add `this` as the first argument
-    this !== nothing && unshift!(arguments, this)
+    this !== nothing && pushfirst!(arguments, this)
 
-    e = curly = :( Cxx.CppNNS{$nns} )
+    e = curly = :( $(CppNNS){$nns} )
 
     # Add templating
     if targs != Tuple{}
-        e = :( Cxx.CppTemplate{$curly,$targs} )
+        e = :( $(CppTemplate){$curly,$targs} )
     end
 
     # The actual call to the staged function
     ret = Expr(:call, isnew ?
-        :(Cxx.cxxnewcall) : this === nothing ? :(Cxx.cppcall) : :(Cxx.cppcall_member),
+        cxxnewcall : this === nothing ? cppcall : cppcall_member,
         :__current_compiler__
     )
     push!(ret.args,:($e()))
@@ -97,8 +97,8 @@ end
 
 function build_cpp_ref(member, this, isaddrof)
     @assert isa(member,Symbol)
-    x = :(Cxx.CppExpr{$(quot(Symbol(member))),()}())
-    ret = esc(Expr(:call, :(Cxx.cxxmemref), :__current_compiler__, isaddrof ? :(Cxx.CppAddr($x)) : x, this))
+    x = :($(CppExpr){$(quot(Symbol(member))),()}())
+    ret = esc(Expr(:call, cxxmemref, :__current_compiler__, isaddrof ? :($(CppAddr)($x)) : x, this))
 end
 
 function to_prefix(expr, isaddrof=false)
@@ -121,13 +121,13 @@ function to_prefix(expr, isaddrof=false)
             nns2, isaddrof2 = to_prefix(expr.args[i],false)
             @assert !isaddrof2
             isnns = length(nns2.args) > 2 || isa(nns2.args[2],Expr)
-            push!(tup.args, isnns ? :(Cxx.CppNNS{$nns2}) : nns2.args[2])
+            push!(tup.args, isnns ? :($(CppNNS){$nns2}) : nns2.args[2])
         end
         # Expr(:curly,Tuple, ... )
         @assert length(nns.args) == 2
         @assert isexpr(nns.args[2],:quote)
 
-        return (Expr(:curly,Tuple,:(Cxx.CppTemplate{$(nns.args[2]),$tup}),),isaddrof)
+        return (Expr(:curly,Tuple,:($(CppTemplate){$(nns.args[2]),$tup}),),isaddrof)
     end
     error("Invalid NNS $expr")
 end
@@ -197,7 +197,7 @@ address of the given value.
     otherwise.
 """
 macro cxx(expr)
-    cpps_impl(VERSION <= v"0.7-" ? Cxx : __module__, expr)
+    cpps_impl(__module__, expr)
 end
 
 """
@@ -206,22 +206,22 @@ end
 Create a new instance of a C++ class.
 """
 macro cxxnew(expr)
-    cpps_impl(VERSION <= v"0.7-" ? Cxx : __module__, expr,
+    cpps_impl(__module__, expr,
         Expr(:curly,Tuple), false, false, true)
 end
 
 function extract_params(C,FD)
     @assert FD != C_NULL
     params = Pair{Symbol,DataType}[]
-    CxxMD = dcastCXXMethodDecl(pcpp"clang::Decl"(convert(Ptr{Void},FD)))
+    CxxMD = dcastCXXMethodDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},FD)))
     if CxxMD != C_NULL
         RD = getParent(CxxMD)
         T = juliatype(pointerTo(C, QualType(typeForDecl(RD))))
         push!(params,:this => T)
     end
-    for i = 1:Cxx.getNumParams(FD)
-        PV = Cxx.getParmVarDecl(FD,i-1)
-        QT = Cxx.getOriginalType(PV)
+    for i = 1:getNumParams(FD)
+        PV = getParmVarDecl(FD,i-1)
+        QT = getOriginalType(PV)
         T = juliatype(QT)
         if T <: CppValue
             # Want the sized version for specialization
@@ -239,11 +239,11 @@ end
 
 function get_llvmf_for_FD(C,jf,FD)
     TT = Tuple{typeof(jf), map(x->x[2],extract_params(C,FD))...}
-    needsboxed = Bool[!isbits(x) for x in TT.parameters]
+    needsboxed = Bool[!isbitstype(x) || x.mutable for x in TT.parameters]
     specsig = length(needsboxed) == 0 || !reduce(&,needsboxed)
     f = get_llvmf_decl(TT)
     @assert f != C_NULL
-    needsboxed, specsig, Tuple{TT.parameters[2:end]...}, f
+    needsboxed[2:end], specsig, Tuple{TT.parameters[2:end]...}, f
 end
 
 macro cxxm(str,expr)
@@ -251,17 +251,17 @@ macro cxxm(str,expr)
     FD = gensym()
     RT = gensym()
     esc(quote
-        Cxx.EnterBuffer(Cxx.instance(__current_compiler__),$str)
-        $FD = Cxx.@pcpp_str("clang::FunctionDecl")(convert(Ptr{Void},Cxx.ParseDeclaration(Cxx.instance(__current_compiler__))))
+        $(EnterBuffer)(Cxx.instance(__current_compiler__),$str)
+        $FD = Cxx.@pcpp_str("clang::FunctionDecl")(convert(Ptr{Cvoid},$(ParseDeclaration)(Cxx.instance(__current_compiler__))))
         if $FD == C_NULL
             error("Failed to obtain declarator (see Clang Errors)")
         end
-        $RT = Cxx.juliatype(Cxx.getReturnType($FD))
-        e = Expr(:function,Cxx.DeclToJuliaPrototype(Cxx.instance(__current_compiler__),$FD,$(quot(f))),
+        $RT = $(juliatype)($(getReturnType)($FD))
+        e = Expr(:function,$(DeclToJuliaPrototype)(Cxx.instance(__current_compiler__),$FD,$(quot(f))),
             Expr(:(::),Expr(:call,:convert,$RT,$(quot(expr))),$RT))
         eval(e)
-        NeedsBoxed, specsig, TT, llvmf = Cxx.get_llvmf_for_FD(Cxx.instance(__current_compiler__),$f,$FD)
-        Cxx.ReplaceFunctionForDecl(Cxx.instance(__current_compiler__),
+        NeedsBoxed, specsig, TT, llvmf = $(get_llvmf_for_FD)(Cxx.instance(__current_compiler__),$f,$FD)
+        $(ReplaceFunctionForDecl)(Cxx.instance(__current_compiler__),
             $FD,llvmf,
             DoInline = false, specsig = specsig, NeedsBoxed = NeedsBoxed,
             retty = $RT, jts = Any[TT.parameters...])
