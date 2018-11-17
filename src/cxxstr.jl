@@ -2,22 +2,22 @@
 
 global varnum = 1
 
-const jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
+const jns = cglobal((:julia_namespace,libcxxffi),Ptr{Cvoid})
 
 #
 # Takes a julia value and makes in into an llvm::Constant
 #
 function llvmconst(@nospecialize val)
     T = typeof(val)
-    if isbits(T)
+    if isbitstype(T)
         if !Base.isstructtype(T)
             if T <: AbstractFloat
                 return getConstantFloat(julia_to_llvm(T),Float64(val))
             elseif T <: Integer
                 return getConstantInt(julia_to_llvm(T),UInt64(val))
             elseif T <: Ptr || T <: CppPtr
-                int = getConstantInt(julia_to_llvm(UInt64),UInt64(Ptr{Void}(val)))
-                return getConstantIntToPtr(int, julia_to_llvm(Ptr{Void}))
+                return getConstantInt(julia_to_llvm(Ptr{Cvoid}),UInt(
+                    convert(Ptr{Cvoid}, val)))
             else
                 error("Creating LLVM constants for type `$T` not implemented yet")
             end
@@ -32,11 +32,11 @@ function llvmconst(@nospecialize val)
 end
 
 function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant")
-    ccall((:SetDeclInitializer,libcxxffi),Void,(Ref{ClangCompiler},Ptr{Void},Ptr{Void}),C,decl,val)
+    ccall((:SetDeclInitializer,libcxxffi),Cvoid,(Ref{ClangCompiler},Ptr{Cvoid},Ptr{Cvoid}),C,decl,val)
 end
 
 const specTypes = 8
-function ssv(C, @nospecialize(e), ctx, varnum, sourcebuf, typeargs=Dict{Void,Void}())
+function ssv(C, @nospecialize(e), ctx, varnum, sourcebuf, typeargs=Dict{Cvoid,Cvoid}())
     iscc = isCCompiler(C)
     if isa(e,Type)
         QT = cpptype(C,e)
@@ -45,7 +45,7 @@ function ssv(C, @nospecialize(e), ctx, varnum, sourcebuf, typeargs=Dict{Void,Voi
     elseif isa(e,TypeVar)
         str = String(take!(sourcebuf))
         name = string(iscc ? "__juliaglobalvar" : "var",varnum)
-        write(sourcebuf, replace(str, string(iscc ? "__juliavar" : "__julia::var",varnum), name))
+        write(sourcebuf, replace(str, string(iscc ? "__juliavar" : "__julia::var",varnum)=>name))
         sv = ActOnTypeParameterParserScope(C,name,varnum)
         typeargs[varnum] = e
         return e, sv
@@ -55,7 +55,7 @@ function ssv(C, @nospecialize(e), ctx, varnum, sourcebuf, typeargs=Dict{Void,Voi
         name = string(iscc ? "__juliaglobalvar" : "var",varnum)
         sv = CreateVarDecl(C,ctx,name,cpptype(C,T))
     end
-    decl = pcpp"clang::Decl"(convert(Ptr{Void}, sv))
+    decl = pcpp"clang::Decl"(convert(Ptr{Cvoid}, sv))
     if iscc
         AddTopLevelDecl(C, decl)
     else
@@ -69,13 +69,13 @@ function CreateLambdaCallExpr(C, T, argt = [])
     meth = getLambdaCallOperator(getAsCXXRecordDecl(T))
 
     callargs, cpvds = buildargexprs(C,argt)
-    PVoid = cpptype(C,Ptr{Void})
-    pvd = CreateParmVarDecl(C, PVoid)
+    PCvoid = cpptype(C,Ptr{Cvoid})
+    pvd = CreateParmVarDecl(C, PCvoid)
     pvds = [pvd]
     append!(pvds, cpvds)
 
     Tptr = pointerTo(C,T)
-    Closure = CreateCStyleCast(C,createCast(C,CreateDeclRefExpr(C,pvd),PVoid,CK_LValueToRValue),Tptr)
+    Closure = CreateCStyleCast(C,createCast(C,CreateDeclRefExpr(C,pvd),PCvoid,CK_LValueToRValue),Tptr)
     ce = CreateCallExpr(C,createDerefExpr(C,Closure),callargs)
 
     rt = GetExprResultType(ce)
@@ -85,12 +85,12 @@ end
 const lambda_roots = Function[]
 
 function latest_world_return_type(tt)
-    params = Core.Inference.InferenceParams(typemax(UInt))
+    params = Core.Compiler.Params(typemax(UInt))
     rt = Union{}
     for m in Base._methods_by_ftype(tt, -1, params.world)
-        ty = Core.Inference.typeinf_type(m[3], m[1], m[2], true, params)
+        ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], params)
         ty === nothing && return Any
-        rt = Core.Inference.tmerge(rt, ty)
+        rt = Core.Compiler.tmerge(rt, ty)
         rt === Any && break
     end
     return rt
@@ -104,16 +104,16 @@ function get_llvmf_decl(tt)
   #(ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
   meth = Base.func_for_method_checked(meth, tt)
   linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, tt, env, world)
-  f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Void}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
+  f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Cvoid}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
   f
 end
 
 # TODO: It would be good if this could be invoked as a callback when Clang instantiates
 # a template.
 function InstantiateSpecializationsForType(C, DC, LambdaT)
-    TheClass = Cxx.getAsCXXRecordDecl(Cxx.MappedTypes[LambdaT])
-    Method = Cxx.getCallOperator(C, TheClass)
-    FTD = Cxx.GetDescribedFunctionTemplate(Method)
+    TheClass = getAsCXXRecordDecl(MappedTypes[LambdaT])
+    Method = getCallOperator(C, TheClass)
+    FTD = GetDescribedFunctionTemplate(Method)
     if FTD == C_NULL
         return
     end
@@ -124,7 +124,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         nargs = getTargsSize(TP)
 
         # Because CppPtr is now a bitstype
-        PVoid = cpptype(C,Int)
+        PCvoid = cpptype(C,Int)
         tpvds = pcpp"clang::ParmVarDecl"[]
         specTypes = Type[]
         byPtrList = Bool[]
@@ -154,7 +154,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         T = ty
 
         if T === Union{}
-          T = Void
+          T = Cvoid
         end
         if isa(T,Union) || T.abstract
           error("Inferred Union or abstract type $T for expression $F")
@@ -165,7 +165,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
 
         # Create a Clang function Decl to represent this julia function
         ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
-        argtypes = [byPtr ? PVoid : getTargTypeAtIdx(TP,i-1) for (i,byPtr) in enumerate(byPtrList)]
+        argtypes = [byPtr ? PCvoid : getTargTypeAtIdx(TP,i-1) for (i,byPtr) in enumerate(byPtrList)]
         sizeof(LambdaT) == 0 || unshift!(argtypes, pointerTo(C, getPointeeType(cpptype(C,LambdaT))))
         InsertIntoShadowModule(C, f)
         JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), argtypes))
@@ -183,7 +183,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         for (i,pvd) in enumerate(tpvds)
             e = dre = CreateDeclRefExpr(C,pvd)
             if byPtrList[i]
-                e = createCast(C,CreateAddrOfExpr(C,dre),PVoid,CK_PointerToIntegral)
+                e = createCast(C,CreateAddrOfExpr(C,dre),PCvoid,CK_PointerToIntegral)
             end
             push!(callargs, e)
         end
@@ -208,20 +208,26 @@ function ArgCleanup(C,e,sv)
         @assert f != C_NULL
         ReplaceFunctionForDecl(C,sv,f)
     elseif !isa(e,Type) && !isa(e,TypeVar)
-        # Passed as pointer
         if haskey(MappedTypes,typeof(e))
+            # Passed as pointer
             if sizeof(typeof(e)) == 0
-                SetDeclInitializer(C,sv,llvmconst(C_NULL))
+                val = C_NULL
             else
-                SetDeclInitializer(C,sv,llvmconst(pointer_from_objref(e)))
+                val = pointer_from_objref(e)
             end
+            lc = getConstantIntToPtr(llvmconst(val),
+                getI8PtrTy())
+        elseif isa(e, Ptr) || isa(e, CppPtr)
+            lc = getConstantIntToPtr(llvmconst(e),
+                getI8PtrTy())
         else
-            SetDeclInitializer(C,sv,llvmconst(e))
+            lc = llvmconst(e)
         end
+        SetDeclInitializer(C, sv, lc)
     end
 end
 
-const sourcebuffers = Array{Tuple{AbstractString,Symbol,Int,Int,Bool}}(0)
+const sourcebuffers = Vector{Tuple{AbstractString,Symbol,Int,Int,Bool}}(undef, 0)
 
 struct SourceBuf{id}; end
 sourceid(::Type{SourceBuf{id}}) where {id} = id
@@ -230,29 +236,29 @@ icxxcounter = 0
 
 function ActOnStartOfFunction(C,D,ScopeIsNull = false)
     pcpp"clang::Decl"(ccall((:ActOnStartOfFunction,libcxxffi),
-        Ptr{Void},(Ref{ClangCompiler},Ptr{Void},Bool),C,D,ScopeIsNull))
+        Ptr{Cvoid},(Ref{ClangCompiler},Ptr{Cvoid},Bool),C,D,ScopeIsNull))
 end
 function ParseFunctionStatementBody(C,D)
-    if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Void}),C,D) == 0
+    if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Cvoid}),C,D) == 0
         error("A failure occured while parsing the function body")
     end
 end
 
 function ActOnStartNamespaceDef(C,name)
-    pcpp"clang::Decl"(ccall((:ActOnStartNamespaceDef,libcxxffi),Ptr{Void},
+    pcpp"clang::Decl"(ccall((:ActOnStartNamespaceDef,libcxxffi),Ptr{Cvoid},
         (Ref{ClangCompiler},Ptr{UInt8}),C,name))
 end
 function ActOnFinishNamespaceDef(C,D)
-    ccall((:ActOnFinishNamespaceDef,libcxxffi),Void,(Ref{ClangCompiler},Ptr{Void}),C,D)
+    ccall((:ActOnFinishNamespaceDef,libcxxffi),Cvoid,(Ref{ClangCompiler},Ptr{Cvoid}),C,D)
 end
 
 function EmitTopLevelDecl(C, D::pcpp"clang::Decl")
-    HadErrors = ccall((:EmitTopLevelDecl,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Void}),C,D)
+    HadErrors = ccall((:EmitTopLevelDecl,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Cvoid}),C,D)
     if HadErrors
         error("Tried to Emit Invalid Decl")
     end
 end
-EmitTopLevelDecl(C,D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(C,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
+EmitTopLevelDecl(C,D::pcpp"clang::FunctionDecl") = EmitTopLevelDecl(C,pcpp"clang::Decl"(convert(Ptr{Cvoid}, D)))
 
 function cppconst(C, Val)
     if isa(Val, Integer)
@@ -285,15 +291,15 @@ function CreateFunctionWithBody(C,body,args...; named_args = Any[],
         symarg = :(args[$i])
         if arg <: Type
             if arg.parameters[1] <: Val
-                body = replace(body,"__juliavar$i","__juliaconst$icxxcounter")
+                body = replace(body,"__juliavar$i"=>"__juliaconst$icxxcounter")
                 push!(typeargs,(icxxcounter,arg.parameters[1].parameters[1]))
             else
-                body = replace(body,"__juliavar$i","__juliatype$icxxcounter")
+                body = replace(body,"__juliavar$i"=>"__juliatype$icxxcounter")
                 push!(typeargs,(icxxcounter,cpptype(C,arg.parameters[1])))
             end
             icxxcounter += 1
         elseif arg <: Val
-            body = replace(body,"__juliavar$i","__juliaconst$icxxcounter")
+            body = replace(body,"__juliavar$i"=>"__juliaconst$icxxcounter")
             push!(typeargs,(icxxcounter,arg.parameters[1]))
             icxxcounter += 1
         else
@@ -343,10 +349,10 @@ function CreateFunctionWithBody(C,body,args...; named_args = Any[],
                 SetVarDeclInit(D, cppconst(C, T))
                 SetConstexpr(D)
             end
-            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Void}, D)))
+            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Cvoid}, D)))
         end
         SetFDParams(FD,params)
-        FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(convert(Ptr{Void}, FD)))
+        FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(convert(Ptr{Cvoid}, FD)))
         try
             ParseFunctionStatementBody(C,FD)
         finally
@@ -380,10 +386,10 @@ function VirtualFileName(filename)
 end
 
 function find_expr(sourcebuf,str,pos = 1)
-    idx = search(str,'$',pos)
-    if idx == 0
+    idx = findnext(isequal('$'), str, pos)
+    if idx === nothing
         write(sourcebuf,str[pos:end])
-        return nothing, false, endof(str)+1
+        return nothing, false, lastindex(str)+1
     end
     if idx != 1 && str[idx-1] == '\\'
         write(sourcebuf,str[pos:(idx-2)])
@@ -405,7 +411,7 @@ function collect_exprs(str)
     pos = 1
     i = 0
     exprs = Any[]
-    while pos <= endof(str)
+    while pos <= lastindex(str)
         expr, isexpr, pos = find_expr(sourcebuf,str,pos)
         expr == nothing && continue
         write(sourcebuf,string("__lambdaarg",i))
@@ -422,7 +428,7 @@ function collect_icxx(compiler, e::Expr,icxxs)
         islineno = (isa(e.args[2], Expr) && e.args[2] == :line) || isa(e.args[2], LineNumberNode)
         exprs, str = collect_exprs(islineno ? e.args[3] : e.args[2])
         push!(icxxs, (x,str,exprs))
-        return Expr(:call, Cxx.lambdacall, compiler, x, [e[1] for e in exprs]...)
+        return Expr(:call, lambdacall, compiler, x, [e[1] for e in exprs]...)
     else
         for i in 1:length(e.args)
             e.args[i] = collect_icxx(compiler,e.args[i], icxxs)
@@ -468,7 +474,7 @@ function process_body(compiler, str, global_scope = true, cxxt = false, filename
     global varnum
     startvarnum = varnum
     localvarnum = 1
-    while pos <= endof(str)
+    while pos <= lastindex(str)
         expr, isexpr, pos = find_expr(sourcebuf, str, pos)
         expr == nothing && continue
         this_icxxs = Any[]
@@ -514,12 +520,12 @@ end
         l = l.parameters[1].parameters[1]
         T = typeForLambda(l)
         ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
-        body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
-            symargs = (:(convert(Ptr{Void},l)),[:(args[$i]) for i = 1:length(args)]...))
+        body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Cvoid},args...],pvds;
+            symargs = (:(convert(Ptr{Cvoid},l)),[:(args[$i]) for i = 1:length(args)]...))
     else
         T = typeForLambda(l)
         ce, rt, pvds = CreateLambdaCallExpr(C, T, args)
-        body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Void},args...],pvds;
+        body = EmitExpr(C,ce,C_NULL,C_NULL,[Ptr{Cvoid},args...],pvds;
             symargs = (:(l.captureData),[:(args[$i]) for i = 1:length(args)]...))
     end
     body
@@ -538,18 +544,18 @@ end
     mapping = Dict{Int,Any}()
     iscc = isCCompiler(C)
     if !iscc
-        jns = cglobal((:julia_namespace,libcxxffi),Ptr{Void})
-        ns = Cxx.createNamespace(C,"julia")
-        ctx = Cxx.toctx(pcpp"clang::Decl"(convert(Ptr{Void},ns)))
-        unsafe_store!(jns,convert(Ptr{Void},ns))
-        Cxx.EnterParserScope(C)
+        jns = cglobal((:julia_namespace,libcxxffi),Ptr{Cvoid})
+        ns = createNamespace(C,"julia")
+        ctx = toctx(pcpp"clang::Decl"(convert(Ptr{Cvoid},ns)))
+        unsafe_store!(jns,convert(Ptr{Cvoid},ns))
+        EnterParserScope(C)
     else
-        ctx = Cxx.to_ctx(translation_unit(C))
+        ctx = to_ctx(translation_unit(C))
     end
     for (i,arg) in enumerate(args)
         if arg == TypeVar || arg <: Integer
             name = string(iscc ? "__juliavar" : "var",varnum)
-            typename = replace(typename, string(iscc ? "__juliavar" : "__julia::var",i), name)
+            typename = replace(typename, string(iscc ? "__juliavar" : "__julia::var",i) => name)
             ActOnTypeParameterParserScope(C,name,varnum)
             mapping[varnum] = :(args[$i])
             varnum += 1
@@ -557,14 +563,14 @@ end
             QT = cpptype(C,arg.parameters[1])
             name = string(iscc ? "__juliavar" : "var",i)
             sv = CreateTypeDefDecl(C,ctx,name,QT)
-            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Void},sv)))
+            AddDeclToDeclCtx(ctx,pcpp"clang::Decl"(convert(Ptr{Cvoid},sv)))
         end
     end
-    x = Cxx.ParseVirtual(C, typename,
+    x = ParseVirtual(C, typename,
         VirtualFileName(string(loc.parameters[1])), loc.parameters[1],
         loc.parameters[2], loc.parameters[3], true)
     if !iscc
-        Cxx.ExitParserScope(C)
+        ExitParserScope(C)
         unsafe_store!(jns,C_NULL)
     end
     ret = juliatype(x,true,mapping)
@@ -573,7 +579,7 @@ end
 
 function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)
     setup = Expr(:block)
-    cxxstr = Expr(:call,impl_func,compiler,:(Cxx.SourceBuf{$id}()))
+    cxxstr = Expr(:call,impl_func,compiler,:($(SourceBuf){$id}()))
     for (i,e) in enumerate(exprs)
         #=if isexprs[i]
             s = gensym()
@@ -591,7 +597,7 @@ function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr
             push!(setup.args,Expr(:(=),s,Expr(:->,largs,e)))
             push!(cxxstr.args,s)
         else=#
-            push!(cxxstr.args,:(Cxx.cppconvert($e)))
+            push!(cxxstr.args,:($(cppconvert)($e)))
         #end
     end
     push!(setup.args,cxxstr)
@@ -600,7 +606,7 @@ end
 
 function adjust_source(C, source)
     if isCCompiler(C)
-        return replace(source, "__julia::", "__juliaglobal")
+        return replace(source, "__julia::"=>"__juliaglobal")
     end
     source
 end
@@ -617,7 +623,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
         argsetup = Expr(:block)
         argcleanup = Expr(:block)
         postparse = Expr(:block)
-        instance = gensym()
+        instance_var = gensym()
         ctx = gensym()
         typeargs = gensym()
         for i in 1:length(exprs)
@@ -625,7 +631,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
             icxx = icxxs[i]
             s = gensym()
             sv = gensym()
-            x = :(Cxx.ssv($instance,e,$ctx,$startvarnum,$sourcebuf))
+            x = :($(ssv)($instance_var,e,$ctx,$startvarnum,$sourcebuf))
             if type_name
               push!(x.args,typeargs)
             end
@@ -635,12 +641,14 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
                         $x
                     end
                 end)
-            push!(argcleanup.args,:(Cxx.ArgCleanup($instance,$s,$sv)))
-            push!(postparse.args,:(Cxx.RealizeTemplates($instance,$ctx,$s)))
+            push!(argcleanup.args,:($(ArgCleanup)($instance_var,$s,$sv)))
+            push!(postparse.args,:($(RealizeTemplates)($instance_var,$ctx,$s)))
             startvarnum += 1
         end
-        parsecode = filename == Symbol("") ? :( Cxx.cxxparse($instance,Cxx.adjust_source($instance,String(take!($sourcebuf))),$type_name,false,$disable_ac) ) :
-            :( Cxx.ParseVirtual($instance, Cxx.adjust_source($instance,String(take!($sourcebuf))),
+        parsecode = filename == Symbol("") ? :( $(cxxparse)($instance_var,
+                $(adjust_source)($instance_var,String(take!($sourcebuf))),
+                $type_name,false,$disable_ac) ) :
+            :( $(ParseVirtual)($instance_var, $(adjust_source)($instance_var,String(take!($sourcebuf))),
                 $( VirtualFileName(filename) ),
                 $( quot(filename) ),
                 $( __source__.line ),
@@ -651,25 +659,25 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
         if type_name
           unshift!(argsetup.args,quote
             $typeargs = Dict{Int64,TypeVar}()
-            Cxx.EnterParserScope($instance)
+            $(EnterParserScope)($instance_var)
           end)
           push!(postparse.args, quote
-            Cxx.ExitParserScope($instance)
+            $(ExitParserScope)($instance_var)
           end)
           tojuliatype &&
             push!(postparse.args, quote
-                $x = Cxx.juliatype($x, false, $typeargs)
+                $x = $(juliatype)($x, false, $typeargs)
             end)
         end
         return quote
             let
-                $instance = Cxx.instance($compiler)
-                jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Void})
-                $ctx = Cxx.toctx((Cxx.isCCompiler($instance) ?
-                    Cxx.translation_unit($instance) : begin
-                    ns = Cxx.createNamespace($instance,"julia")
-                    unsafe_store!(jns,convert(Ptr{Void},ns))
-                    Cxx.@pcpp_str("clang::Decl")(convert(Ptr{Void},ns))
+                $instance_var = $(instance)($compiler)
+                jns = cglobal((:julia_namespace,$libcxxffi),Ptr{Cvoid})
+                $ctx = $(toctx)(($(isCCompiler)($instance_var) ?
+                    $(translation_unit)($instance_var) : begin
+                    ns = $(createNamespace)($instance_var,"julia")
+                    unsafe_store!(jns,convert(Ptr{Cvoid},ns))
+                    $(pcpp"clang::Decl")(convert(Ptr{Cvoid},ns))
                 end))
                 $argsetup
                 $argcleanup
@@ -681,7 +689,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
         end
     else
         if type_name
-            Expr(:call,Cxx.CxxType,:__current_compiler__,
+            Expr(:call, CxxType, :__current_compiler__,
                 CxxTypeName{Symbol(String(take!(sourcebuf)))}(),CodeLoc{filename,__source__.line,col}(),exprs...)
         else
             push!(sourcebuffers,(String(take!(sourcebuf)),filename,__source__.line, col, disable_ac))

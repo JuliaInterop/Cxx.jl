@@ -91,8 +91,8 @@
 #include <clang/AST/DeclTemplate.h>
 #include <clang/Basic/Specifiers.h>
 #include <clang/CodeGen/CGFunctionInfo.h>
+#include <clang/Parse/RAIIObjectsForParser.h>
 
-#include "Parse/RAIIObjectsForParser.h"
 #include "CodeGen/CodeGenModule.h"
 #include <CodeGen/CodeGenTypes.h>
 #define private public
@@ -150,6 +150,7 @@ struct CxxInstance {
   JuliaCodeGenerator *JCodeGen;
   JuliaPCHGenerator *PCHGenerator;
 };
+const clang::InputKind CKind = clang::InputKind::C;
 #define C CxxInstance *Cxx
 
 extern "C" {
@@ -237,6 +238,7 @@ JL_DLLEXPORT int _cxxparse(C)
     S.PerformPendingInstantiations(false);
     Cxx->CGM->Release();
     Cxx->CI->getDiagnostics().Reset();
+    Cxx->CI->getDiagnostics().setSuppressSystemWarnings(true);
 
     return 1;
 }
@@ -250,8 +252,8 @@ JL_DLLEXPORT void *ParseDeclaration(C, clang::DeclContext *DCScope)
          P->ConsumeToken();
   clang::ParsingDeclSpec DS(*P);
   clang::AccessSpecifier AS;
-  P->ParseDeclarationSpecifiers(DS, clang::Parser::ParsedTemplateInfo(), AS, clang::Parser::DSC_top_level);
-  clang::ParsingDeclarator D(*P, DS, clang::Declarator::FileContext);
+  P->ParseDeclarationSpecifiers(DS, clang::Parser::ParsedTemplateInfo(), AS, clang::Parser::DeclSpecContext::DSC_top_level);
+  clang::ParsingDeclarator D(*P, DS, clang::DeclaratorContext::FileContext);
   P->ParseDeclarator(D);
   D.setFunctionDefinitionKind(clang::FDK_Definition);
   clang::Scope *TheScope = DCScope ? S->getScopeForContext(DCScope) : P->getCurScope();
@@ -267,7 +269,7 @@ JL_DLLEXPORT void ParseParameterList(C, void **params, size_t nparams) {
          P->ConsumeToken();
   clang::ParsingDeclSpec DS(*P);
   clang::AccessSpecifier AS;
-  clang::ParsingDeclarator D(*P, DS, clang::Declarator::FileContext);
+  clang::ParsingDeclarator D(*P, DS, clang::DeclaratorContext::FileContext);
 
   clang::ParsedAttributes FirstArgAttrs(P->getAttrFactory());
   SmallVector<clang::DeclaratorChunk::ParamInfo, 16> ParamInfo;
@@ -285,13 +287,14 @@ JL_DLLEXPORT void ParseParameterList(C, void **params, size_t nparams) {
     params[i] = ParamInfo[i].Param;
 }
 
+
 JL_DLLEXPORT void *ParseTypeName(C, int ParseAlias = false)
 {
   if (Cxx->Parser->getPreprocessor().isIncrementalProcessingEnabled() &&
     Cxx->Parser->getCurToken().is(clang::tok::eof))
     Cxx->Parser->ConsumeToken();
   auto result = Cxx->Parser->ParseTypeName(nullptr, ParseAlias ?
-      clang::Declarator::AliasTemplateContext : clang::Declarator::TypeNameContext);
+      clang::DeclaratorContext::AliasTemplateContext : clang::DeclaratorContext::TypeNameContext);
   if (result.isInvalid())
     return 0;
   clang::QualType QT = clang::Sema::GetTypeFromParser(result.get());
@@ -306,7 +309,7 @@ JL_DLLEXPORT int cxxinclude(C, char *fname, int isAngled)
 
     const clang::FileEntry *File = P.LookupFile(
       getTrivialSourceLocation(Cxx), fname,
-      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr);
+      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr, nullptr);
 
     if(!File)
       return 0;
@@ -641,7 +644,6 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
   if (needsbox) {
     cppcall_state_t *state = (cppcall_state_t *)setup_cpp_env(Cxx,NewF);
     // Julia 0.7 Implementation
-#ifdef LLVM39
     if (newgc) {
       // Ok, we need to go through and box the arguments.
       // Let's first let's clang take care of the function prologue.
@@ -689,24 +691,27 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
           CallArgs.push_back(Replacement);
         } else {
           bool isboxed;
-          if (f_julia_type_to_llvm(juliatypes[i++], &isboxed)->isVoidTy())
-            continue;
+          bool isVoid = f_julia_type_to_llvm(juliatypes[i++], &isboxed)->isVoidTy();
           llvm::IRBuilderBase::InsertPoint IP = builder.saveIP();
           // Go to end of block
           builder.SetInsertPoint(builder.GetInsertBlock());
           if (specsig) {
+            if (isVoid)
+              continue;
             if (DestI->getType()->isPointerTy() && !cast<PointerType>(ArgPtr->getType())->getElementType()->isPointerTy())
               CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
             else
               CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
           } else {
-            CallArgs.push_back(builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_prjlvalue));
+            llvm::Value *Val = isVoid ? ConstantPointerNull::get(cast<PointerType>(T_prjlvalue)) :
+              builder.CreatePointerBitCastOrAddrSpaceCast(builder.CreateLoad(ArgPtr),T_prjlvalue);
+            CallArgs.push_back(Val);
           }
           builder.restoreIP(IP);
         }
         DestI++;
       }
-      
+
       if (specsig) {
         Call = builder.CreateCall(F,CallArgs);
       } else {
@@ -723,126 +728,8 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
         else
             Call->setCallingConv(JLCALL_CC);
       }
-      
-    } else {
-      // 0.6 Code: Delete when we drop 0.6 support
-#endif
-      // Ok, we need to go through and box the arguments.
-      // Let's first let's clang take care of the function prologue.
-      builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
-        Cxx->CGF->Builder.GetInsertPoint());
-      Cxx->CGF->CurGD = clang::GlobalDecl(FD);
-      clang::CodeGen::FunctionArgList Args;
-      const clang::CXXMethodDecl *MD = clang::dyn_cast<clang::CXXMethodDecl>(FD);
-      if (MD && MD->isInstance()) {
-        Cxx->CGM->getCXXABI().buildThisParam(*Cxx->CGF, Args);
-      }
-  #ifdef LLVM39
-      for (auto *PVD : FD->parameters()) {
-  #else
-      for (auto *PVD : FD->params()) {
-  #endif
-        Args.push_back(PVD);
-      }
-      size_t n_roots = 0;
-      for (size_t i = 0; i < Args.size(); ++i)
-        n_roots += needsbox[i] | !specsig;
-      Cxx->CGF->EmitFunctionProlog(FI, NewF, Args);
-      builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
-        Cxx->CGF->Builder.GetInsertBlock()->begin());
-      Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
-      llvm::Value *gcframe = nullptr, *envroot = nullptr, *envptr = nullptr;
-      bool first = true;
 
-      // Construct the GC frame
-      Function *ConstructFrame = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.jlcall_frame_decl",
-        FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{T_int32},false)));
-      Function *RootDecl = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.gc_root_decl",
-        FunctionType::get(PointerType::get(T_pvalue_llvmt,0),{})));
-      Function *PTLSStates = cast<Function>(Cxx->shadow->getOrInsertFunction("jl_get_ptls_states",
-        FunctionType::get(PointerType::get(PointerType::get(T_pvalue_llvmt,0),0),{})));
-      assert(ConstructFrame);
-      BasicBlock *InsertBlock = builder.GetInsertBlock();
-      if (n_roots != 0) {
-        envroot = builder.CreateCall(RootDecl, {});
-        if (n_roots-firstIsEnv != 0)
-          gcframe = builder.CreateCall(ConstructFrame, {ConstantInt::get(T_int32,n_roots-firstIsEnv)});
-        builder.CreateCall(PTLSStates, {});
-        builder.SetInsertPoint(InsertBlock);
-        InsertBlock = BasicBlock::Create(Cxx->shadow->getContext(), "main", InsertBlock->getParent());
-        builder.CreateBr(InsertBlock);
-        builder.SetInsertPoint(InsertBlock);
-      }
-
-      size_t i = 0;
-      std::vector<llvm::Value*> CallArgs;
-      Function::arg_iterator DestI = F->arg_begin();
-      size_t cur_root = 0;
-      for (auto *PVD : Args) {
-  #ifdef LLVM38
-        llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD).getPointer()
-  #else
-        llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD)
-  #endif
-        ;
-        if (needsbox[i]) {
-          llvm::Function *AllocFunc = Cxx->shadow->getFunction("jl_gc_allocobj");
-          assert(AllocFunc);
-          llvm::Value *Box = builder.CreateBitCast(builder.CreateCall(AllocFunc,
-            {ConstantInt::get(T_int64,cxxsizeofType(Cxx,(void*)PVD->getType().getTypePtr()))}),
-            PointerType::get(T_pint8,0));
-          jl_(juliatypes[i]);
-          builder.CreateStore(Constant::getIntegerValue(T_pint8,APInt(8*sizeof(void*),(uint64_t)juliatypes[i++])),
-            builder.CreateConstGEP1_32(Box,-1));
-          builder.CreateStore(builder.CreateBitCast(Box,T_pvalue_llvmt),builder.CreateConstGEP1_32(gcframe,cur_root++));
-          llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
-          ArgPtr->replaceAllUsesWith(Replacement);
-          CallArgs.push_back(Replacement);
-        } else {
-          bool isboxed;
-          if (f_julia_type_to_llvm(juliatypes[i++], &isboxed)->isVoidTy())
-            continue;
-          llvm::IRBuilderBase::InsertPoint IP = builder.saveIP();
-          // Go to end of block
-          builder.SetInsertPoint(builder.GetInsertBlock());
-          if (specsig) {
-            if (DestI->getType()->isPointerTy() && !cast<PointerType>(ArgPtr->getType())->getElementType()->isPointerTy())
-              CallArgs.push_back(builder.CreateBitCast(ArgPtr,DestI->getType()));
-            else
-              CallArgs.push_back(builder.CreateLoad(builder.CreateBitCast(ArgPtr,PointerType::get(DestI->getType(),0))));
-          } else {
-            // Assume this is already a box. All we need to do is store it in the callframe
-            if (first && firstIsEnv) {
-              envptr = builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt);
-              builder.CreateStore(envptr, envroot);
-            } else {
-              assert(gcframe);
-              builder.CreateStore(builder.CreateBitCast(builder.CreateLoad(ArgPtr),T_pvalue_llvmt),
-                builder.CreateConstGEP1_32(gcframe,cur_root++));
-            }
-            first = false;
-          }
-          builder.restoreIP(IP);
-        }
-        DestI++;
-      }
-      builder.SetInsertPoint(InsertBlock,
-        InsertBlock->end());
-
-      if (specsig) {
-        Call = builder.CreateCall(F,CallArgs);
-      } else {
-        auto it = F->arg_begin();
-        llvm::Argument *First = &*(it++);
-        llvm::Argument *Second = &*(it++);
-        Call = builder.CreateCall(F,{
-          envroot ? envptr :
-          builder.CreateBitCast(ConstantPointerNull::get(T_pint8),First->getType()),
-          cur_root == 0 ? ConstantPointerNull::get(cast<PointerType>(Second->getType())) :
-          builder.CreateBitCast(gcframe,Second->getType()), ConstantInt::get(T_int32,cur_root)});
-      }
     }
-    
     Cxx->CGF->Builder.SetInsertPoint(builder.GetInsertBlock(),
         builder.GetInsertPoint());
     bool isboxed = false;
@@ -1131,7 +1018,7 @@ JL_DLLEXPORT int typeconstruct(C,void *type, clang::Expr **rawexprs, size_t nexp
 
     if (Exprs.size() == 1) {
         clang::Expr *Arg = Exprs[0];
-        Result = sema.BuildCXXFunctionalCastExpr(TInfo, getTrivialSourceLocation(Cxx),
+        Result = sema.BuildCXXFunctionalCastExpr(TInfo, Ty, getTrivialSourceLocation(Cxx),
           Arg, getTrivialSourceLocation(Cxx));
         if (Result.isInvalid())
           return false;
@@ -1463,6 +1350,8 @@ public:
 extern "C" {
 
 
+
+
 static void set_common_options(C)
 {
   Cxx->CI->getDiagnosticOpts().ShowColors = 1;
@@ -1490,6 +1379,13 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
     bool isnvptx = (target.getArch() == Triple::ArchType::nvptx) ||
                    (target.getArch() == Triple::ArchType::nvptx64);
 
+    Cxx->CI->getPreprocessorOpts().UsePredefines = 1;
+    Cxx->CI->getHeaderSearchOpts().UseBuiltinIncludes = 1;
+
+    clang::CompilerInvocation::setLangDefaults(Cxx->CI->getLangOpts(),
+        CCompiler ? CKind : clang::InputKind::CXX,
+        target, Cxx->CI->getPreprocessorOpts());
+
     Cxx->CI->getLangOpts().LineComment = 1;
     Cxx->CI->getLangOpts().Bool = 1;
     Cxx->CI->getLangOpts().WChar = 1;
@@ -1502,12 +1398,15 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
         Cxx->CI->getLangOpts().CPlusPlus = 1;
         Cxx->CI->getLangOpts().CPlusPlus11 = 1;
         Cxx->CI->getLangOpts().CPlusPlus14 = 1;
+        Cxx->CI->getLangOpts().CPlusPlus17 = 0;
+        Cxx->CI->getLangOpts().MicrosoftExt = 0;
         Cxx->CI->getLangOpts().RTTI = use_rtti;
         Cxx->CI->getLangOpts().RTTIData = use_rtti;
         Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
         Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
         Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
         Cxx->CI->getLangOpts().CXXOperatorNames = 1;
+        Cxx->CI->getLangOpts().DoubleSquareBracketAttributes = 1;
         Cxx->CI->getHeaderSearchOpts().UseLibcxx = 1;
         Cxx->CI->getHeaderSearchOpts().UseStandardSystemIncludes = 1;
         Cxx->CI->getHeaderSearchOpts().UseStandardCXXIncludes = 1;
@@ -1529,8 +1428,6 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
 
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
-    Cxx->CI->getPreprocessorOpts().UsePredefines = 1;
-    Cxx->CI->getHeaderSearchOpts().UseBuiltinIncludes = 1;
     if (SysRoot)
       Cxx->CI->getHeaderSearchOpts().Sysroot = SysRoot;
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
@@ -1792,6 +1689,10 @@ JL_DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     Cxx->CGF->ReturnValue = nullptr;
 #endif
     Cxx->CGF->Builder.ClearInsertionPoint();
+    clang::CodeGen::CallArgList args;
+    const clang::CodeGen::CGFunctionInfo &fnInfo =
+      Cxx->CGM->getTypes().arrangeBuiltinFunctionCall(Cxx->CI->getASTContext().VoidTy, args);
+    Cxx->CGF->CurFnInfo = &fnInfo;
     Cxx->CGF->FinishFunction(getTrivialSourceLocation(Cxx));
     Cxx->CGF->ReturnBlock.getBlock()->eraseFromParent();
     Cxx->CGF->ReturnBlock = Cxx->CGF->getJumpDestInCurrentScope(
@@ -1881,15 +1782,15 @@ JL_DLLEXPORT void *CreateCxxCallMethodDecl(C, clang::CXXRecordDecl *TheClass, vo
   clang::QualType T = clang::QualType::getFromOpaquePtr(QT);
   clang::CXXMethodDecl *Method
     = clang::CXXMethodDecl::Create(Cxx->CI->getASTContext(), TheClass,
-                            clang::SourceLocation(),
+                            getTrivialSourceLocation(Cxx),
                             clang::DeclarationNameInfo(MethodName,
-                                                clang::SourceLocation(),
+                                                getTrivialSourceLocation(Cxx),
                                                 MethodNameLoc),
                             T, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T),
                             clang::SC_None,
                             /*isInline=*/true,
                             /*isConstExpr=*/false,
-                            clang::SourceLocation());
+                            getTrivialSourceLocation(Cxx));
   Method->setAccess(clang::AS_public);
   return Method;
 }
@@ -2448,6 +2349,16 @@ JL_DLLEXPORT int isVoidTy(llvm::Type *t)
   return t->isVoidTy();
 }
 
+JL_DLLEXPORT void *getI8PtrTy()
+{
+  return Type::getInt8PtrTy(jl_LLVMContext, 0);
+}
+
+JL_DLLEXPORT void *getPRJLValueTy()
+{
+  return T_prjlvalue;
+}
+
 JL_DLLEXPORT void *getUndefValue(llvm::Type *t)
 {
   return (void*)llvm::UndefValue::get(t);
@@ -2730,7 +2641,7 @@ JL_DLLEXPORT int RequireCompleteType(C,clang::Type *t)
 JL_DLLEXPORT void *CreateTemplatedFunction(C, char *Name, clang::TemplateParameterList** args, size_t nargs)
 {
   clang::DeclSpec DS(Cxx->Parser->getAttrFactory());
-  clang::Declarator D(DS, clang::Declarator::PrototypeContext);
+  clang::Declarator D(DS, clang::DeclaratorContext::PrototypeContext);
   clang::Preprocessor &PP = Cxx->Parser->getPreprocessor();
   D.getName().setIdentifier(PP.getIdentifierInfo(Name),clang::SourceLocation());
   clang::Sema &sema = Cxx->CI->getSema();

@@ -370,11 +370,11 @@ end
 #
 # Returns the list of processed arguments
 function llvmargs(C, builder, f, argt)
-    args = Array{pcpp"llvm::Value"}(length(argt))
+    args = Vector{pcpp"llvm::Value"}(undef, length(argt))
     for i in 1:length(argt)
         t = argt[i]
         args[i] = pcpp"llvm::Value"(ccall(
-            (:get_nth_argument,libcxxffi),Ptr{Void},(Ptr{Void},Csize_t),f,i-1))
+            (:get_nth_argument,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},Csize_t),f,i-1))
         @assert args[i] != C_NULL
         args[i] = resolvemodifier_llvm(C, builder, t, args[i])
         if args[i] == C_NULL
@@ -422,17 +422,23 @@ end
 
 function irbuilder(C)
     pcpp"clang::CodeGen::CGBuilderTy"(
-        ccall((:clang_get_builder,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
+        ccall((:clang_get_builder,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C))
+end
+
+function _julia_to_llvm(@nospecialize x)
+    isboxed = Ref{UInt8}()
+    ty = pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Cvoid},(Any,Ref{UInt8}),x,isboxed))
+    (isboxed[] != 0, ty)
 end
 function julia_to_llvm(@nospecialize x)
-    isboxed = Ref{UInt8}()
-    pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Void},(Any,Ref{UInt8}),x,isboxed))
+    isboxed, ty = _julia_to_llvm(x)
+    isboxed ? getPRJLValueTy() : ty
 end
 
 # @cxx llvm::dyn_cast{vcpp"clang::ClassTemplateDecl"}
 function cxxtmplt(p::pcpp"clang::Decl")
     pcpp"clang::ClassTemplateDecl"(
-        ccall((:cxxtmplt,libcxxffi),Ptr{Void},(Ptr{Void},),p))
+        ccall((:cxxtmplt,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},),p))
 end
 
 
@@ -473,7 +479,7 @@ function emitRefExpr(C, expr, pvd = nothing, ct = nothing)
     (pvd != nothing) && push!(argt,ct)
 
     llvmrt = julia_to_llvm(rett)
-    f = CreateFunctionWithPersonality(C, needsret ? julia_to_llvm(Void) : llvmrt, map(julia_to_llvm,argt))
+    f = CreateFunctionWithPersonality(C, needsret ? julia_to_llvm(Cvoid) : llvmrt, map(julia_to_llvm,argt))
     state = setup_cpp_env(C, f)
     builder = irbuilder(C)
 
@@ -519,7 +525,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
 
     callargs, pvds = buildargexprs(C,argt)
 
-    rett = Void
+    rett = Cvoid
     isne = isctce = isce = false
     ce = nE = ctce = C_NULL
 
@@ -529,7 +535,7 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
         else
             decl = declfornns(C,expr)
             @assert decl != C_NULL
-            fname = Symbol(getName(pcpp"clang::NamedDecl"(convert(Ptr{Void},decl))))
+            fname = Symbol(getName(pcpp"clang::NamedDecl"(convert(Ptr{Cvoid},decl))))
         end
         @assert isa(fname,Symbol)
 
@@ -566,8 +572,8 @@ function _cppcall(CT, expr, thiscall, isnew, argt)
                 d = primary_decl
             end
             # Let's see if we're constructing something.
-            if isaCXXConstructorDecl(pcpp"clang::Decl"(convert(Ptr{Void},d)))
-                cxxd = getParent(pcpp"clang::CXXMethodDecl"(convert(Ptr{Void},d)))
+            if isaCXXConstructorDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},d)))
+                cxxd = getParent(pcpp"clang::CXXMethodDecl"(convert(Ptr{Cvoid},d)))
             else
                 cxxd = dcastCXXRecordDecl(d)
             end
@@ -619,7 +625,7 @@ end
 function CreateFunctionWithPersonality(C, args...)
     f = CreateFunction(C, args...)
     if !isCCompiler(C)
-        PersonalityF = pcpp"llvm::Function"(convert(Ptr{Void},GetAddrOfFunction(C,
+        PersonalityF = pcpp"llvm::Function"(convert(Ptr{Cvoid},GetAddrOfFunction(C,
             lookup_name(C,["__cxxjl_personality_v0"]))))
         @assert PersonalityF != C_NULL
         setPersonality(f, PersonalityF)
@@ -629,7 +635,7 @@ end
 
 # Emits either a CallExpr, a NewExpr, or a CxxConstructExpr, depending on which
 # one is non-NULL
-function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
+function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Cvoid; kwargs...)
     builder = irbuilder(C)
     argt = Type[argt...]
     map!(argt, argt) do x
@@ -653,12 +659,12 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Void; kwargs...)
     end
 
     if issret
-        unshift!(llvmargt,rett)
+        pushfirst!(llvmargt,rett)
     end
 
     llvmrt = julia_to_llvm(rett)
     # Let's create an LLVM function
-    f = CreateFunctionWithPersonality(C, issret ? julia_to_llvm(Void) : llvmrt,
+    f = CreateFunctionWithPersonality(C, issret ? julia_to_llvm(Cvoid) : llvmrt,
         map(julia_to_llvm,llvmargt))
 
     # Clang's code emitter needs some extra information about the function, so let's
@@ -705,18 +711,20 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
 
     jlrt = rett
     if ret == C_NULL
-        jlrt = Void
+        jlrt = Cvoid
         CreateRetVoid(builder)
     else
-        if rett == Void || isVoidTy(llvmrt)
+        if rett == Cvoid || isVoidTy(llvmrt)
             CreateRetVoid(builder)
         else
             if rett <: CppEnum || rett <: CppFptr
                 undef = getUndefValue(llvmrt)
                 elty = getStructElementType(llvmrt,0)
-                ret = CreateBitCast(builder,ret,elty)
+                ret = rett <: CppFptr ?
+                    PtrToInt(builder, ret, elty) :
+                    CreateBitCast(builder, ret, elty)
                 ret = InsertValue(builder, undef, ret, 0)
-            elseif rett <: CppRef || rett <: CppPtr || 
+            elseif rett <: CppRef || rett <: CppPtr ||
                     (VERSION >= v"0.7-" && rett <: Ptr)
                 ret = PtrToInt(builder, ret, llvmrt)
             elseif rett <: CppMFptr
@@ -756,7 +764,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         size = cxxsizeof(C,rt)
         B = Expr(:block,
             :( r = ($(rett){$(Int(size))})() ),
-                Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),Void,Tuple{llvmargt...},arguments...))
+                Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Cvoid},f),Cvoid,Tuple{llvmargt...},arguments...))
         T = cpptype(C, rett)
         D = getAsCXXRecordDecl(T)
         if D != C_NULL && !hasTrivialDestructor(C,D)
@@ -770,7 +778,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         push!(B.args,:r)
         return B
     else
-        return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),rett,Tuple{argt...},args2...)
+        return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Cvoid},f),rett,Tuple{argt...},args2...)
     end
 end
 
@@ -858,7 +866,7 @@ end
 @generated function destruct(CT::CxxInstance, x)
     check_args([x],:destruct)
     C = instance(CT)
-    f = CreateFunctionWithPersonality(C, julia_to_llvm(Void), [julia_to_llvm(x)])
+    f = CreateFunctionWithPersonality(C, julia_to_llvm(Cvoid), [julia_to_llvm(x)])
     state = setup_cpp_env(C,f)
     builder = irbuilder(C)
     args = llvmargs(C, builder, f, [x])
@@ -868,5 +876,5 @@ end
     emitDestroyCXXObject(C, args[1], T)
     CreateRetVoid(builder)
     cleanup_cpp_env(C, state)
-    return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Void},f),Void,Tuple{x},:x)
+    return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Cvoid},f),Cvoid,Tuple{x},:x)
 end

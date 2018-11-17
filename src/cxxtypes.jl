@@ -3,9 +3,9 @@
 # qualifiers in the unused bits of the pointer. Here we just treat QualType
 # as an opaque struct with one pointer-sized member.
 struct QualType
-    ptr::Ptr{Void}
+    ptr::Ptr{Cvoid}
 end
-Base.convert(::Type{Ptr{Void}}, QT::QualType) = QT.ptr
+Base.convert(::Type{Ptr{Cvoid}}, QT::QualType) = QT.ptr
 
 # All types that are recgonized as builtins
 const CxxBuiltinTypes = Union{Type{Bool},
@@ -25,7 +25,7 @@ const CxxBuiltinTs = Union{Bool, UInt8, Int8, UInt16, Int16,
 # One way to do this would be to have a
 #
 # immutable CppObject{ClangType}
-#   data::Ptr{Void}
+#   data::Ptr{Cvoid}
 # end
 #
 # where ClangType is simply a pointer to Clang's in memory representation. This
@@ -46,7 +46,7 @@ const CxxBuiltinTs = Union{Bool, UInt8, Int8, UInt16, Int16,
 #
 # # A note on CVR qualifiers
 #
-# Though I had hoped to avoid it, correctly representing template parameters
+# Though I had hoped to aCvoid it, correctly representing template parameters
 # requires tracking CVR (const, volatile, restrict) qualifiers on types. The way
 # this is currently implemented is as an extra CVR type parameter on
 # applicable julia types. This type parameter should be a tuple of Bools
@@ -89,10 +89,10 @@ end
 # The equivalent of a C++ reference
 # T can be any valid C++ type other than CppRef
 # See note on CVR above and note on bitstype below
-primitive type CppRef{T,CVR} 8*sizeof(Ptr{Void}) end
-CppRef{T,CVR}(p::Ptr{Void}) where {T,CVR} = reinterpret(CppRef{T,CVR}, p)
+primitive type CppRef{T,CVR} 8*sizeof(Ptr{}) end
+CppRef{T,CVR}(p::Ptr{Cvoid}) where {T,CVR} = reinterpret(CppRef{T,CVR}, p)
 
-cconvert(::Type{Ptr{Void}},p::CppRef) = reinterpret(Ptr{Void}, p)
+cconvert(::Type{Ptr{Cvoid}},p::CppRef) = reinterpret(Ptr{Cvoid}, p)
 Base.unsafe_load(p::CppRef{T}) where {T<:Union{CxxBuiltinTs,Ptr}} = unsafe_load(reinterpret(Ptr{T}, p))
 Base.convert(::Type{T},p::CppRef{T}) where {T<:CxxBuiltinTs} = unsafe_load(p)
 
@@ -101,19 +101,19 @@ Base.convert(::Type{T},p::CppRef{T}) where {T<:CxxBuiltinTs} = unsafe_load(p)
 # but is never a CppBaseType or CppTemplate directly
 # TODO: Maybe use Ptr{CppValue} and Ptr{CppFunc} instead?
 # struct CppPtr{T,CVR}
-#     ptr::Ptr{Void}
+#     ptr::Ptr{Cvoid}
 # end
 # Make CppPtr and Ptr the same in the julia calling convention
-primitive type CppPtr{T,CVR} 8*sizeof(Ptr{Void}) end
-CppPtr{T,CVR}(p::Ptr{Void}) where {T,CVR} = reinterpret(CppPtr{T,CVR}, p)
+primitive type CppPtr{T,CVR} 8*sizeof(Ptr{Cvoid}) end
+CppPtr{T,CVR}(p::Ptr{Cvoid}) where {T,CVR} = reinterpret(CppPtr{T,CVR}, p)
 
-cconvert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
-Base.convert(::Type{Int},p::CppPtr) = convert(Int,reinterpret(Ptr{Void}, p))
-Base.convert(::Type{UInt},p::CppPtr) = convert(UInt,reinterpret(Ptr{Void}, p))
-Base.convert(::Type{Ptr{Void}},p::CppPtr) = reinterpret(Ptr{Void}, p)
+cconvert(::Type{Ptr{Cvoid}},p::CppPtr) = reinterpret(Ptr{Cvoid}, p)
+Base.convert(::Type{Int},p::CppPtr) = convert(Int,reinterpret(Ptr{Cvoid}, p))
+Base.convert(::Type{UInt},p::CppPtr) = convert(UInt,reinterpret(Ptr{Cvoid}, p))
+Base.convert(::Type{Ptr{Cvoid}},p::CppPtr) = reinterpret(Ptr{Cvoid}, p)
 
-==(p1::CppPtr,p2::Ptr) = convert(Ptr{Void}, p1) == p2
-==(p1::Ptr,p2::CppPtr) = p1 == convert(Ptr{Void}, p2)
+==(p1::CppPtr,p2::Ptr) = convert(Ptr{Cvoid}, p1) == p2
+==(p1::Ptr,p2::CppPtr) = p1 == convert(Ptr{Cvoid}, p2)
 
 Base.unsafe_load(p::CppRef{T}) where {T<:CppPtr} = unsafe_load(reinterpret(Ptr{T}, p))
 
@@ -122,7 +122,7 @@ struct CppFunc{rt, argt}; end
 
 # The equivalent of a C++ rt (*foo)(argt...)
 struct CppFptr{func}
-    ptr::Ptr{Void}
+    ptr::Ptr{Cvoid}
 end
 
 # A pointer to a C++ member function.
@@ -145,7 +145,7 @@ Base.unsafe_load(p::CppRef{T}) where {T<:CppEnum} = unsafe_load(reinterpret(Ptr{
 # Representa a C++ Lambda. Since they are not nameable, we need to number them
 # and record the corresponding type
 struct CppLambda{num}
-    captureData::Ptr{Void}
+    captureData::Ptr{Cvoid}
 end
 
 const lambdaTypes = Vector{QualType}()

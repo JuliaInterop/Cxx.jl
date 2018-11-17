@@ -14,8 +14,8 @@ const StdStringR = cxxt"std::string&"
 const StdVector{T} = Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
 const StdMap{K,V} = cxxt"std::map<$K,$V>"
 const GenericStdMap =
-  Cxx.CppValue{Cxx.CxxQualType{Cxx.CppTemplate{
-    Cxx.CppBaseType{Symbol("std::map")},Stuff},
+  CppValue{CxxQualType{CppTemplate{
+    CppBaseType{Symbol("std::map")},Stuff},
     (false, false, false)},N} where N where Stuff
 
 unsafe_string(str::Union{StdString,StdStringR}) = unsafe_string((@cxx str->data()),@cxx str->size())
@@ -24,9 +24,8 @@ Base.convert(::Type{String}, x::Union{StdString,StdStringR}) = String(x)
 Base.convert(::Type{StdString}, x::AbstractString) = icxx"std::string s($(pointer(x)), $(sizeof(x))); s;"
 
 import Base: showerror
-import Cxx: CppValue
 
-for T in uniontypes(Cxx.CxxBuiltinTypes)
+for T in uniontypes(CxxBuiltinTypes)
     @eval @exception function showerror(io::IO, e::$(T.parameters[1]))
         print(io, e)
     end
@@ -40,36 +39,34 @@ end
     end
 end
 
-Base.start(v::StdVector) = 0
-Base.next(v::StdVector,i) = (v[i], i+1)
-Base.done(v::StdVector,i) = i >= length(v)
+Base.iterate(v::StdVector, i = 0) = i >= length(v) ? nothing : (v[i], i+1)
 Base.length(v::StdVector) = Int(icxx"$(v).size();")
-Base.endof(v::StdVector) = length(v) - 1
+Base.firstindex(v::StdVector) = 0
+Base.lastindex(v::StdVector) = length(v) - 1
 Base.size(v::StdVector) = (length(v),)
-Base.eachindex(v::StdVector) = start(v):endof(v)
+Base.eachindex(v::StdVector) = firstindex(v):lastindex(v)
 Base.eltype(v::StdVector{T}) where {T} = T
-@inline Base.indices(v::StdVector) = (0:(length(v) - 1),)
-@inline Base.linearindices(v::StdVector) = indices(v)[1]
+@inline Base.axes(v::StdVector) = (0:(length(v) - 1),)
 @inline function Base.checkbounds(v::StdVector, I...)
-    Base.checkbounds_indices(Bool, indices(v), I) || Base.throw_boundserror(v, I)
+    Base.checkbounds_indices(Bool, axes(v), I) || Base.throw_boundserror(v, I)
     nothing
 end
 
 @inline Base.getindex(v::StdVector,i) = (@boundscheck checkbounds(v, i); icxx"($(v))[$i];")
-@inline Base.getindex(v::StdVector{T}, i) where {T<:Cxx.CxxBuiltinTs} = (@boundscheck checkbounds(v, i); icxx"$T x = ($(v))[$i]; x;")
+@inline Base.getindex(v::StdVector{T}, i) where {T<:CxxBuiltinTypes} = (@boundscheck checkbounds(v, i); icxx"$T x = ($(v))[$i]; x;")
 
 
 @inline Base.setindex!(v::StdVector{T}, val::T, i::Integer) where {T} =
     (@boundscheck checkbounds(v, i); icxx"($(v))[$i] = $val; void();")
 
-@inline Base.setindex!(v::StdVector, val::Union{Cxx.CppValue, Cxx.CppRef}, i::Integer) =
+@inline Base.setindex!(v::StdVector, val::Union{CppValue, CppRef}, i::Integer) =
     (@boundscheck checkbounds(v, i); icxx"($(v))[$i] = $val; void();")
 
 @propagate_inbounds _setindex_conv!(v::StdVector{T}, val, i::Integer) where {T} =
     setindex!(v, convert(T, val), i)
 
-@propagate_inbounds _setindex_conv!(v::StdVector{T}, val, i::Integer) where {T<:Cxx.CxxQualType} =
-    setindex!(v, convert(Cxx.CppValue{T}, val), i)
+@propagate_inbounds _setindex_conv!(v::StdVector{T}, val, i::Integer) where {T<:CxxQualType} =
+    setindex!(v, convert(CppValue{T}, val), i)
 
 @propagate_inbounds Base.setindex!(v::StdVector, val, i::Integer) =
     _setindex_conv!(v, val, i)
@@ -80,13 +77,14 @@ Base.deleteat!(v::StdVector,idxs::UnitRange) =
 Base.push!(v::StdVector,i) = icxx"$v.push_back($i);"
 Base.resize!(v::StdVector, n) = icxx"$v.resize($n);"
 
-Base.start(map::GenericStdMap) = icxx"$map.begin();"
-function Base.next(map::GenericStdMap,i)
+function Base.iterate(map::GenericStdMap, i = icxx"$map.begin();")
+    if icxx"$i == $map.end();"
+        return nothing
+    end
     v = icxx"$i->first;" => icxx"$i->second;"
     icxx"++$i;"
     (v,i)
 end
-Base.done(map::GenericStdMap,i) = icxx"$i == $map.end();"
 Base.length(map::GenericStdMap) = icxx"$map.size();"
 Base.eltype(::Type{StdMap{K,V}}) where {K,V} = Pair{K,V}
 
@@ -142,12 +140,12 @@ Base.IndexStyle(::WrappedCppDenseValues) = IndexLinear()
 @propagate_inbounds Base.setindex!(A::WrappedCppDenseValues{T}, val, i::Integer) where {T} =
     setindex!(A, convert(T, val), i)
 
-@propagate_inbounds Base.setindex!(A::WrappedCppDenseValues{T}, val, i::Integer) where {T<:Cxx.CxxQualType} =
-    setindex!(A, convert(Cxx.CppValue{T}, val), i)
+@propagate_inbounds Base.setindex!(A::WrappedCppDenseValues{T}, val, i::Integer) where {T<:CxxQualType} =
+    setindex!(A, convert(CppValue{T}, val), i)
 
 
 struct WrappedCppObjArray{T, CVR} <: WrappedCppDenseValues{T}
-    ptr::Cxx.CppPtr{T,CVR}
+    ptr::CppPtr{T,CVR}
     len::Int
 end
 
@@ -160,7 +158,7 @@ Base.length(A::WrappedCppObjArray) = A.len
 
 @inline Base.setindex!(A::WrappedCppObjArray{T}, val::T, i::Integer) where {T} =
     (@boundscheck checkbounds(A, i); icxx"($(A.ptr))[$(i - 1)] = $val; void();")
-@inline Base.setindex!(A::WrappedCppObjArray, val::Union{Cxx.CppValue, Cxx.CppRef}, i::Integer) =
+@inline Base.setindex!(A::WrappedCppObjArray, val::Union{CppValue, CppRef}, i::Integer) =
     (@boundscheck checkbounds(A, i); icxx"($(A.ptr))[$(i - 1)] = $val; void();")
 
 

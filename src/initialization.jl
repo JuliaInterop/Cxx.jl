@@ -3,6 +3,8 @@
 # Most of the actual Clang initialization is done on the C++ side, but, e.g.
 # adding header search directories is done in this file.
 
+using Libdl
+
 # Paths
 binpath = BASE_JULIA_BIN
 srcpath = BASE_JULIA_SRC
@@ -23,7 +25,7 @@ init_libcxxffi()
 
 function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CPU = C_NULL,
         useDefaultCxxABI=true, PCHTime = Base.Libc.TmStruct())
-    x = Array{ClangCompiler}(1)
+    x = Ref{ClangCompiler}()
     sysroot = @static isapple() ? strip(read(`xcrun --sdk macosx --show-sdk-path`, String)) : C_NULL
     EmitPCH = true
     PCHPtr = C_NULL
@@ -32,20 +34,20 @@ function setup_instance(PCHBuffer = []; makeCCompiler=false, target = C_NULL, CP
         PCHPtr = pointer(PCHBuffer)
         PCHSize = sizeof(PCHBuffer)
     end
-    ccall((:init_clang_instance,libcxxffi),Void,
-        (Ptr{Void},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Csize_t,Ref{Base.Libc.TmStruct},Ptr{Void}),
+    ccall((:init_clang_instance,libcxxffi),Cvoid,
+        (Ptr{Cvoid},Ptr{UInt8},Ptr{UInt8},Ptr{UInt8},Bool,Bool,Ptr{UInt8},Csize_t,Ref{Base.Libc.TmStruct},Ptr{Cvoid}),
         x,target,CPU,sysroot,EmitPCH,makeCCompiler, PCHPtr, PCHSize, PCHTime,
-        julia_to_llvm(Any))
+        _julia_to_llvm(Any)[2])
     useDefaultCxxABI && ccall((:apply_default_abi, libcxxffi),
-        Void, (Ref{ClangCompiler},), x[1])
-    x[1]
+        Cvoid, (Ref{ClangCompiler},), x)
+    x[]
 end
 
 function setup_instance_from_inovcation(invocation)
-    x = Array{ClangCompiler}(1)
-    ccall((:init_clang_instance_from_invocation,libcxxffi),Void,
-        (Ptr{Void},Ptr{Void}), x, invocation)
-    x[1]
+    x = Ref{ClangCompiler}()
+    ccall((:init_clang_instance_from_invocation,libcxxffi),Cvoid,
+        (Ptr{Cvoid},Ptr{Cvoid}), x, invocation)
+    x[]
 end
 
 # Running global constructors
@@ -60,13 +62,13 @@ end
 import Base: llvmcall, cglobal
 
 CollectGlobalConstructors(C) = pcpp"llvm::Function"(
-    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
+    ccall((:CollectGlobalConstructors,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C))
 
 function RunGlobalConstructors(C)
-    p = convert(Ptr{Void}, CollectGlobalConstructors(C))
+    p = convert(Ptr{Cvoid}, CollectGlobalConstructors(C))
     # If p is NULL it means we have no constructors to run
     if p != C_NULL
-        eval(:(let f()=llvmcall($p,Void,Tuple{}); f(); end))
+        eval(:(let f()=llvmcall($p,Cvoid,Tuple{}); f(); end))
     end
 end
 
@@ -96,7 +98,7 @@ cxxinclude(fname; isAngled = false) = cxxinclude(__default_compiler__, fname; is
 # particular, there is no way to specify what directory contains an anonymous
 # buffer and hence relative includes do not work.
 function EnterBuffer(C,buf)
-    ccall((:EnterSourceFile,libcxxffi),Void,
+    ccall((:EnterSourceFile,libcxxffi),Cvoid,
         (Ref{ClangCompiler},Ptr{UInt8},Csize_t),C,buf,sizeof(buf))
 end
 
@@ -104,7 +106,7 @@ end
 # `file`. Note that if `file` actually exists and is included from somewhere
 # else, `buf` will be included instead.
 function EnterVirtualSource(C,buf,file::String)
-    ccall((:EnterVirtualFile,libcxxffi),Void,
+    ccall((:EnterVirtualFile,libcxxffi),Cvoid,
         (Ref{ClangCompiler},Ptr{UInt8},Csize_t,Ptr{UInt8},Csize_t),
         C,buf,sizeof(buf),file,sizeof(file))
 end
@@ -121,7 +123,7 @@ function ParseToEndOfFile(C)
 end
 
 function ParseTypeName(C, ParseAlias = false)
-    ret = ccall((:ParseTypeName,libcxxffi),Ptr{Void},(Ref{ClangCompiler},Cint),C, ParseAlias)
+    ret = ccall((:ParseTypeName,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},Cint),C, ParseAlias)
     if ret == C_NULL
         error("Could not parse type name")
     end
@@ -155,10 +157,10 @@ function ParseVirtual(C,string, VirtualFileName, FileName, Line, Column, isTypeN
 end
 
 setup_cpp_env(C, f::pcpp"llvm::Function") =
-    ccall((:setup_cpp_env,libcxxffi),Ptr{Void},(Ref{ClangCompiler},Ptr{Void}),C,f)
+    ccall((:setup_cpp_env,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},Ptr{Cvoid}),C,f)
 
 function cleanup_cpp_env(C, state)
-    ccall((:cleanup_cpp_env,libcxxffi),Void,(Ref{ClangCompiler}, Ptr{Void}),C,state)
+    ccall((:cleanup_cpp_env,libcxxffi),Cvoid,(Ref{ClangCompiler}, Ptr{Cvoid}),C,state)
     RunGlobalConstructors(C)
 end
 
@@ -185,7 +187,7 @@ The `isFramework` argument is the equivalent of passing the `-F` option
 to Clang.
 """
 function addHeaderDir(C, dirname; kind = C_User, isFramework = false)
-    ccall((:add_directory, libcxxffi), Void,
+    ccall((:add_directory, libcxxffi), Cvoid,
         (Ref{ClangCompiler}, Cint, Cint, Ptr{UInt8}), C, kind, isFramework, dirname)
 end
 addHeaderDir(C::CxxInstance, dirname; kwargs...) = addHeaderDir(instance(C),dirname; kwargs...)
@@ -197,7 +199,7 @@ addHeaderDir(dirname; kwargs...) = addHeaderDir(__default_compiler__,dirname; kw
 Define a C++ macro. Equivalent to `cxx"#define \$name"`.
 """
 function defineMacro(C,Name)
-    ccall((:defineMacro, libcxxffi), Void, (Ref{ClangCompiler},Ptr{UInt8},), C, Name)
+    ccall((:defineMacro, libcxxffi), Cvoid, (Ref{ClangCompiler},Ptr{UInt8},), C, Name)
 end
 defineMacro(C::CxxInstance,Name) = defineMacro(instance(C),Name)
 defineMacro(Name) = defineMacro(__default_compiler__,Name)
@@ -366,7 +368,7 @@ end # iswindows
 
 # Also add clang's intrinsic headers
 function collectClangHeaders!(headers)
-    ver = Base.VersionNumber(Base.libllvm_version)
+    ver = Base.libllvm_version
     ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)
     baseclangdir = joinpath(BASE_JULIA_BIN,
         "../lib/clang/$ver/include/")
@@ -399,14 +401,15 @@ function initialize_instance!(C; register_boot = true, headers = collectAllHeade
 end
 
 function register_booth(C)
-    C = Cxx.instance(C)
+    C = instance(C)
     cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
 end
 
+function process_cxx_exception end
 function setup_exception_callback()
     # Setup exception translation callback
-    callback = cglobal((:process_cxx_exception,libcxxffi),Ptr{Void})
-    unsafe_store!(callback, cfunction(process_cxx_exception,Union{},Tuple{UInt64,Ptr{Void}}))
+    callback = cglobal((:process_cxx_exception,libcxxffi),Ptr{Cvoid})
+    unsafe_store!(callback, @cfunction(process_cxx_exception,Union{},(UInt64,Ptr{Cvoid})))
 end
 
 # As an optimzation, create a generic function per compiler instance,

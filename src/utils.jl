@@ -1,25 +1,25 @@
 import Base: dump
 export @icxxdebug_str
 
-dump(d::pcpp"clang::Decl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
-dump(dc::pcpp"clang::DeclContext") = ccall((:dcdump,libcxxffi),Void,(Ptr{Void},),dc)
-dump(d::pcpp"clang::NamedDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
-dump(d::pcpp"clang::FunctionDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
-dump(d::pcpp"clang::TemplateDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
-dump(d::pcpp"clang::FunctionTemplateDecl") = ccall((:cdump,libcxxffi),Void,(Ptr{Void},),d)
-dump(expr::pcpp"clang::Expr") = ccall((:exprdump,libcxxffi),Void,(Ptr{Void},),expr)
-dump(t::pcpp"clang::Type") = ccall((:typedump,libcxxffi),Void,(Ptr{Void},),t)
-dump(t::pcpp"llvm::Value") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)
-dump(t::pcpp"llvm::Function") = ccall((:llvmdump,libcxxffi),Void,(Ptr{Void},),t)
-dump(t::pcpp"llvm::Type") = ccall((:llvmtdump,libcxxffi),Void,(Ptr{Void},),t)
+dump(d::pcpp"clang::Decl") = ccall((:cdump,libcxxffi),Cvoid,(Ptr{Cvoid},),d)
+dump(dc::pcpp"clang::DeclContext") = ccall((:dcdump,libcxxffi),Cvoid,(Ptr{Cvoid},),dc)
+dump(d::pcpp"clang::NamedDecl") = ccall((:cdump,libcxxffi),Cvoid,(Ptr{Cvoid},),d)
+dump(d::pcpp"clang::FunctionDecl") = ccall((:cdump,libcxxffi),Cvoid,(Ptr{Cvoid},),d)
+dump(d::pcpp"clang::TemplateDecl") = ccall((:cdump,libcxxffi),Cvoid,(Ptr{Cvoid},),d)
+dump(d::pcpp"clang::FunctionTemplateDecl") = ccall((:cdump,libcxxffi),Cvoid,(Ptr{Cvoid},),d)
+dump(expr::pcpp"clang::Expr") = ccall((:exprdump,libcxxffi),Cvoid,(Ptr{Cvoid},),expr)
+dump(t::pcpp"clang::Type") = ccall((:typedump,libcxxffi),Cvoid,(Ptr{Cvoid},),t)
+dump(t::pcpp"llvm::Value") = ccall((:llvmdump,libcxxffi),Cvoid,(Ptr{Cvoid},),t)
+dump(t::pcpp"llvm::Function") = ccall((:llvmdump,libcxxffi),Cvoid,(Ptr{Cvoid},),t)
+dump(t::pcpp"llvm::Type") = ccall((:llvmtdump,libcxxffi),Cvoid,(Ptr{Cvoid},),t)
 dump(t::QualType) = dump(canonicalType(extractTypePtr(t)))
 
 parser(C) = pcpp"clang::Parser"(
-    ccall((:clang_parser,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
+    ccall((:clang_parser,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C))
 compiler(C) = pcpp"clang::CompilerInstance"(
-    ccall((:clang_compiler,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C))
+    ccall((:clang_compiler,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C))
 shadow(C) = pcpp"llvm::Module"(
-    ccall((:clang_shadow_module,libcxxffi),Ptr{Void},(Ref{ClangCompiler},),C)
+    ccall((:clang_shadow_module,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C)
     )
 parser(C::CxxInstance) = parser(instance(C))
 compiler(C::CxxInstance) = compiler(instance(C))
@@ -49,7 +49,7 @@ macro icxxdebug_str(str,args...)
 end
 
 function collectSymbolsForExport(RD::pcpp"clang::CXXRecordDecl")
-    f = Cxx.CreateFunctionWithPersonality(C, Cxx.julia_to_llvm(Void),[Cxx.julia_to_llvm(Ptr{Ptr{Void}})])
+    f = Cxx.CreateFunctionWithPersonality(C, Cxx.julia_to_llvm(Cvoid),[Cxx.julia_to_llvm(Ptr{Ptr{Cvoid}})])
     builder = irbuilder(C)
     nummethods = icxx"""
     auto *CGM = $(Cxx.instance(Cxx.__default_compiler__).CGM);
@@ -62,14 +62,14 @@ function collectSymbolsForExport(RD::pcpp"clang::CXXRecordDecl")
       auto llvmf = $(Cxx.instance(Cxx.__default_compiler__).shadow)->getFunction(name);
       llvm::IRBuilder *builder = $builder;
       builder->CreateStore(
-        builder->CreateBitCast(llvmf,$(Cxx.julia_to_llvm(Ptr{Void}))),
-        builder->CreateConstGEP2_32($(Cxx.julia_to_llvm(Ptr{Ptr{Void}})),
+        builder->CreateBitCast(llvmf,$(Cxx.julia_to_llvm(Ptr{Cvoid}))),
+        builder->CreateConstGEP2_32($(Cxx.julia_to_llvm(Ptr{Ptr{Cvoid}})),
         $f->getArgumentList()[0], 0, i++));
       )
     }
     i
     """
-    addresses = zeros(Ptr{Ptr{Void}},nummethods)
-    eval(:(llvmcall($(convert(Ptr{Void},f)),Void,(Ptr{Ptr{Void}},),$(pointer(addresses)))))
+    addresses = zeros(Ptr{Ptr{Cvoid}},nummethods)
+    eval(:(llvmcall($(convert(Ptr{Cvoid},f)),Cvoid,(Ptr{Ptr{Cvoid}},),$(pointer(addresses)))))
     addresses
 end

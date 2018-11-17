@@ -57,7 +57,7 @@ void foo51() {}
 """
 
 @test_throws ErrorException (@cxx foo51)
-@test isa((@cxx &foo51),Cxx.CppFptr)
+@test isa((@cxx &foo51), CppFptr)
 
 # References to member functions (#55)
 cxx"""
@@ -67,7 +67,7 @@ public:
     void bar() {};
 };
 """
-@test isa((@cxx &foo55::bar),Cxx.CppMFptr)
+@test isa((@cxx &foo55::bar), CppMFptr)
 
 cxx"""
 class bar55 {
@@ -76,7 +76,7 @@ public:
     double bar(int) { return 0.0; };
 };
 """
-@test isa((@cxx &bar55::bar),Cxx.CppMFptr)
+@test isa((@cxx &bar55::bar), CppMFptr)
 
 # booleans as template arguments
 cxx"""
@@ -87,7 +87,7 @@ public:
 };
 """
 
-@test isa((@cxx &baz{false}::bar),Cxx.CppMFptr)
+@test isa((@cxx &baz{false}::bar), CppMFptr)
 
 # Includes relative to the source directory (#48)
 macro test48_str(x,args...)
@@ -132,7 +132,7 @@ public:
 """
 memreffoo = @cxxnew memreffoo(5)
 memrefbar = @cxx memreffoo->bar
-@assert isa(memrefbar,Cxx.CppValue)
+@assert isa(memrefbar, CppValue)
 @assert (@cxx memrefbar->size()) == 1
 
 # Anonymous structs are referenced by typedef if possible.
