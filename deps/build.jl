@@ -1,10 +1,9 @@
-using Compat
 using Libdl
 
 if haskey(ENV, "PREBUILT_CI_BINARIES") && ENV["PREBUILT_CI_BINARIES"] == "1"
     # Try to download pre-built binaries
     if !isdir("build") || length(readdir("build")) == 0
-        os_tag = Compat.Sys.isapple() ? "osx" : "linux"
+        os_tag = Sys.isapple() ? "osx" : "linux"
         run(`rm -rf build/ src/`)
         filename = "llvm-$(os_tag)-$(Base.libllvm_version).tgz"
         run(`wget https://s3.amazonaws.com/julia-cxx/$filename`)
@@ -33,7 +32,7 @@ close(f)
 println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly at $BASE_JULIA_SRC")
 
 # Try to autodetect C++ ABI in use
-llvm_path = (Compat.Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
+llvm_path = (Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
 
 llvm_lib_path = Libdl.dlpath(llvm_path)
 old_cxx_abi = findfirst("_ZN4llvm3sys16getProcessTripleEv", String(open(read, llvm_lib_path))) !== nothing
@@ -51,5 +50,5 @@ else
     ENV["PATH"] = string(JULIA_HOME,":",ENV["PATH"])
 end
 
-make = Compat.Sys.isbsd() && !Compat.Sys.isapple() ? `gmake` : `make`
+make = Sys.isbsd() && !Sys.isapple() ? `gmake` : `make`
 run(`$make -j$(Sys.CPU_THREADS) -f BuildBootstrap.Makefile BASE_JULIA_BIN=$BASE_JULIA_BIN BASE_JULIA_SRC=$BASE_JULIA_SRC`)
