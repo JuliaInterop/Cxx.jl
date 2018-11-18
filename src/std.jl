@@ -52,8 +52,8 @@ Base.eltype(v::StdVector{T}) where {T} = T
     nothing
 end
 
-@inline Base.getindex(v::StdVector,i) = (@boundscheck checkbounds(v, i); icxx"($(v))[$i];")
-@inline Base.getindex(v::StdVector{T}, i) where {T<:CxxBuiltinTypes} = (@boundscheck checkbounds(v, i); icxx"$T x = ($(v))[$i]; x;")
+@inline Base.getindex(v::StdVector, i) = (@boundscheck checkbounds(v, i); icxx"auto x = ($(v))[$i]; return x;")
+@inline Base.getindex(v::StdVector{T}, i) where {T<:CxxBuiltinTs} = (@boundscheck checkbounds(v, i); icxx"$T x = ($(v))[$i]; x;")
 
 
 @inline Base.setindex!(v::StdVector{T}, val::T, i::Integer) where {T} =
@@ -92,7 +92,7 @@ Base.pointer(v::StdVector) = pointer(v, 0)
 Base.pointer(v::StdVector, i::Integer) = icxx"&$v[$i];"
 
 function Base.filter!(f, a::StdVector)
-    insrt = start(a)
+    insrt = firstindex(a)
     for curr = eachindex(a)
         if f(a[curr])
             icxx"$a[$insrt] = $a[$curr];"

@@ -239,11 +239,11 @@ end
 
 function get_llvmf_for_FD(C,jf,FD)
     TT = Tuple{typeof(jf), map(x->x[2],extract_params(C,FD))...}
-    needsboxed = Bool[!isbitstype(x) for x in TT.parameters]
+    needsboxed = Bool[!isbitstype(x) || x.mutable for x in TT.parameters]
     specsig = length(needsboxed) == 0 || !reduce(&,needsboxed)
     f = get_llvmf_decl(TT)
     @assert f != C_NULL
-    needsboxed, specsig, Tuple{TT.parameters[2:end]...}, f
+    needsboxed[2:end], specsig, Tuple{TT.parameters[2:end]...}, f
 end
 
 macro cxxm(str,expr)

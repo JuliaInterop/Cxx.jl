@@ -7,6 +7,7 @@ end
 # #316 test that import Cxx works without also using Cxx
 # this test must run before `using Cxx` is executed
 import Cxx
+using Cxx.CxxCore
 @testset "import without using Cxx (#316)" begin
     __current_compiler__ = Cxx.Cxx.__default_compiler__
     @test Cxx.@cxx_str("#include <iostream>")

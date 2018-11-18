@@ -166,7 +166,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         # Create a Clang function Decl to represent this julia function
         ExternCDC = CreateLinkageSpec(C, DC, LANG_C)
         argtypes = [byPtr ? PCvoid : getTargTypeAtIdx(TP,i-1) for (i,byPtr) in enumerate(byPtrList)]
-        sizeof(LambdaT) == 0 || unshift!(argtypes, pointerTo(C, getPointeeType(cpptype(C,LambdaT))))
+        sizeof(LambdaT) == 0 || pushfirst!(argtypes, pointerTo(C, getPointeeType(cpptype(C,LambdaT))))
         InsertIntoShadowModule(C, f)
         JFD = CreateFunctionDecl(C, ExternCDC, getName(f), makeFunctionType(C, cpptype(C,T), argtypes))
 
@@ -615,10 +615,10 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
     annotations = "";
     compiler = :__current_compiler__, tojuliatype = true)
     disable_ac = 'p' in annotations
-    filename = __source__.file
+    filename = __source__.file === nothing ? Symbol("") : __source__.file
     col = isdefined(__source__, :col) ? __source__.col : 1
     startvarnum, sourcebuf, exprs, isexprs, icxxs =
-        process_body(compiler, str, global_scope, !global_scope && type_name, __source__.file, __source__.line, col)
+        process_body(compiler, str, global_scope, !global_scope && type_name, filename, __source__.line, col)
     if global_scope
         argsetup = Expr(:block)
         argcleanup = Expr(:block)
@@ -657,7 +657,7 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
                 $disable_ac ) )
         x = gensym()
         if type_name
-          unshift!(argsetup.args,quote
+          pushfirst!(argsetup.args,quote
             $typeargs = Dict{Int64,TypeVar}()
             $(EnterParserScope)($instance_var)
           end)
@@ -739,14 +739,14 @@ Unlike `@cxx`, `cxx""` does not require punning on Julia syntax, which
 means, e.g., that unary `*` for pointers does not require parentheses.
 """
 macro cxx_str(str,args...)
-    macros_have_source_loc || (__source__ = FakeLineNumberNode())
+    (macros_have_source_loc && __source__ !== nothing) || (__source__ = FakeLineNumberNode())
     annotations = length(args) > 0 ? first(args) : ""
     esc(process_cxx_string(str,true,false,__source__,annotations))
 end
 
 # Not exported
 macro cxxt_str(str,args...)
-    macros_have_source_loc || (__source__ = FakeLineNumberNode())
+    (macros_have_source_loc && __source__ !== nothing) || (__source__ = FakeLineNumberNode())
     esc(process_cxx_string(str,false,true,__source__))
 end
 
@@ -757,19 +757,19 @@ Evaluate the given C++ code at the function scope. This should be
 used for calling C++ functions and performing computations.
 """
 macro icxx_str(str,args...)
-    macros_have_source_loc || (__source__ = FakeLineNumberNode())
+    (macros_have_source_loc && __source__ !== nothing) || (__source__ = FakeLineNumberNode())
     annotations = length(args) > 0 ? first(args) : ""
     esc(process_cxx_string(str,false,false,__source__,annotations))
 end
 
 # Not exported
 macro gcxxt_str(str,args...)
-    macros_have_source_loc || (__source__ = FakeLineNumberNode())
+    (macros_have_source_loc && __source__ !== nothing) || (__source__ = FakeLineNumberNode())
     esc(process_cxx_string(str,true,true,__source__))
 end
 
 
 macro ccxxt_str(str,args...)
-    macros_have_source_loc || (__source__ = FakeLineNumberNode())
+    (macros_have_source_loc && __source__ !== nothing) || (__source__ = FakeLineNumberNode())
     esc(process_cxx_string(str,true,true,__source__; tojuliatype = false))
 end

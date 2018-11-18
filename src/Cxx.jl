@@ -162,7 +162,7 @@ export cast,
 
 # These are internal but useful for hacking
 export CppValue, CppRef, CppPtr, cpptype, CxxQualType, CppBaseType,
-    CppTemplate, CxxBuiltinTypes, CxxException, CppFptr, CppMFptr
+    CppTemplate, CxxBuiltinTypes, CxxBuiltinTs, CxxException, CppFptr, CppMFptr
 
 
 include("cxxtypes.jl")

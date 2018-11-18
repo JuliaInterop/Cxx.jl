@@ -409,9 +409,11 @@ const KindPack              = 8
 
 function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}())
     targt = Tuple{}
-    if isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},cxxd)))
+    if isa(cxxd, pcpp"clang::TemplateSpecializationType")
+        tmplt = cxxd
+    elseif isaClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},cxxd)))
         tmplt = dcastClassTemplateSpecializationDecl(pcpp"clang::Decl"(convert(Ptr{Cvoid},cxxd)))
-    elseif isa(cxxd,pcpp"clang::CXXRecordDecl")
+    elseif isa(cxxd, pcpp"clang::CXXRecordDecl")
         return Tuple{}
     else
         tmplt = cxxd

@@ -8,7 +8,7 @@ end
 @generated function Base.show(io::IO,x::Union{CppValue,CppRef})
     C = Cxx.instance(Cxx.__default_compiler__)
     QT = try
-        Cxx.cpptype(C,x)
+        cpptype(C,x)
     catch err
         (isa(err, ErrorException) && contains(err.msg, "Could not find")) || rethrow(err)
         return :( Base.show_datatype(io, typeof(x)); println(io,"(<not found in compilation unit>)") )
@@ -28,7 +28,7 @@ end
                 continue;
             $:(begin
                 fieldname = unsafe_string(icxx"return field->getName();")
-                showexpr = Expr(:macrocall,Symbol("@icxx_str"),"
+                showexpr = Expr(:macrocall,Symbol("@icxx_str"),nothing,"
                     auto &r = \$x.$fieldname;
                     return r;
                 ")

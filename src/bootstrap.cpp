@@ -669,26 +669,50 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
                                             {T_pint8, T_size, T_prjlvalue}, false),
                                              Function::ExternalLinkage,
                                              "julia.gc_alloc_obj");
+      Type *T_pdjlvalue = PointerType::get(
+        cast<PointerType>(T_prjlvalue)->getElementType(), AddressSpace::Derived);
+      Function *pointer_from_objref_func = cast<Function>(
+        Cxx->shadow->getOrInsertFunction("julia.pointer_from_objref",
+          FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false)));
+
+      Type *TokenTy = Type::getTokenTy(jl_LLVMContext);
+      Type *VoidTy = Type::getVoidTy(jl_LLVMContext);
+      Function *gc_preserve_begin_func = cast<Function>(
+        Cxx->shadow->getOrInsertFunction("llvm.julia.gc_preserve_begin",
+          FunctionType::get(TokenTy, {T_prjlvalue}, true)));
+      Function *gc_preserve_end_func = cast<Function>(
+        Cxx->shadow->getOrInsertFunction("llvm.julia.gc_preserve_end",
+          FunctionType::get(VoidTy, {TokenTy}, false)));
+
       // Unconditionally emit the PTLSStates call into the entry block, otherwise
       // julia's passes may ignore it.
-      Value *ptls_ptr = builder.CreateCall(PTLSStates, {});
-      
+      Value *ptls_ptr = CallInst::Create(PTLSStates, {}, "", &*NewF->front().begin());
+
       std::vector<llvm::Value*> CallArgs;
       Function::arg_iterator DestI = F->arg_begin();
       size_t i = 0;
       for (auto *PVD : Args) {
         llvm::Value *ArgPtr = Cxx->CGF->GetAddrOfLocalVar(PVD).getPointer();
         if (needsbox[i]) {
-          Value *Box = builder.CreateCall(jl_alloc_obj_func,
+          Instruction *InsertPt = cast<Instruction>(ArgPtr);
+          Value *Allocation = CallInst::Create(jl_alloc_obj_func,
             {
-             cast<Value>(builder.CreateBitCast(ptls_ptr, T_pint8)),
+             cast<Value>(CastInst::Create(Instruction::BitCast, ptls_ptr, T_pint8, "", InsertPt)),
              cast<Value>(Constant::getIntegerValue(T_size, APInt(8*sizeof(size_t), cxxsizeofType(Cxx,(void*)PVD->getType().getTypePtr())))),
              cast<Value>(Constant::getIntegerValue(T_prjlvalue,APInt(8*sizeof(void*),(uint64_t)juliatypes[i++])))
-            }
-          );
-          llvm::Value *Replacement = builder.CreateBitCast(Box,ArgPtr->getType());
+            }, "", InsertPt);
+          // Preserve this until the current insert point (we might do
+          // additional allocations in the middle)
+          Value *Tok = CallInst::Create(gc_preserve_begin_func, {Allocation}, "", InsertPt);
+          builder.CreateCall(gc_preserve_end_func, {Tok});
+          Value *PFO = CallInst::Create(pointer_from_objref_func, {
+              CastInst::CreatePointerBitCastOrAddrSpaceCast(
+                Allocation, T_pdjlvalue, "", InsertPt)
+            }, "", InsertPt);
+          llvm::Value *Replacement = CastInst::Create(Instruction::BitCast,
+            PFO, ArgPtr->getType(), "", InsertPt);
           ArgPtr->replaceAllUsesWith(Replacement);
-          CallArgs.push_back(Replacement);
+          CallArgs.push_back(Allocation);
         } else {
           bool isboxed;
           bool isVoid = f_julia_type_to_llvm(juliatypes[i++], &isboxed)->isVoidTy();
@@ -2384,14 +2408,15 @@ JL_DLLEXPORT void *CreateBitCast(CxxIRBuilder *builder, llvm::Value *val, llvm::
   return (void*)builder->CreateBitCast(val,type);
 }
 
-#ifdef LLVM39
 JL_DLLEXPORT void *CreatePointerFromObjref(C, CxxIRBuilder *builder, llvm::Value *val)
 {
+  Type *T_pdjlvalue = PointerType::get(
+    cast<PointerType>(T_prjlvalue)->getElementType(), AddressSpace::Derived);
   Function *PFO = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.pointer_from_objref",
-                                    FunctionType::get(T_pjlvalue, {T_prjlvalue}, false)));
-  return (void*)builder->CreateCall(PFO, {val});
+                                    FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false)));
+  return (void*)builder->CreateCall(PFO, {
+    builder->CreateAddrSpaceCast(val, T_pdjlvalue)});
 }
-#endif
 
 JL_DLLEXPORT void *CreateZext(CxxIRBuilder *builder, llvm::Value *val, llvm::Type *type)
 {

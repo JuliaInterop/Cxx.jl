@@ -294,10 +294,10 @@ end
 @test icxx"foostruct{1,2}.Add(foostruct{2,3}).Add1();" == 4
 
 @cxxm "void *foostruct::ReturnAPtr()" begin
-    reinterpret(Ptr{Void},0xdeadbeef%UInt)
+    reinterpret(Ptr{Cvoid}, 0xdeadbeef%UInt)
 end
 
-@test icxx"foostruct{1,2}.ReturnAPtr();" == reinterpret(Ptr{Void},0xdeadbeef%UInt)
+@test icxx"foostruct{1,2}.ReturnAPtr();" == reinterpret(Ptr{Cvoid},0xdeadbeef%UInt)
 
 
 # Issue #95
@@ -346,7 +346,7 @@ tmp = icxx"testNegativeValue<-1>();"
 function fooTheLambda()
     ret = Expr(:block)
     f = (arg1,)->begin
-            @assert Cxx.lambdacall(Cxx.__default_compiler__,arg1) == 1
+            @assert Cxx.CxxCore.lambdacall(Cxx.__default_compiler__,arg1) == 1
             @assert pointer_from_objref(ret) != C_NULL
             @assert ret.head == :block
         end
@@ -360,8 +360,8 @@ end
 fooTheLambda()
 
 # 217
-T217 = Cdouble; arg217 = 1;
-icxx"std::vector<$T217>($arg217);";
+T217 = Cdouble; arg217 = 1.0;
+icxx"std::vector<$T217>{$arg217};";
 
 cxx"enum  X197:char {A197,B197};"
 @assert icxx"A197;" == 0
@@ -376,7 +376,7 @@ int x_,y_,z_;
 """;
 v232 = icxx"std::vector<PointXYZ232>();";
 icxx"""$v232.push_back(PointXYZ232(0,0,0));""";
-@assert typeof(icxx"$v232[0];") <: Cxx.CppRef
+@assert typeof(icxx"$v232[0];") <: CppRef
 
 # #243
 counter243 = 0
@@ -443,4 +443,4 @@ public:
     privfoo() : bar(1) {}
 };
 """
-@assert icxx"privfoo{}.bar;"p == 1
+@assert icxx"int x = privfoo{}.bar; return x;"p == 1
