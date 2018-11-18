@@ -1,64 +1,78 @@
-sudo: false
-addons:
-    apt:
-        sources:
-           - ubuntu-toolchain-r-test
-           - george-edison55-precise-backports
-        packages:
-           - cmake
-           - cmake-data
-           - gcc-6
-           - g++-6
-           - binutils
-           - gfortran
-           - libblas-dev
-           - liblapack-dev
-           - libgmp-dev
-           - libmpfr-dev
-
+language: julia
+os:
+  - linux
+  - osx
+julia:
+  - 0.7
+  - 1.0
+  - nightly
 matrix:
-    include:
-       - language: julia
-         julia: 0.6
-         os: linux
-       - language: julia
-         julia: nightly
-         os: linux
-       - language: julia
-         julia: 0.6
-         os: osx
-    allow_failures:
-       - language: julia
-         julia: nightly
-         os: linux
-cache:
-    directories:
-        - $(julia -e 'println(Pkg.dir())')/Cxx/deps/src
-        - $(julia -e 'println(Pkg.dir())')/Cxx/deps/build
-        - ~/usr
-before_cache:
-    - rm ~/.julia/0.5/Cxx/deps/build/bootstrap.o
-    - rm -rf ~/.julia/0.5/deps/usr
-install:
-    - if [ "$TRAVIS_OS_NAME" = "linux" ]; then export CXX="g++-6" CC="gcc-6"; fi
-    - if [ "$TRAVIS_OS_NAME" = "osx" ]; then export CXX="clang++" CC="clang"; fi
-    - if [ "$TRAVIS_OS_NAME" = "linux" ]; then export PATH="$HOME/usr/bin:$PATH"; fi
-    - export THE_PKG_DIR=`julia -e 'println(Pkg.dir())'`
-script:
-    - if [ "$TRAVIS_OS_NAME" = "linux" ] && [ ! -f $HOME/usr/bin/ld ]; then
-         wget https://ftp.gnu.org/gnu/binutils/binutils-2.27.tar.gz;
-         tar xzf binutils-2.27.tar.gz;
-         (cd binutils-2.27 && ./configure --prefix=$HOME/usr && make && make install);
-      fi;
-    - julia -e 'versioninfo()'
-    - mv $THE_PKG_DIR/Cxx $THE_PKG_DIR/Cxx-cache
-    - julia -e 'Pkg.clone(pwd())'
-    - mv $THE_PKG_DIR/Cxx-cache/deps/src $THE_PKG_DIR/Cxx/deps/src || true
-    - mv $THE_PKG_DIR/Cxx-cache/deps/build $THE_PKG_DIR/Cxx/deps/build || true
-    - if [ ! -f $HOME/early_abort ]; then PREBUILT_CI_BINARIES=1 julia -e 'Pkg.build("Cxx")' || false; fi
-    - if [ ! -f $HOME/early_abort ]; then julia -e 'Pkg.test("Cxx"; coverage=true)' || false; fi
-after_success:
-    - julia -e 'cd(Pkg.dir("Cxx")); Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
-    - julia -e 'cd(Pkg.dir("Cxx")); Pkg.add("Documenter"); include(joinpath("docs", "make.jl"))'
+  allow_failures:
+    - julia: nightly
+  fast_finish: true
 notifications:
   email: false
+sudo: false
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - george-edison55-precise-backports
+    packages:
+      - cmake
+      - cmake-data
+      - gcc-6
+      - g++-6
+      - binutils
+      - gfortran
+      - libblas-dev
+      - liblapack-dev
+      - libgmp-dev
+      - libmpfr-dev
+cache:
+  directories:
+    - $TRAVIS_BUILD_DIR/deps/src
+    - $TRAVIS_BUILD_DIR/deps/build
+    - ~/usr
+before_cache:
+  - rm $TRAVIS_BUILD_DIR/deps/build/bootstrap.o
+  - rm -rf $TRAVIS_BUILD_DIR/deps/usr
+before_script:
+  - |
+      if [ "$TRAVIS_OS_NAME" = "linux" ]; then
+          export CXX="g++-6" CC="gcc-6"
+          export PATH="$HOME/usr/bin:$PATH"
+      else
+          export CXX="clang++" CC="clang"
+      fi
+  - |
+      if [ "$TRAVIS_OS_NAME" = "linux" ] && [ ! -f $HOME/usr/bin/ld ]; then
+          wget https://ftp.gnu.org/gnu/binutils/binutils-2.27.tar.gz
+          tar xzf binutils-2.27.tar.gz
+          (cd binutils-2.27 && ./configure --prefix=$HOME/usr && make && make install)
+      fi
+  - mkdir -p $TRAVIS_BUILD_DIR/../Cxx-cache && cp -R $TRAVIS_BUILD_DIR $TRAVIS_BUILD_DIR/../Cxx-cache
+  - julia -e 'using InteractiveUtils; versioninfo()'
+script:
+  - julia --project=. -e 'using Pkg; Pkg.instantiate()'
+  - mv $TRAVIS_BUILD_DIR/../Cxx-cache/deps/src $TRAVIS_BUILD_DIR/deps/src || true
+  - mv $TRAVIS_BUILD_DIR/../Cxx-cache/deps/build $TRAVIS_BUILD_DIR/deps/build || true
+  - |
+      if [ ! -f $HOME/early_abort ]; then
+          PREBUILT_CI_BINARIES=1 julia --project=. -e 'using Pkg; Pkg.build()' || false
+      fi
+  - |
+      if [ ! -f $HOME/early_abort ]; then
+          julia --project=. -e 'Pkg.test(coverage=true)' || false
+      fi
+after_success:
+  - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
+jobs:
+  include:
+    - stage: "Documentation"
+      julia: 1.0
+      os: linux
+      script:
+        - julia --project=docs/ -e 'using Pkg; Pkg.instantiate(); Pkg.develop(PackageSpec(path=pwd()))'
+        - julia --project=docs/ docs/make.jl
+      after_success: skip
