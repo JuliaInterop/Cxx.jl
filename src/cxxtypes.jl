@@ -46,7 +46,7 @@ const CxxBuiltinTs = Union{Bool, UInt8, Int8, UInt16, Int16,
 #
 # # A note on CVR qualifiers
 #
-# Though I had hoped to aCvoid it, correctly representing template parameters
+# Though I had hoped to avoid it, correctly representing template parameters
 # requires tracking CVR (const, volatile, restrict) qualifiers on types. The way
 # this is currently implemented is as an extra CVR type parameter on
 # applicable julia types. This type parameter should be a tuple of Bools
