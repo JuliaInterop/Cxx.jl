@@ -217,7 +217,7 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 # On OS X, we just use the libc++ headers that ship with XCode
 @static if isapple() function collectStdHeaders!(headers)
     xcode_path = strip(read(`xcode-select --print-path`, String))
-    contains(xcode_path, "Xcode.app") && (xcode_path *= "/Toolchains/XcodeDefault.xctoolchain")
+    occursin("Xcode.app", xcode_path) && (xcode_path *= "/Toolchains/XcodeDefault.xctoolchain")
     xcode_path *= "/"
 
     didfind = false
