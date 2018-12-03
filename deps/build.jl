@@ -32,7 +32,7 @@ close(f)
 println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly at $BASE_JULIA_SRC")
 
 # Try to autodetect C++ ABI in use
-llvm_path = (Sys.isapple() && VersionNumber(Base.libllvm_version) >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
+llvm_path = (Sys.isapple() && Base.libllvm_version >= v"3.8") ? "libLLVM" : "libLLVM-$(Base.libllvm_version)"
 
 llvm_lib_path = Libdl.dlpath(llvm_path)
 old_cxx_abi = findfirst("_ZN4llvm3sys16getProcessTripleEv", String(open(read, llvm_lib_path))) !== nothing
