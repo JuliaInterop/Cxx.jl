@@ -640,7 +640,7 @@ static Function *CloneFunctionAndAdjust(C, Function *F, FunctionType *FTy,
       T_size = T_int64;
   else
       T_size = T_int32;
-  
+
   if (needsbox) {
     cppcall_state_t *state = (cppcall_state_t *)setup_cpp_env(Cxx,NewF);
     // Julia 0.7 Implementation
@@ -912,7 +912,7 @@ JL_DLLEXPORT void ReplaceFunctionForDecl(C,clang::FunctionDecl *D, llvm::Functio
 #                                                     endif
                                                       true);
       } else {
-        I->dump();
+        I->print(llvm::errs(), false);
         jl_error("Tried to do something other than calling it to a julia expression");
       }
     }
@@ -2284,12 +2284,12 @@ JL_DLLEXPORT void typedump(void *t)
 
 JL_DLLEXPORT void llvmdump(void *t)
 {
-    ((llvm::Value*) t)->dump();
+    ((llvm::Value*) t)->print(llvm::errs(), false);
 }
 
 JL_DLLEXPORT void llvmtdump(void *t)
 {
-    ((llvm::Type*) t)->dump();
+    ((llvm::Type*) t)->print(llvm::errs(), false);
 }
 
 JL_DLLEXPORT void *createLoad(CxxIRBuilder *builder, llvm::Value *val)
