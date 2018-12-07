@@ -10,7 +10,7 @@ end
     QT = try
         cpptype(C,x)
     catch err
-        (isa(err, ErrorException) && contains(err.msg, "Could not find")) || rethrow(err)
+        (isa(err, ErrorException) && occursin("Could not find", err.msg)) || rethrow(err)
         return :( Base.show_datatype(io, typeof(x)); println(io,"(<not found in compilation unit>)") )
     end
     name = typename(QT)
@@ -47,8 +47,8 @@ end
         cpptype(C,x)
     catch err
         (isa(err, ErrorException) && contains(err.msg, "Could not find")) || rethrow(err)
-        return :( Base.show_datatype(io, typeof(x)); println(io," @0x", hex(convert(UInt,convert(Ptr{Void},x)),Sys.WORD_SIZE>>2)) )
+        return :( Base.show_datatype(io, typeof(x)); println(io," @0x", string(convert(UInt,convert(Ptr{Cvoid},x)),Sys.WORD_SIZE>>2)) )
     end
     name = typename(QT)
-    :( println(io,"(",$name,") @0x", hex(convert(UInt,convert(Ptr{Void},x)),Sys.WORD_SIZE>>2) ))
+    :( println(io,"(",$name,") @0x", string(convert(UInt,convert(Ptr{Cvoid},x)),Sys.WORD_SIZE>>2) ))
 end

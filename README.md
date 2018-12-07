@@ -234,13 +234,13 @@ julia> using Cxx
 julia> const path_to_lib = pwd()
 julia> addHeaderDir(path_to_lib, kind=C_System)
 julia> Libdl.dlopen(path_to_lib * "/libArrayMaker.so", Libdl.RTLD_GLOBAL)
-Ptr{Void} @0x000000000728e6d0
+Ptr{Cvoid} @0x000000000728e6d0
 julia> cxxinclude("ArrayMaker.h")
 
 # Creating class object
 julia> maker = @cxxnew ArrayMaker(5, 2.0)
 Got arguments: 5, and 2
-Cxx.CppPtr{Cxx.CppValue{Cxx.CppBaseType{:ArrayMaker},(false,false,false)},(false,false,false)}(Ptr{Void} @0x00000000060ab570)
+Cxx.CppPtr{Cxx.CppValue{Cxx.CppBaseType{:ArrayMaker},(false,false,false)},(false,false,false)}(Ptr{Cvoid} @0x00000000060ab570)
 
 julia> arr = @cxx maker->fillArr()
 Filling the array

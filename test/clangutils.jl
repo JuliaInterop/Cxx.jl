@@ -10,7 +10,7 @@ using namespace llvm;
 
 function dumpLayout(d)
     ctx = pcpp"clang::ASTContext"(
-        ccall((:getASTContext,libcxxffi),Ptr{Void},()))
+        ccall((:getASTContext,libcxxffi),Ptr{Cvoid},()))
     icxx"""
         raw_os_ostream OS(std::cout);
         $ctx->DumpRecordLayout(
@@ -23,16 +23,16 @@ function dumpLayout(d)
 end
 
 clangmod = pcpp"llvm::Module"(unsafe_load(cglobal(
-        (:clang_shadow_module,libcxxffi),Ptr{Void})))
+        (:clang_shadow_module,libcxxffi),Ptr{Cvoid})))
 
 EE = pcpp"llvm::ExecutionEngine"(unsafe_load(cglobal(
-        :jl_ExecutionEngine,Ptr{Void})))
+        :jl_ExecutionEngine,Ptr{Cvoid})))
 
 mcjmm = pcpp"llvm::RTDyldMemoryManager"(unsafe_load(cglobal(
-        :jl_mcjmm,Ptr{Void})))
+        :jl_mcjmm,Ptr{Cvoid})))
 
 cc = pcpp"clang::CompilerInstance"(unsafe_load(cglobal(
-    (:clang_compiler,libcxxffi),Ptr{Void})))
+    (:clang_compiler,libcxxffi),Ptr{Cvoid})))
 
 pass_llvm_command_line(str) =
     @cxx llvm::cl::ParseCommandLineOptions(1+length(str),pointer([pointer("julia"),[pointer(s) for s in str],convert(Ptr{UInt8},C_NULL)]))

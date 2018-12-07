@@ -33,7 +33,7 @@ unboxing `x` and `y` if necessary). Afterwards, the resulting call instruction
 is inlined.
 
 In this package, however, we use the second form of `llvmcall`, which differs
-from the first in that the IR argument is not a string, but a `Ptr{Void}`. In
+from the first in that the IR argument is not a string, but a `Ptr{Cvoid}`. In
 this case, Julia will skip the wrapping and proceed straight to argument
 translation and inlining.
 
