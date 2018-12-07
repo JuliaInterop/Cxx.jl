@@ -10,7 +10,7 @@ end
     QT = try
         cpptype(C,x)
     catch err
-        (isa(err, ErrorException) && contains(err.msg, "Could not find")) || rethrow(err)
+        (isa(err, ErrorException) && occursin("Could not find", err.msg)) || rethrow(err)
         return :( Base.show_datatype(io, typeof(x)); println(io,"(<not found in compilation unit>)") )
     end
     name = typename(QT)
