@@ -63,7 +63,7 @@ John
 ```julia-repl
 julia> cxx"""
            void test_print() {
-               $:(println("\nTo end this test, press any key")::Void);
+               $:(println("\nTo end this test, press any key")::Cvoid);
            }
        """
 true
@@ -200,7 +200,7 @@ julia> const path_to_lib = pwd();
 julia> addHeaderDir(path_to_lib, kind=C_System)
 
 julia> Libdl.dlopen(joinpath(path_to_lib, "libarraymaker.so"), Libdl.RTLD_GLOBAL)
-Ptr{Void} @0x00007f9dd4556d60
+Ptr{Cvoid} @0x00007f9dd4556d60
 
 julia> cxxinclude("ArrayMaker.h")
 

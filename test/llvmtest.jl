@@ -3,12 +3,12 @@ using Cxx
 include("llvmincludes.jl")
 
 RequireCompleteType(C,d::cpcpp"clang::Type") =
-    ccall((:RequireCompleteType,Cxx.libcxxffi),Cint,(Ptr{Cxx.ClangCompiler},Ptr{Void}),&C,d.ptr) > 0
+    ccall((:RequireCompleteType,Cxx.libcxxffi),Cint,(Ptr{Cxx.ClangCompiler},Ptr{Cvoid}),&C,d.ptr) > 0
 
 function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
-    executionEngine = pcpp"llvm::ExecutionEngine"(ccall((:jl_get_llvm_ee,Cxx.libcxxffi),Ptr{Void},()))
+    executionEngine = pcpp"llvm::ExecutionEngine"(ccall((:jl_get_llvm_ee,Cxx.libcxxffi),Ptr{Cvoid},()))
     C = Cxx.instance(__current_compiler__)
-    cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall((:clang_get_cgt,Cxx.libcxxffi),Ptr{Void},
+    cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall((:clang_get_cgt,Cxx.libcxxffi),Ptr{Cvoid},
         (Ptr{Cxx.ClangCompiler},),&C))
     dl = @cxx executionEngine->getDataLayout()
     RequireCompleteType(C,@cxx d->getTypeForDecl())
@@ -20,7 +20,7 @@ size = cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(Cxx.instance(__curre
     ["llvm","ExecutionEngine"]).ptr))
 @assert size >= 144
 
-code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Void}, (Any,Bool,Bool), Tuple{t...}, false, false))
+code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Cvoid}, (Any,Bool,Bool), Tuple{t...}, false, false))
 function code_graph(f,args)
     v = @cxx std::string()
     os = @cxx llvm::raw_string_ostream(v)
@@ -38,12 +38,12 @@ cxx"""
 void f() {}
 """
 C = Cxx.instance(__current_compiler__)
-clangmod = pcpp"llvm::Module"(ccall(:clang_shadow_module,Ptr{Void},
+clangmod = pcpp"llvm::Module"(ccall(:clang_shadow_module,Ptr{Cvoid},
     (Ptr{Cxx.ClangCompiler},),&C))
 ptr = @cxx clangmod->getFunction(pointer("_Z1fv"))
 @assert ptr != C_NULL
 
-jns = cglobal((:julia_namespace,Cxx.libcxxffi),Ptr{Void})
+jns = cglobal((:julia_namespace,Cxx.libcxxffi),Ptr{Cvoid})
 ns = Cxx.createNamespace(C,"julia")
 
 # This is basically the manual expansion of the cxx_str macro
@@ -62,7 +62,7 @@ uint64_t foo() {
 """)
 unsafe_store!(jns,C_NULL)
 #GV = @cxx dyn_cast{llvm::GlobalVariable}(@cxx (@cxx clang_shadow_module)->getNamedValue(pointer("_ZN5julia4var1E")))
-GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module(convert(Ptr{Void},pointer([C]))))->getNamedValue(pointer("_ZN5julia5xvar1E"))).ptr)
+GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module(convert(Ptr{Cvoid},pointer([C]))))->getNamedValue(pointer("_ZN5julia5xvar1E"))).ptr)
 @assert GV != C_NULL
 @cxx (@cxx GV->getType())->dump()
 @cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),UInt64(0)))

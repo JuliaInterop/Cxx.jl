@@ -3,3 +3,4 @@
 *.jl.mem
 docs/build
 docs/site
+deps/build.log
