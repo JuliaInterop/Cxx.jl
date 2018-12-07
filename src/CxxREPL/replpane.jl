@@ -2,6 +2,7 @@ module CxxREPL
     using REPL
     using REPL.LineEdit
     using ..Cxx
+    import Cxx: CxxCore
 
     # Some of this code is derived from cling.
     # Copyright (c) 2007-2014 by the Authors.
@@ -85,7 +86,7 @@ module CxxREPL
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(lastindex(data))-1;
-            clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
+            clang::Lexer L(clang::SourceLocation(),$(CxxCore.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
             L.LexFromRawLexer(Tok);
@@ -98,9 +99,9 @@ module CxxREPL
         if occursin(":=", data)
             return false
         end
-        x = [Cxx.instance(C)]
+        x = [CxxCore.instance(C)]
         return isPPDirective(C,data) || icxx"""
-            clang::Parser *P = $(Cxx.parser(C));
+            clang::Parser *P = $(CxxCore.parser(C));
             clang::Preprocessor *PP = &P->getPreprocessor();
             clang::Parser::TentativeParsingAction TA(*P);
             EnterSourceFile((CxxInstance*)$(convert(Ptr{Cvoid},pointer(x))),
@@ -130,7 +131,7 @@ module CxxREPL
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(lastindex(data))-1;
-            clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
+            clang::Lexer L(clang::SourceLocation(),$(CxxCore.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
             std::deque<int> parenStack;
@@ -175,7 +176,7 @@ module CxxREPL
             end
             # Strip trailing semicolon (since we add one on the next line) to avoid unused result warning
             line = line[end] == ';' ? line[1:end-1] : line
-            ret = CxxCore.process_cxx_string(string(line,"\n;"), isToplevel, false, CxxCore.FakeLineNumberNode(:REPL, 1), "p";
+            ret = CxxCore.process_cxx_string(string(line,"\n;"), isToplevel, false, LineNumberNode(1, :REPL), "p";
     compiler = C)
             if isAssignment
                 ret = :($var = $ret)

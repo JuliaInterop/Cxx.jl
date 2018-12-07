@@ -609,7 +609,7 @@ function adjust_source(C, source)
     source
 end
 
-function process_cxx_string(str,global_scope = true,type_name = false,__source__=FakeLineNumberNode(),
+function process_cxx_string(str,global_scope = true,type_name = false,__source__=FakeLineNumberNode(1, :none),
     annotations = "";
     compiler = :__current_compiler__, tojuliatype = true)
     disable_ac = 'p' in annotations
@@ -698,22 +698,24 @@ function process_cxx_string(str,global_scope = true,type_name = false,__source__
 end
 
 @generated function cxxstr_impl(CT, sourcebuf, args...)
-    C = instance(CT)
-    id = sourceid(sourcebuf)
-    buf, filename, line, col, disable_ac = sourcebuffers[id]
+    GC.@preserve CT begin
+        C = instance(CT)
+        id = sourceid(sourcebuf)
+        buf, filename, line, col, disable_ac = sourcebuffers[id]
 
-    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
-    EmitTopLevelDecl(C,FD)
+        FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
+        EmitTopLevelDecl(C,FD)
 
-    for T in args
-        if haskey(MappedTypes, T)
-            InstantiateSpecializationsForType(C, toctx(translation_unit(C)), T)
+        for T in args
+            if haskey(MappedTypes, T)
+                InstantiateSpecializationsForType(C, toctx(translation_unit(C)), T)
+            end
         end
-    end
 
-    dne = CreateDeclRefExpr(C,FD)
-    argt = tuple(llvmargs...)
-    expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
+        dne = CreateDeclRefExpr(C,FD)
+        argt = tuple(llvmargs...)
+        expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
+    end
     expr
 end
 
