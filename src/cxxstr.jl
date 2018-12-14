@@ -609,7 +609,7 @@ function adjust_source(C, source)
     source
 end
 
-function process_cxx_string(str,global_scope = true,type_name = false,__source__=FakeLineNumberNode(1, :none),
+function process_cxx_string(str,global_scope = true,type_name = false,__source__=LineNumberNode(1, :none),
     annotations = "";
     compiler = :__current_compiler__, tojuliatype = true)
     disable_ac = 'p' in annotations
