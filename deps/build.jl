@@ -47,7 +47,7 @@ else
     @info "Building julia binary build"
     ENV["LLVM_VER"] = Base.libllvm_version
     ENV["JULIA_BINARY_BUILD"] = "1"
-    ENV["PATH"] = string(JULIA_HOME,":",ENV["PATH"])
+    ENV["PATH"] = string(BASE_JULIA_BIN,":",ENV["PATH"])
 end
 
 make = Sys.isbsd() && !Sys.isapple() ? `gmake` : `make`
