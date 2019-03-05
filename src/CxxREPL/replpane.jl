@@ -100,29 +100,32 @@ module CxxREPL
             return false
         end
         x = [CxxCore.instance(C)]
-        return isPPDirective(C,data) || icxx"""
-            clang::Parser *P = $(CxxCore.parser(C));
-            clang::Preprocessor *PP = &P->getPreprocessor();
-            clang::Parser::TentativeParsingAction TA(*P);
-            EnterSourceFile((CxxInstance*)$(convert(Ptr{Cvoid},pointer(x))),
-                $(pointer(data)),$(sizeof(data))-1);
-            clang::PreprocessorLexer *L = PP->getCurrentLexer();
-            P->ConsumeToken();
-            bool result = P->getCurToken().is(clang::tok::kw_template) ||
-              P->isCXXDeclarationStatement();
-            TA.Revert();
-            // Consume all cached tokens, so we don't accidentally
-            // Lex them later after we abort this buffer
-            while (PP->InCachingLexMode() || PP->getCurrentLexer() == nullptr)
-            {
-                clang::Token Tok;
-                PP->Lex(Tok);
-            }
-            // Exit the lexer for this buffer
-            if (L == PP->getCurrentLexer())
-                PP->RemoveTopOfLexerStack();
-            return result;
-        """
+        GC.@preserve x begin
+            ret = isPPDirective(C,data) || icxx"""
+                clang::Parser *P = $(CxxCore.parser(C));
+                clang::Preprocessor *PP = &P->getPreprocessor();
+                clang::Parser::TentativeParsingAction TA(*P);
+                EnterSourceFile((CxxInstance*)$(convert(Ptr{Cvoid},pointer(x))),
+                    $(pointer(data)),$(sizeof(data))-1);
+                clang::PreprocessorLexer *L = PP->getCurrentLexer();
+                P->ConsumeToken();
+                bool result = P->getCurToken().is(clang::tok::kw_template) ||
+                  P->isCXXDeclarationStatement();
+                TA.Revert();
+                // Consume all cached tokens, so we don't accidentally
+                // Lex them later after we abort this buffer
+                while (PP->InCachingLexMode() || PP->getCurrentLexer() == nullptr)
+                {
+                    clang::Token Tok;
+                    PP->Lex(Tok);
+                }
+                // Exit the lexer for this buffer
+                if (L == PP->getCurrentLexer())
+                    PP->RemoveTopOfLexerStack();
+                return result;
+            """
+        end
+        return ret;
     end
 
     # Inspired by cling's InputValidator.cpp
