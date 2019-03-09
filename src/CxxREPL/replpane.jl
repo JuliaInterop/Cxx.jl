@@ -3,7 +3,7 @@ module CxxREPL
     using REPL.LineEdit
     using ..Cxx
     import Cxx: CxxCore
-
+    import Cxx.CxxCore: IS_BINARYBUILD
     # Some of this code is derived from cling.
     # Copyright (c) 2007-2014 by the Authors.
     # All rights reserved.
@@ -49,18 +49,32 @@ module CxxREPL
     const __current_compiler__ = Cxx.__default_compiler__
 
     # Load Clang Headers
-    ver_str = Base.libllvm_version
-    cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/src/clang-$ver_str/include")
-    cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/src/llvm-$ver_str/include")
+    @static if IS_BINARYBUILD
+        ver_str = Base.libllvm_version
+        cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/usr/src/clang-$ver_str/include")
+        cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/usr/src/llvm-$ver_str/include")
+        if isdir(cxxclangdir)
+            addHeaderDir(cxxclangdir)
+            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/usr/build/clang-$ver_str/include"))
+        end
+        if isdir(cxxllvmdir)
+            addHeaderDir(cxxllvmdir)
+            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/usr/build/llvm-$ver_str/include"))
+        end
+    else
+        ver_str = Base.libllvm_version
+        cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/src/clang-$ver_str/include")
+        cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/src/llvm-$ver_str/include")
+        if isdir(cxxclangdir)
+            addHeaderDir(cxxclangdir)
+            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/clang-$ver_str/include"))
+        end
+        if isdir(cxxllvmdir)
+            addHeaderDir(cxxllvmdir)
+            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
+        end
+    end
 
-    if isdir(cxxclangdir)
-        addHeaderDir(cxxclangdir)
-        addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/clang-$ver_str/include"))
-    end
-    if isdir(cxxllvmdir)
-        addHeaderDir(cxxllvmdir)
-        addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
-    end
     addHeaderDir(joinpath(Sys.BINDIR,"../include"))
 
     cxx"""

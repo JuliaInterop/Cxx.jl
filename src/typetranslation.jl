@@ -323,7 +323,7 @@ function cpptype(C,::Type{T}) where T
                 f = get_llvmf_decl(tt)
                 @assert f != C_NULL
                 FinalizeAnonClass(C, AnonClass)
-                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = 
+                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig =
                     isbits_spec(T, false) || isbits_spec(retty, false),
                     NeedsBoxed = [false], FirstIsEnv = true, retty = retty, jts = Any[T])
             else
@@ -436,7 +436,11 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}(
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-include(joinpath(dirname(@__FILE__), "..", "deps", "build", "clang_constants.jl"))
+@static if IS_BINARYBUILD
+    include(joinpath(dirname(@__FILE__), "..", "deps", "usr", "build", "clang_constants.jl"))
+else
+    include(joinpath(dirname(@__FILE__), "..", "deps", "build", "clang_constants.jl"))
+end
 
 # TODO: Autogenerate this from the appropriate header
 # Decl::Kind

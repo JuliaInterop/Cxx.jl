@@ -12,10 +12,13 @@ depspath = joinpath(BASE_JULIA_SRC, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-
-const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/lib/",
-    string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
-
+@static if Sys.iswindows()
+    const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/bin/",
+        string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
+else
+    const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/lib/",
+        string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
+end
 # Set up Clang's global data structures
 function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
@@ -358,11 +361,11 @@ end # function addStdHeaders(C)
 end # islinux
 
 @static if iswindows() function collectStdHeaders!(headers)
-      base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
-      push!(headers,(joinpath(base,"x86_64-w64-mingw32/include"), C_System))
-      #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
-      push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), C_System))
-      push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), C_System))
+    base = joinpath(@__DIR__, "..", "deps", "usr")
+    push!(headers,(joinpath(base, "mingw", "include"), C_System))
+    push!(headers,(joinpath(base, "mingw", "include", "c++", "7.1.0"), C_System))
+    push!(headers,(joinpath(base, "mingw", "include", "c++", "7.1.0", "x86_64-w64-mingw32"), C_System))
+    push!(headers,(joinpath(base, "mingw", "sys-root", "include"), C_System)) # not sure whether this is necessary
 end #function addStdHeaders(C)
 end # iswindows
 
@@ -372,8 +375,13 @@ function collectClangHeaders!(headers)
     ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)
     baseclangdir = joinpath(BASE_JULIA_BIN,
         "../lib/clang/$ver/include/")
-    cxxclangdir = joinpath(dirname(@__FILE__),
-        "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+    @static if IS_BINARYBUILD
+        cxxclangdir = joinpath(dirname(@__FILE__),
+            "../deps/usr/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+    else
+        cxxclangdir = joinpath(dirname(@__FILE__),
+            "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+    end
     if isdir(baseclangdir)
         push!(headers, (baseclangdir, C_ExternCSystem))
     else

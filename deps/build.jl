@@ -25,9 +25,6 @@ export BASE_JULIA_BIN
 const BASE_JULIA_SRC=$(sprint(show, BASE_JULIA_SRC))
 export BASE_JULIA_SRC
 """
-f = open(joinpath(dirname(@__FILE__),"path.jl"), "w")
-write(f, s)
-close(f)
 
 println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly at $BASE_JULIA_SRC")
 
@@ -43,12 +40,18 @@ if isfile(llvm_config_path)
     @info "Building julia source build"
     ENV["LLVM_CONFIG"] = llvm_config_path
     delete!(ENV,"LLVM_VER")
+    make = Sys.isbsd() && !Sys.isapple() ? `gmake` : `make`
+    run(`$make -j$(Sys.CPU_THREADS) -f BuildBootstrap.Makefile BASE_JULIA_BIN=$BASE_JULIA_BIN BASE_JULIA_SRC=$BASE_JULIA_SRC`)
+    s = s * "\n const IS_BINARYBUILD = false"
 else
     @info "Building julia binary build"
     ENV["LLVM_VER"] = Base.libllvm_version
     ENV["JULIA_BINARY_BUILD"] = "1"
     ENV["PATH"] = string(BASE_JULIA_BIN,":",ENV["PATH"])
+    include("build_libcxxffi.jl")
+    s = s * "\n const IS_BINARYBUILD = true"
 end
 
-make = Sys.isbsd() && !Sys.isapple() ? `gmake` : `make`
-run(`$make -j$(Sys.CPU_THREADS) -f BuildBootstrap.Makefile BASE_JULIA_BIN=$BASE_JULIA_BIN BASE_JULIA_SRC=$BASE_JULIA_SRC`)
+f = open(joinpath(dirname(@__FILE__),"path.jl"), "w")
+write(f, s)
+close(f)
