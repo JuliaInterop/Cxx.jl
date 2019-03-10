@@ -32,6 +32,8 @@ extern "C" {
     // never actually go to the linker.
     void __dso_handle() {}
 
+    void __cxa_atexit() {}
+
     extern int __cxxjl_personality_v0();
 }
 void __hack() {
