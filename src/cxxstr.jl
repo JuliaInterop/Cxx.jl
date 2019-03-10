@@ -609,11 +609,13 @@ function adjust_source(C, source)
     source
 end
 
-function process_cxx_string(str,global_scope = true,type_name = false,__source__=LineNumberNode(1, :none),
-    annotations = "";
-    compiler = :__current_compiler__, tojuliatype = true)
+function process_cxx_string(str, global_scope=true, type_name=false, __source__=LineNumberNode(1, :none),
+                            annotations=""; compiler=:__current_compiler__, tojuliatype=true)
     disable_ac = 'p' in annotations
     filename = __source__.file === nothing ? Symbol("") : __source__.file
+    @static if Sys.iswindows()
+        filename = Symbol(replace(string(filename), "\\"=>"\\\\"))
+    end
     col = isdefined(__source__, :col) ? __source__.col : 1
     startvarnum, sourcebuf, exprs, isexprs, icxxs =
         process_body(compiler, str, global_scope, !global_scope && type_name, filename, __source__.line, col)
@@ -727,14 +729,14 @@ declaring namespaces, classes, functions, global variables, etc.
 Unlike `@cxx`, `cxx""` does not require punning on Julia syntax, which
 means, e.g., that unary `*` for pointers does not require parentheses.
 """
-macro cxx_str(str,args...)
+macro cxx_str(str, args...)
     annotations = length(args) > 0 ? first(args) : ""
-    esc(process_cxx_string(str,true,false,__source__,annotations))
+    esc(process_cxx_string(str, true, false, __source__, annotations))
 end
 
 # Not exported
-macro cxxt_str(str,args...)
-    esc(process_cxx_string(str,false,true,__source__))
+macro cxxt_str(str, args...)
+    esc(process_cxx_string(str, false, true, __source__))
 end
 
 """
@@ -743,16 +745,16 @@ end
 Evaluate the given C++ code at the function scope. This should be
 used for calling C++ functions and performing computations.
 """
-macro icxx_str(str,args...)
+macro icxx_str(str, args...)
     annotations = length(args) > 0 ? first(args) : ""
-    esc(process_cxx_string(str,false,false,__source__,annotations))
+    esc(process_cxx_string(str, false, false, __source__, annotations))
 end
 
 # Not exported
-macro gcxxt_str(str,args...)
-    esc(process_cxx_string(str,true,true,__source__))
+macro gcxxt_str(str, args...)
+    esc(process_cxx_string(str, true, true, __source__))
 end
 
-macro ccxxt_str(str,args...)
-    esc(process_cxx_string(str,true,true,__source__; tojuliatype = false))
+macro ccxxt_str(str, args...)
+    esc(process_cxx_string(str, true, true, __source__; tojuliatype=false))
 end
