@@ -49,33 +49,32 @@ module CxxREPL
     const __current_compiler__ = Cxx.__default_compiler__
 
     # Load Clang Headers
+    ver_str = Base.libllvm_version
     @static if IS_BINARYBUILD
-        ver_str = Base.libllvm_version
-        cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/usr/src/clang-$ver_str/include")
-        cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/usr/src/llvm-$ver_str/include")
+        cxxclangdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "clang-$ver_str", "include")
+        cxxllvmdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "llvm-$ver_str", "include")
         if isdir(cxxclangdir)
             addHeaderDir(cxxclangdir)
-            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/usr/build/clang-$ver_str/include"))
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "clang-$ver_str", "include"))
         end
         if isdir(cxxllvmdir)
             addHeaderDir(cxxllvmdir)
-            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/usr/build/llvm-$ver_str/include"))
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "llvm-$ver_str", "include"))
         end
     else
-        ver_str = Base.libllvm_version
-        cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/src/clang-$ver_str/include")
-        cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/src/llvm-$ver_str/include")
+        cxxclangdir = joinpath(@__DIR__, "..", "..", "deps", "src", "clang-$ver_str", "include")
+        cxxllvmdir = joinpath(@__DIR__, "..", "..", "deps", "src", "llvm-$ver_str", "include")
         if isdir(cxxclangdir)
             addHeaderDir(cxxclangdir)
-            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/clang-$ver_str/include"))
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "build", "clang-$ver_str", "include"))
         end
         if isdir(cxxllvmdir)
             addHeaderDir(cxxllvmdir)
-            addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "build", "llvm-$ver_str", "include"))
         end
     end
 
-    addHeaderDir(joinpath(Sys.BINDIR,"../include"))
+    addHeaderDir(joinpath(Sys.BINDIR, "..", "include"))
 
     cxx"""
     #define __STDC_LIMIT_MACROS

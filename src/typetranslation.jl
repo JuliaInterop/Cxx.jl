@@ -437,9 +437,9 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}(
 end
 
 @static if IS_BINARYBUILD
-    include(joinpath(dirname(@__FILE__), "..", "deps", "usr", "build", "clang_constants.jl"))
+    include(joinpath(@__DIR__, "..", "deps", "usr", "build", "clang_constants.jl"))
 else
-    include(joinpath(dirname(@__FILE__), "..", "deps", "build", "clang_constants.jl"))
+    include(joinpath(@__DIR__, "..", "deps", "build", "clang_constants.jl"))
 end
 
 # TODO: Autogenerate this from the appropriate header

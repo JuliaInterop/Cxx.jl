@@ -12,12 +12,11 @@ depspath = joinpath(BASE_JULIA_SRC, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
+lib_suffix = ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""
 @static if Sys.iswindows()
-    const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/bin/",
-        string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
+    const libcxxffi = joinpath(@__DIR__, "..", "deps", "usr", "bin", "libcxxffi"*lib_suffix)
 else
-    const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/lib/",
-        string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
+    const libcxxffi = joinpath(@__DIR__, "..", "deps", "usr", "lib", "libcxxffi"*lib_suffix)
 end
 # Set up Clang's global data structures
 function init_libcxxffi()
@@ -371,16 +370,14 @@ end # iswindows
 
 # Also add clang's intrinsic headers
 function collectClangHeaders!(headers)
-    ver = Base.libllvm_version
-    ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)
-    baseclangdir = joinpath(BASE_JULIA_BIN,
-        "../lib/clang/$ver/include/")
+    ver = string(Base.libllvm_version)
+    baseclangdir = joinpath(BASE_JULIA_BIN, "..", "lib", "clang", ver, "include")
     @static if IS_BINARYBUILD
-        cxxclangdir = joinpath(dirname(@__FILE__),
-            "../deps/usr/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+        cxxclangdir = joinpath(@__DIR__, "..", "deps", "usr", "build",
+            "clang-$(Base.libllvm_version)", "lib", "clang", ver, "include")
     else
-        cxxclangdir = joinpath(dirname(@__FILE__),
-            "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+        cxxclangdir = joinpath(@__DIR__, "..", "deps", "build", "clang-$(Base.libllvm_version)",
+            "lib", "clang", ver, "include")
     end
     if isdir(baseclangdir)
         push!(headers, (baseclangdir, C_ExternCSystem))
@@ -410,7 +407,7 @@ end
 
 function register_booth(C)
     C = instance(C)
-    cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
+    cxxinclude(C, joinpath(@__DIR__, "boot.h"))
 end
 
 function process_cxx_exception end
