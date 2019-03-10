@@ -700,25 +700,22 @@ function process_cxx_string(str, global_scope=true, type_name=false, __source__=
 end
 
 @generated function cxxstr_impl(CT, sourcebuf, args...)
-    GC.@preserve CT begin
-        C = instance(CT)
-        id = sourceid(sourcebuf)
-        buf, filename, line, col, disable_ac = sourcebuffers[id]
+    C = instance(CT)
+    id = sourceid(sourcebuf)
+    buf, filename, line, col, disable_ac = sourcebuffers[id]
 
-        FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
-        EmitTopLevelDecl(C,FD)
+    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
+    EmitTopLevelDecl(C,FD)
 
-        for T in args
-            if haskey(MappedTypes, T)
-                InstantiateSpecializationsForType(C, toctx(translation_unit(C)), T)
-            end
+    for T in args
+        if haskey(MappedTypes, T)
+            InstantiateSpecializationsForType(C, toctx(translation_unit(C)), T)
         end
-
-        dne = CreateDeclRefExpr(C,FD)
-        argt = tuple(llvmargs...)
-        expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
     end
-    expr
+
+    dne = CreateDeclRefExpr(C,FD)
+    argt = tuple(llvmargs...)
+    expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
 end
 
 """
