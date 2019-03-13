@@ -370,15 +370,10 @@ end # iswindows
 
 # Also add clang's intrinsic headers
 function collectClangHeaders!(headers)
-    ver = string(Base.libllvm_version)
-    baseclangdir = joinpath(BASE_JULIA_BIN, "..", "lib", "clang", ver, "include")
-    @static if IS_BINARYBUILD
-        cxxclangdir = joinpath(@__DIR__, "..", "deps", "usr", "build",
-            "clang-$(Base.libllvm_version)", "lib", "clang", ver, "include")
-    else
-        cxxclangdir = joinpath(@__DIR__, "..", "deps", "build", "clang-$(Base.libllvm_version)",
-            "lib", "clang", ver, "include")
-    end
+    llvmver = string(Base.libllvm_version)
+    baseclangdir = joinpath(BASE_JULIA_BIN, "..", "lib", "clang", llvmver, "include")
+    cxxclangdir = @static IS_BINARYBUILD ? joinpath(@__DIR__, "..", "deps", "usr", "build", "clang-$llvmver", "lib", "clang", llvmver, "include") :
+                                           joinpath(@__DIR__, "..", "deps", "build", "clang-$llvmver", "lib", "clang", llvmver, "include")
     if isdir(baseclangdir)
         push!(headers, (baseclangdir, C_ExternCSystem))
     else
