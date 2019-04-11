@@ -1,8 +1,10 @@
 ## Cxx.jl
 
-[![Build Status](https://travis-ci.org/Keno/Cxx.jl.svg?branch=master)](https://travis-ci.org/Keno/Cxx.jl)
-[![codecov.io](http://codecov.io/github/Keno/Cxx.jl/coverage.svg?branch=master)](http://codecov.io/github/Keno/Cxx.jl?branch=master)
-[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://Keno.github.io/Cxx.jl/latest)
+[![Build Status](https://travis-ci.org/JuliaInterop/Cxx.jl.svg?branch=master)](https://travis-ci.org/JuliaInterop/Cxx.jl)
+[![Build status](https://ci.appveyor.com/api/projects/status/uimv2b4shsb5ndcj/branch/master?svg=true)](https://ci.appveyor.com/project/JuliaInterop/cxx-jl/branch/master)
+[![codecov](https://codecov.io/gh/JuliaInterop/Cxx.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaInterop/Cxx.jl)
+[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaInterop.github.io/Cxx.jl/stable)
+[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaInterop.github.io/Cxx.jl/dev)
 
 The Julia C++ Foreign Function Interface (FFI) and REPL.
 
@@ -34,10 +36,10 @@ The main interface provided by Cxx.jl is the @cxx macro. It supports two main us
       @cxx mynamespace::func(args...)
   - Membercall (where m is a CppPtr, CppRef or CppValue)
       @cxx m->foo(args...)
-      
+
 To embed C++ functions in Julia, there are two main approaches:
 
-```julia 
+```julia
 # Using @cxx (e.g.):   
 cxx""" void cppfunction(args){ . . .} """ => @cxx cppfunction(args)
 
@@ -51,7 +53,7 @@ This package contains an experimental C++ REPL feature. Using the package
 will automatically add a new pane to your REPL that is accessible by pressing the
 `<` key.
 
-### **Using Cxx.jl:** 
+### **Using Cxx.jl:**
 
 #### Example 1: Embedding a simple C++ function in Julia
 
@@ -73,7 +75,7 @@ julia> cxx"""
 # Convert C++ to Julia function
 julia> julia_function() = @cxx mycppfunction()
 julia_function (generic function with 1 method)
-   
+
 # Run the function
 julia> julia_function()
 The number is 52
@@ -84,15 +86,15 @@ The number is 52
 ```julia
 julia> jnum = 10
 10
-    
+
 julia> cxx"""
            void printme(int x) {
               std::cout << x << std::endl;
            }
        """
-       
+
 julia> @cxx printme(jnum)
-10 
+10
 ```
 
 #### Example 3: Pass strings from Julia to C++
@@ -107,7 +109,7 @@ julia> cxx"""
       """
 
 julia> @cxx printme(pointer("John"))
-    John 
+    John
 ```
 
 #### Example 4: Pass a Julia expression to C++
@@ -161,7 +163,7 @@ CppEnum{Symbol("Klassy::Foo")}(1)
 julia> using Cxx
 julia> cxx"""#include <iostream>
        class Hello
-       { 
+       {
            public:
                void hello_world(const char *now){
                    std::string snow = now;
@@ -215,7 +217,7 @@ float* ArrayMaker::fillArr() {
     for (int i=0; i < iNumber; i++) {
         fArr[i] = fNumber;
         fNumber *= 2;
-    } 
+    }
     return fArr;
 }
 ```
