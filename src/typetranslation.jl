@@ -154,7 +154,7 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Cvoid},
-            (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Ptr{Cvoid}},Ptr{UInt64},Ptr{UInt8},UInt32),
+            (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Ptr{Cvoid}},Ptr{UInt64},Ptr{Int8},Csize_t),
             C,convert(Ptr{Cvoid},cxxt),[convert(Ptr{Cvoid},p) for p in ts],
             integralValues,integralValuesPresent,length(ts)))
     d
