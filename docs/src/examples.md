@@ -200,7 +200,7 @@ julia> const path_to_lib = pwd();
 julia> addHeaderDir(path_to_lib, kind=C_System)
 
 julia> Libdl.dlopen(joinpath(path_to_lib, "libarraymaker.so"), Libdl.RTLD_GLOBAL)
-Ptr{Cvoid} @0x00007f9dd4556d60
+Ptr{Nothing} @0x00007f9dd4556d60
 
 julia> cxxinclude("ArrayMaker.h")
 

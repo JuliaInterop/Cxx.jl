@@ -716,6 +716,7 @@ end
     dne = CreateDeclRefExpr(C,FD)
     argt = tuple(llvmargs...)
     expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
+    expr
 end
 
 """
