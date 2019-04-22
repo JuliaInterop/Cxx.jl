@@ -229,7 +229,11 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
     inc = joinpath(xcode_path, "usr", "include", "c++", "v1")
     isdir(lib) && (push!(headers, (lib, C_ExternCSystem)); didfind = true;)
     isdir(inc) && (push!(headers, (inc, C_ExternCSystem)); didfind = true;)
-    push!(headers,("/usr/include", C_System))
+    if isdir("/usr/include")
+        push!(headers,("/usr/include", C_System))
+    else
+        error("\"/usr/include\" is missing, please install those headers by running `sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /`")
+    end
     didfind || error("Could not find C++ standard library. Is XCode installed?")
 end # function addStdHeaders(C)
 end # isapple
