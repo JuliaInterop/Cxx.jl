@@ -12,7 +12,13 @@ The Julia C++ Foreign Function Interface (FFI) and REPL.
 
 
 ### Installation
+Now, this package provides an out-of-box installation experience on Linux(x86-64) and macOS for Julia 1.1.
+```
+pkg> add Cxx
+```
+Windows(x86-64) support is still in its early stage.
 
+### Build from source
 #### Build requirements
 
 In addition to the [system requirements](https://github.com/JuliaLang/julia#required-build-tools-and-external-libraries) to build julia itself, the following are required:
@@ -22,10 +28,9 @@ In addition to the [system requirements](https://github.com/JuliaLang/julia#requ
 
 #### Building Cxx
 
-Launch julia (version 1.0 or later), and in the terminal type
+Launch Julia (version 1.0 or later), and in the terminal type
 ```julia
-using Pkg
-Pkg.add("Cxx")
+pkg> build Cxx
 ```
 
 ### How it works
