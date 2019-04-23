@@ -154,7 +154,7 @@ function specialize_template(C,cxxt::pcpp"clang::ClassTemplateDecl",targs)
         end
     end
     d = pcpp"clang::ClassTemplateSpecializationDecl"(ccall((:SpecializeClass,libcxxffi),Ptr{Cvoid},
-            (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Ptr{Cvoid}},Ptr{UInt64},Ptr{UInt8},UInt32),
+            (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Ptr{Cvoid}},Ptr{UInt64},Ptr{Int8},Csize_t),
             C,convert(Ptr{Cvoid},cxxt),[convert(Ptr{Cvoid},p) for p in ts],
             integralValues,integralValuesPresent,length(ts)))
     d
@@ -323,7 +323,7 @@ function cpptype(C,::Type{T}) where T
                 f = get_llvmf_decl(tt)
                 @assert f != C_NULL
                 FinalizeAnonClass(C, AnonClass)
-                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig = 
+                ReplaceFunctionForDecl(C, Method,f, DoInline = false, specsig =
                     isbits_spec(T, false) || isbits_spec(retty, false),
                     NeedsBoxed = [false], FirstIsEnv = true, retty = retty, jts = Any[T])
             else
@@ -436,7 +436,11 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}(
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-include(joinpath(dirname(@__FILE__), "..", "deps", "build", "clang_constants.jl"))
+@static if IS_BINARYBUILD
+    include(joinpath(@__DIR__, "..", "deps", "usr", "build", "clang_constants.jl"))
+else
+    include(joinpath(@__DIR__, "..", "deps", "build", "clang_constants.jl"))
+end
 
 # TODO: Autogenerate this from the appropriate header
 # Decl::Kind

@@ -54,7 +54,7 @@ test = @cxxnew PrintTest()
 cxx"""
 void printfoo() {
     for (int i = 0; i <= 10; ++i)
-        $:(println("foo")::Void);
+        $:(println("foo")::Cvoid);
 }
 """
 

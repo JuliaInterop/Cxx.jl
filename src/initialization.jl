@@ -12,10 +12,12 @@ depspath = joinpath(BASE_JULIA_SRC, "deps", "srccache")
 
 # Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
 # debug version)
-
-const libcxxffi = joinpath(dirname(Base.source_path()),"../deps/usr/lib/",
-    string("libcxxffi", ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""))
-
+lib_suffix = ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""
+@static if Sys.iswindows()
+    const libcxxffi = joinpath(@__DIR__, "..", "deps", "usr", "bin", "libcxxffi"*lib_suffix)
+else
+    const libcxxffi = joinpath(@__DIR__, "..", "deps", "usr", "lib", "libcxxffi"*lib_suffix)
+end
 # Set up Clang's global data structures
 function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
@@ -217,17 +219,21 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 # On OS X, we just use the libc++ headers that ship with XCode
 @static if isapple() function collectStdHeaders!(headers)
     xcode_path = strip(read(`xcode-select --print-path`, String))
-    contains(xcode_path, "Xcode.app") && (xcode_path *= "/Toolchains/XcodeDefault.xctoolchain")
-    xcode_path *= "/"
-
-    didfind = false
-    for path in ("usr/lib/c++/v1/","usr/include/c++/v1")
-        if isdir(joinpath(xcode_path,path))
-            push!(headers, (joinpath(xcode_path,path), C_ExternCSystem))
-            didfind = true
-        end
+    if occursin("Xcode.app", xcode_path)
+        xcode_path *= "/Toolchains/XcodeDefault.xctoolchain/"
+    else
+        xcode_path = "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/"
     end
-    push!(headers,("/usr/include", C_System))
+    didfind = false
+    lib = joinpath(xcode_path, "usr", "lib", "c++", "v1")
+    inc = joinpath(xcode_path, "usr", "include", "c++", "v1")
+    isdir(lib) && (push!(headers, (lib, C_ExternCSystem)); didfind = true;)
+    isdir(inc) && (push!(headers, (inc, C_ExternCSystem)); didfind = true;)
+    if isdir("/usr/include")
+        push!(headers,("/usr/include", C_System))
+    else
+        error("\"/usr/include\" is missing, please install those headers by running `sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /`")
+    end
     didfind || error("Could not find C++ standard library. Is XCode installed?")
 end # function addStdHeaders(C)
 end # isapple
@@ -358,22 +364,20 @@ end # function addStdHeaders(C)
 end # islinux
 
 @static if iswindows() function collectStdHeaders!(headers)
-      base = "C:/mingw-builds/x64-4.8.1-win32-seh-rev5/mingw64/"
-      push!(headers,(joinpath(base,"x86_64-w64-mingw32/include"), C_System))
-      #addHeaderDir(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/"), kind = C_System)
-      push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++"), C_System))
-      push!(headers,(joinpath(base,"lib/gcc/x86_64-w64-mingw32/4.8.1/include/c++/x86_64-w64-mingw32"), C_System))
+    base = joinpath(@__DIR__, "..", "deps", "usr")
+    push!(headers,(joinpath(base, "mingw", "include"), C_System))
+    push!(headers,(joinpath(base, "mingw", "include", "c++", "7.1.0"), C_System))
+    push!(headers,(joinpath(base, "mingw", "include", "c++", "7.1.0", "x86_64-w64-mingw32"), C_System))
+    push!(headers,(joinpath(base, "mingw", "sys-root", "include"), C_System)) # not sure whether this is necessary
 end #function addStdHeaders(C)
 end # iswindows
 
 # Also add clang's intrinsic headers
 function collectClangHeaders!(headers)
-    ver = Base.libllvm_version
-    ver = Base.VersionNumber(ver.major, ver.minor, ver.patch)
-    baseclangdir = joinpath(BASE_JULIA_BIN,
-        "../lib/clang/$ver/include/")
-    cxxclangdir = joinpath(dirname(@__FILE__),
-        "../deps/build/clang-$(Base.libllvm_version)/lib/clang/$ver/include")
+    llvmver = string(Base.libllvm_version)
+    baseclangdir = joinpath(BASE_JULIA_BIN, "..", "lib", "clang", llvmver, "include")
+    cxxclangdir = @static IS_BINARYBUILD ? joinpath(@__DIR__, "..", "deps", "usr", "build", "clang-$llvmver", "lib", "clang", llvmver, "include") :
+                                           joinpath(@__DIR__, "..", "deps", "build", "clang-$llvmver", "lib", "clang", llvmver, "include")
     if isdir(baseclangdir)
         push!(headers, (baseclangdir, C_ExternCSystem))
     else
@@ -402,7 +406,7 @@ end
 
 function register_booth(C)
     C = instance(C)
-    cxxinclude(C,joinpath(dirname(@__FILE__),"boot.h"))
+    cxxinclude(C, joinpath(@__DIR__, "boot.h"))
 end
 
 function process_cxx_exception end
