@@ -2,7 +2,8 @@ module CxxREPL
     using REPL
     using REPL.LineEdit
     using ..Cxx
-
+    import Cxx: CxxCore
+    import Cxx.CxxCore: IS_BINARYBUILD
     # Some of this code is derived from cling.
     # Copyright (c) 2007-2014 by the Authors.
     # All rights reserved.
@@ -49,18 +50,31 @@ module CxxREPL
 
     # Load Clang Headers
     ver_str = Base.libllvm_version
-    cxxclangdir = joinpath(dirname(@__FILE__),"../../deps/src/clang-$ver_str/include")
-    cxxllvmdir = joinpath(dirname(@__FILE__),"../../deps/src/llvm-$ver_str/include")
+    @static if IS_BINARYBUILD
+        cxxclangdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "clang-$ver_str", "include")
+        cxxllvmdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "llvm-$ver_str", "include")
+        if isdir(cxxclangdir)
+            addHeaderDir(cxxclangdir)
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "clang-$ver_str", "include"))
+        end
+        if isdir(cxxllvmdir)
+            addHeaderDir(cxxllvmdir)
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "llvm-$ver_str", "include"))
+        end
+    else
+        cxxclangdir = joinpath(@__DIR__, "..", "..", "deps", "src", "clang-$ver_str", "include")
+        cxxllvmdir = joinpath(@__DIR__, "..", "..", "deps", "src", "llvm-$ver_str", "include")
+        if isdir(cxxclangdir)
+            addHeaderDir(cxxclangdir)
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "build", "clang-$ver_str", "include"))
+        end
+        if isdir(cxxllvmdir)
+            addHeaderDir(cxxllvmdir)
+            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "build", "llvm-$ver_str", "include"))
+        end
+    end
 
-    if isdir(cxxclangdir)
-        addHeaderDir(cxxclangdir)
-        addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/clang-$ver_str/include"))
-    end
-    if isdir(cxxllvmdir)
-        addHeaderDir(cxxllvmdir)
-        addHeaderDir(joinpath(dirname(@__FILE__),"../../deps/build/llvm-$ver_str/include"))
-    end
-    addHeaderDir(joinpath(Sys.BINDIR,"../include"))
+    addHeaderDir(joinpath(Sys.BINDIR, "..", "include"))
 
     cxx"""
     #define __STDC_LIMIT_MACROS
@@ -85,7 +99,7 @@ module CxxREPL
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(lastindex(data))-1;
-            clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
+            clang::Lexer L(clang::SourceLocation(),$(CxxCore.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
             L.LexFromRawLexer(Tok);
@@ -98,30 +112,33 @@ module CxxREPL
         if occursin(":=", data)
             return false
         end
-        x = [Cxx.instance(C)]
-        return isPPDirective(C,data) || icxx"""
-            clang::Parser *P = $(Cxx.parser(C));
-            clang::Preprocessor *PP = &P->getPreprocessor();
-            clang::Parser::TentativeParsingAction TA(*P);
-            EnterSourceFile((CxxInstance*)$(convert(Ptr{Cvoid},pointer(x))),
-                $(pointer(data)),$(sizeof(data))-1);
-            clang::PreprocessorLexer *L = PP->getCurrentLexer();
-            P->ConsumeToken();
-            bool result = P->getCurToken().is(clang::tok::kw_template) ||
-              P->isCXXDeclarationStatement();
-            TA.Revert();
-            // Consume all cached tokens, so we don't accidentally
-            // Lex them later after we abort this buffer
-            while (PP->InCachingLexMode() || PP->getCurrentLexer() == nullptr)
-            {
-                clang::Token Tok;
-                PP->Lex(Tok);
-            }
-            // Exit the lexer for this buffer
-            if (L == PP->getCurrentLexer())
-                PP->RemoveTopOfLexerStack();
-            return result;
-        """
+        x = [CxxCore.instance(C)]
+        GC.@preserve x begin
+            ret = isPPDirective(C,data) || icxx"""
+                clang::Parser *P = $(CxxCore.parser(C));
+                clang::Preprocessor *PP = &P->getPreprocessor();
+                clang::Parser::TentativeParsingAction TA(*P);
+                EnterSourceFile((CxxInstance*)$(convert(Ptr{Cvoid},pointer(x))),
+                    $(pointer(data)),$(sizeof(data))-1);
+                clang::PreprocessorLexer *L = PP->getCurrentLexer();
+                P->ConsumeToken();
+                bool result = P->getCurToken().is(clang::tok::kw_template) ||
+                  P->isCXXDeclarationStatement();
+                TA.Revert();
+                // Consume all cached tokens, so we don't accidentally
+                // Lex them later after we abort this buffer
+                while (PP->InCachingLexMode() || PP->getCurrentLexer() == nullptr)
+                {
+                    clang::Token Tok;
+                    PP->Lex(Tok);
+                }
+                // Exit the lexer for this buffer
+                if (L == PP->getCurrentLexer())
+                    PP->RemoveTopOfLexerStack();
+                return result;
+            """
+        end
+        return ret;
     end
 
     # Inspired by cling's InputValidator.cpp
@@ -130,7 +147,7 @@ module CxxREPL
         icxx"""
             const char *BufferStart = $(pointer(data));
             const char *BufferEnd = BufferStart+$(lastindex(data))-1;
-            clang::Lexer L(clang::SourceLocation(),$(Cxx.compiler(C))->getLangOpts(),
+            clang::Lexer L(clang::SourceLocation(),$(CxxCore.compiler(C))->getLangOpts(),
                 BufferStart, BufferStart, BufferEnd);
             clang::Token Tok;
             std::deque<int> parenStack;
@@ -175,7 +192,7 @@ module CxxREPL
             end
             # Strip trailing semicolon (since we add one on the next line) to avoid unused result warning
             line = line[end] == ';' ? line[1:end-1] : line
-            ret = CxxCore.process_cxx_string(string(line,"\n;"), isToplevel, false, CxxCore.FakeLineNumberNode(:REPL, 1), "p";
+            ret = CxxCore.process_cxx_string(string(line,"\n;"), isToplevel, false, LineNumberNode(1, :REPL), "p";
     compiler = C)
             if isAssignment
                 ret = :($var = $ret)

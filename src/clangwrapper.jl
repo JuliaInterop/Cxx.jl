@@ -784,5 +784,5 @@ function without_ac(f, C)
     ret
 end
 
-getI8PtrTy() = pcpp"llvm::Type"(ccall(:getI8PtrTy, Ptr{Cvoid}, ()))
-getPRJLValueTy() = pcpp"llvm::Type"(ccall(:getPRJLValueTy, Ptr{Cvoid}, ()))
+getI8PtrTy() = pcpp"llvm::Type"(ccall((:getI8PtrTy,libcxxffi), Ptr{Cvoid}, ()))
+getPRJLValueTy() = pcpp"llvm::Type"(ccall((:getPRJLValueTy,libcxxffi), Ptr{Cvoid}, ()))

@@ -67,7 +67,7 @@
 # is inlined.
 #
 # In this package, however, we use the second form of llvmcall, which differs
-# from the first inthat the IR argument is not a string, but a Ptr{Void}. In
+# from the first inthat the IR argument is not a string, but a Ptr{Cvoid}. In
 # this case, julia will skip the wrapping and proceed straight to argument
 # translation and inlining.
 #

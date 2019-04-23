@@ -33,6 +33,10 @@ extern "C" {
     void __dso_handle() {}
 
     extern int __cxxjl_personality_v0();
+
+#ifdef _WIN32
+    void __cxa_atexit() {}
+#endif
 }
 void __hack() {
     (void)&__cxxjl_personality_v0;

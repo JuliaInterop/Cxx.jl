@@ -58,7 +58,7 @@ mb = @cxxnew QMessageBox(@cxx(QMessageBox::Information),
 hibtn = @cxxnew QPushButton(pointer("Say Hi!"))
 @cxx mb->addButton(hibtn, @cxx(QMessageBox::ApplyRole))
 
-say_hi() = println("Hi!")::Void
+say_hi() = println("Hi!")::Cvoid
 cxx"""
 #include <iostream>
 void handle_hi()
