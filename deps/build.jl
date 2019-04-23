@@ -46,6 +46,7 @@ if isfile(llvm_config_path)
     s = s * "\n const IS_BINARYBUILD = false"
 else
     @info "Building julia binary build"
+    Sys.iswindows() && @warn "Windows support is still experimental!"
     ENV["LLVM_VER"] = Base.libllvm_version
     ENV["JULIA_BINARY_BUILD"] = "1"
     ENV["PATH"] = string(BASE_JULIA_BIN,":",ENV["PATH"])
