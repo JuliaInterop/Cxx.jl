@@ -16,11 +16,10 @@ See the API documentation for more details.
 
 ## Installation
 
-The package is installable on Julia 0.5 and newer and is available
-through Julia's package manager:
+Now, this package provides an out-of-box installation experience on all 64-bit ["Tier 1"](https://github.com/JuliaLang/julia#currently-supported-platforms) platforms for Julia 1.1.
 
 ```julia
-Pkg.add("Cxx")
+pkg> add Cxx
 ```
 
 Building the C++ code requires the same

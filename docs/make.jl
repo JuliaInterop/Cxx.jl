@@ -16,9 +16,6 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/Keno/Cxx.jl.git",
+    repo = "github.com/JuliaInterop/Cxx.jl.git",
     target = "build",
-    julia = "1.0",
-    deps = nothing,
-    make = nothing,
 )

@@ -6,4 +6,4 @@ at the beginning of the line.
 
 Below is a screenshot of the REPL in action.
 
-![REPL Screenshot](../screenshot.png "C++ REPL Screenshot")
+![REPL Screenshot](../screenshot.png)
