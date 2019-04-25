@@ -1,5 +1,6 @@
 name = "Cxx"
 uuid = "a0b5b9ef-44b7-5148-a2d1-f6db19f3c3d2"
+version = "0.3.0"
 
 [deps]
 BinaryProvider = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
