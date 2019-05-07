@@ -147,7 +147,7 @@ const clang::InputKind CKind = clang::InputKind::C;
 
 extern "C" {
   #define TYPE_ACCESS(EX,IN)                                    \
-  JL_DLLEXPORT const clang::Type *EX(C) {                          \
+  JL_DLLEXPORT const clang::Type *EX(CxxInstance *Cxx) {        \
     return Cxx->CI->getASTContext().IN.getTypePtrOrNull();      \
   }
 
