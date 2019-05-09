@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · Cxx.jl</title><link href="https://cdnjs.cloudflare.com/ajax/libs/normalize/4.2.0/normalize.min.css" rel="stylesheet" type="text/css"/><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/default.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link href="../assets/documenter.css" rel="stylesheet" type="text/css"/></head><body><nav class="toc"><h1>Cxx.jl</h1><select id="version-selector" onChange="window.location.href=this.value" style="visibility: hidden"></select><form class="search" id="search-form" action="../search/"><input id="search-query" name="q" type="text" placeholder="Search docs"/></form><ul><li><a class="toctext" href="../">Home</a></li><li><a class="toctext" href="../api/">API</a></li><li class="current"><a class="toctext" href>Examples</a><ul class="internal"><li><a class="toctext" href="#Embedding-a-simple-C-function-in-Julia-1">Embedding a simple C++ function in Julia</a></li><li><a class="toctext" href="#Passing-numeric-arguments-from-Julia-to-C-1">Passing numeric arguments from Julia to C++</a></li><li><a class="toctext" href="#Passing-strings-from-Julia-to-C-1">Passing strings from Julia to C++</a></li><li><a class="toctext" href="#Passing-a-Julia-expression-to-C-1">Passing a Julia expression to C++</a></li><li><a class="toctext" href="#Embedding-C-code-inside-a-Julia-function-1">Embedding C++ code inside a Julia function</a></li><li><a class="toctext" href="#Using-C-enums-1">Using C++ enums</a></li><li><a class="toctext" href="#C-classes-1">C++ classes</a></li><li><a class="toctext" href="#Using-C-with-shared-libraries-1">Using C++ with shared libraries</a></li></ul></li><li><a class="toctext" href="../implementation/">Implementation</a></li><li><a class="toctext" href="../repl/">C++ REPL</a></li></ul></nav><article id="docs"><header><nav><ul><li><a href>Examples</a></li></ul><a class="edit-page" href="https://github.com/JuliaInterop/Cxx.jl/blob/master/docs/src/examples.md"><span class="fa"></span> Edit on GitHub</a></nav><hr/><div id="topbar"><span>Examples</span><a class="fa fa-bars" href="#"></a></div></header><h1><a class="nav-anchor" id="Examples-1" href="#Examples-1">Examples</a></h1><h2><a class="nav-anchor" id="Embedding-a-simple-C-function-in-Julia-1" href="#Embedding-a-simple-C-function-in-Julia-1">Embedding a simple C++ function in Julia</a></h2><pre><code class="language-julia-repl">julia&gt; cxx&quot;#include &lt;iostream&gt;&quot;
+true
+
+julia&gt; cxx&quot;&quot;&quot;
+           void mycppfunction() {
+               int z = 0;
+               int y = 5;
+               int x = 10;
+               z = x * y + 2;
+               std::cout &lt;&lt; &quot;The number is &quot; &lt;&lt; z &lt;&lt; std::endl;
+           }
+       &quot;&quot;&quot;
+true
+
+julia&gt; julia_function() = @cxx mycppfunction()
+julia_function (generic function with 1 method)
+
+julia&gt; julia_function()
+The number is 52</code></pre><h2><a class="nav-anchor" id="Passing-numeric-arguments-from-Julia-to-C-1" href="#Passing-numeric-arguments-from-Julia-to-C-1">Passing numeric arguments from Julia to C++</a></h2><pre><code class="language-julia-repl">julia&gt; jnum = 10
+10
+
+julia&gt; cxx&quot;&quot;&quot;
+           void printme(int x) {
+               std::cout &lt;&lt; x &lt;&lt; std::endl;
+           }
+       &quot;&quot;&quot;
+true
+
+julia&gt; @cxx printme(jnum)
+10</code></pre><h2><a class="nav-anchor" id="Passing-strings-from-Julia-to-C-1" href="#Passing-strings-from-Julia-to-C-1">Passing strings from Julia to C++</a></h2><pre><code class="language-julia-repl">julia&gt; cxx&quot;&quot;&quot;
+           void printme(const char *name) {
+               // const char* =&gt; std::string
+               std::string sname = name;
+               // print it out
+               std::cout &lt;&lt; sname &lt;&lt; std::endl;
+           }
+       &quot;&quot;&quot;
+true
+
+julia&gt; @cxx printme(pointer(&quot;John&quot;))
+John</code></pre><h2><a class="nav-anchor" id="Passing-a-Julia-expression-to-C-1" href="#Passing-a-Julia-expression-to-C-1">Passing a Julia expression to C++</a></h2><pre><code class="language-julia-repl">julia&gt; cxx&quot;&quot;&quot;
+           void test_print() {
+               $:(println(&quot;\nTo end this test, press any key&quot;)::Cvoid);
+           }
+       &quot;&quot;&quot;
+true
+
+julia&gt; @cxx test_print()
+
+To end this test, press any key</code></pre><h2><a class="nav-anchor" id="Embedding-C-code-inside-a-Julia-function-1" href="#Embedding-C-code-inside-a-Julia-function-1">Embedding C++ code inside a Julia function</a></h2><pre><code class="language-julia-repl">julia&gt; function playing()
+           for i = 1:5
+               icxx&quot;&quot;&quot;
+                   int tellme;
+                   std::cout &lt;&lt; &quot;Please enter a number: &quot; &lt;&lt; std::endl;
+                   std::cin &gt;&gt; tellme;
+                   std::cout &lt;&lt; &quot;\nYour number is &quot; &lt;&lt; tellme &lt;&lt; &quot;\n&quot; &lt;&lt; std::endl;
+               &quot;&quot;&quot;
+           end
+       end
+playing (generic function with 1 method)
+
+julia&gt; playing()
+Please enter a number:
+45
+
+Your number is 45</code></pre><h2><a class="nav-anchor" id="Using-C-enums-1" href="#Using-C-enums-1">Using C++ enums</a></h2><pre><code class="language-julia-repl">julia&gt; cxx&quot;&quot;&quot;
+           class Klassy {
+               public:
+                   enum Foo { Bar, Baz };
+                   static Foo exec(Foo x) { return x; }
+           };
+       &quot;&quot;&quot;
+true
+
+julia&gt; @cxx Klassy::Bar
+Cxx.CppEnum{Symbol(&quot;Klassy::Foo&quot;),UInt32}(0x00000000)
+
+julia&gt; @cxx Klassy::exec(@cxx Klassy::Baz)
+Cxx.CppEnum{Symbol(&quot;Klassy::Foo&quot;),UInt32}(0x00000001)</code></pre><h2><a class="nav-anchor" id="C-classes-1" href="#C-classes-1">C++ classes</a></h2><pre><code class="language-julia-repl">julia&gt; cxx&quot;&quot;&quot;
+           #include &lt;iostream&gt;
+           class Hello {
+               public:
+                   void hello_world(const char *now) {
+                       std::string snow = now;
+                       std::cout &lt;&lt; &quot;Hello, World! Now is &quot; &lt;&lt; snow &lt;&lt; std::endl;
+                   }
+           };
+       &quot;&quot;&quot;
+true
+
+julia&gt; hello_class = @cxxnew Hello()
+(class Hello *) @0x00007f82dd7d19a0
+
+
+julia&gt; tstamp = string(Dates.now())
+&quot;2017-08-21T13:53:27.85&quot;
+
+julia&gt; @cxx hello_class-&gt;hello_world(pointer(tstamp))
+Hello, World! Now is 2017-08-21T13:53:27.85</code></pre><h2><a class="nav-anchor" id="Using-C-with-shared-libraries-1" href="#Using-C-with-shared-libraries-1">Using C++ with shared libraries</a></h2><p>ArrayMaker.h</p><pre><code class="language-c">#ifndef ARRAYMAKER_H
+#define ARRAYMAKER_H
+
+class ArrayMaker {
+    private:
+        int inumber;
+        float fnumber;
+        float* farr;
+    public:
+        ArrayMaker(int, float);
+        float* fillarr();
+};
+
+#endif</code></pre><p>ArrayMaker.cpp</p><pre><code class="language-c">#include &quot;ArrayMaker.h&quot;
+#include &lt;iostream&gt;
+
+using namespace std;
+
+ArrayMaker::ArrayMaker(int inum, float fnum) {
+    cout &lt;&lt; &quot;Got arguments: &quot; &lt;&lt; inum &lt;&lt; &quot; and &quot; &lt;&lt; fnum &lt;&lt; endl;
+    inumber = inum;
+    fnumber = fnum;
+    farr = new float[inumber];
+}
+
+float* ArrayMaker::fillarr() {
+    cout &lt;&lt; &quot;Filling the array&quot; &lt;&lt; endl;
+    for (int i = 0; i &lt; inumber; i++) {
+        farr[i] = fnumber;
+        fnumber *= 2;
+    }
+    return farr;
+}</code></pre><p>Compile into a shared library</p><pre><code class="language-none">g++ -shared -fPIC ArrayMaker.cpp -o libarraymaker.so</code></pre><p>Using from Julia</p><pre><code class="language-julia-repl">julia&gt; const path_to_lib = pwd();
+
+julia&gt; addHeaderDir(path_to_lib, kind=C_System)
+
+julia&gt; Libdl.dlopen(joinpath(path_to_lib, &quot;libarraymaker.so&quot;), Libdl.RTLD_GLOBAL)
+Ptr{Nothing} @0x00007f9dd4556d60
+
+julia&gt; cxxinclude(&quot;ArrayMaker.h&quot;)
+
+julia&gt; maker = @cxxnew ArrayMaker(5, 2.0)
+Got arguments: 5 and 2
+(class ArrayMaker *) @0x00007f9dd7e25f10
+
+
+julia&gt; arr = @cxx maker-&gt;fillarr()
+Filling the array
+Ptr{Float32} @0x00007f9dd7e21370
+
+julia&gt; unsafe_wrap(Array, arr, 5)
+5-element Array{Float32,1}:
+  2.0
+  4.0
+  8.0
+ 16.0
+ 32.0</code></pre><footer><hr/><a class="previous" href="../api/"><span class="direction">Previous</span><span class="title">API</span></a><a class="next" href="../implementation/"><span class="direction">Next</span><span class="title">Implementation</span></a></footer></article></body></html>
