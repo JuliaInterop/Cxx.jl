@@ -1,6 +1,6 @@
 name = "Cxx"
 uuid = "a0b5b9ef-44b7-5148-a2d1-f6db19f3c3d2"
-version = "0.3.0"
+version = "0.3.1"
 
 [compat]
 julia = "~1.1"
