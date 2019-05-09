@@ -294,7 +294,7 @@ function CollectLinuxHeaderPaths!(headers)
     "x86_64-linux-gnu", "x86_64-unknown-linux-gnu", "x86_64-pc-linux-gnu",
     "x86_64-redhat-linux6E", "x86_64-redhat-linux", "x86_64-suse-linux",
     "x86_64-manbo-linux-gnu", "x86_64-linux-gnu", "x86_64-slackware-linux",
-    "x86_64-linux-android", "x86_64-unknown-linux"
+    "x86_64-linux-android", "x86_64-unknown-linux", "x86_64-generic-linux"
     ]
 
     X86LibDirs = ["/lib32", "/lib"]
