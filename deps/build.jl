@@ -15,6 +15,7 @@ end
 #that contains the headers etc, use that
 BASE_JULIA_BIN = get(ENV, "BASE_JULIA_BIN", Sys.BINDIR)
 BASE_JULIA_SRC = get(ENV, "BASE_JULIA_SRC", joinpath(BASE_JULIA_BIN, "..", ".."))
+USER_SRC = get(ENV, "JULIA_CXX_USER_SRC", "empty.jl")
 
 #write a simple include file with that path
 println("writing path.jl file")
@@ -24,6 +25,9 @@ export BASE_JULIA_BIN
 
 const BASE_JULIA_SRC=$(sprint(show, BASE_JULIA_SRC))
 export BASE_JULIA_SRC
+
+const USER_SRC=$(sprint(show, USER_SRC))
+export USER_SRC
 """
 
 println("Tuning for julia installation at $BASE_JULIA_BIN with sources possibly at $BASE_JULIA_SRC")

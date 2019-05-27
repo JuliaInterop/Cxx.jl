@@ -173,6 +173,7 @@ include("cxxmacro.jl")
 include("cxxstr.jl")
 include("utils.jl")
 include("exceptions.jl")
+include(USER_SRC)
 
 # In precompilation mode, we do still need clang, so do it manually
 __init__()
