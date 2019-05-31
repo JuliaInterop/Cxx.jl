@@ -11,7 +11,7 @@ cxxparse("""
 
 const StdString = cxxt"std::string"
 const StdStringR = cxxt"std::string&"
-const StdVector{T} = Union{cxxt"std::vector<$T>",cxxt"std::vector<$T>&"}
+const StdVector{T,A} = Union{cxxt"std::vector<$T,$A>",cxxt"std::vector<$T,$A>&"}
 const StdMap{K,V} = cxxt"std::map<$K,$V>"
 const GenericStdMap =
   CppValue{CxxQualType{CppTemplate{
@@ -123,9 +123,9 @@ Base.copyto!(dest::AbstractArray, doffs::Integer, src::StdVector, soffs::Integer
 
 Base.convert(::Type{CT}, v::StdVector) where {CT<:AbstractArray} = convert(CT, unsafe_wrap(DenseArray, v))
 
-function Base.convert(::Type{cxxt"std::vector<$T>"}, x::AbstractArray) where T
+function Base.convert(::Type{cxxt"std::vector<$T,$A>"}, x::AbstractArray) where {T,A}
     n = length(eachindex(x))
-    result = icxx"std::vector<$T> v($n); v;"
+    result = icxx"std::vector<$T,$A> v($n); v;"
     copy!(result, x)
     result
 end
