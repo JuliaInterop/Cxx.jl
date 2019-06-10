@@ -236,6 +236,7 @@ Using in Julia
 ```julia
 
 julia> using Cxx
+julia> using Libdl
 
 # Importing shared library and header file
 julia> const path_to_lib = pwd()
@@ -252,7 +253,7 @@ Cxx.CppPtr{Cxx.CppValue{Cxx.CppBaseType{:ArrayMaker},(false,false,false)},(false
 julia> arr = @cxx maker->fillArr()
 Filling the array
 
-julia> pointer_to_array(arr, 5)
+julia> unsafe_wrap(Array, arr, 5)
 5-element Array{Float32,1}:
   2.0
   4.0
