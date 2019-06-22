@@ -218,7 +218,9 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
 @static if isapple() function collectStdHeaders!(headers)
-    xcode_path = strip(read(`xcode-select --print-path`, String))
+    cmd_path = strip(read(`xcode-select --print-path`, String))
+    sdk_path = joinpath(cmd_path, "SDKs", "MacOSX.sdk")
+    xcode_path = cmd_path
     occursin("Xcode", xcode_path) && (xcode_path *= "/Toolchains/XcodeDefault.xctoolchain/")
     didfind = false
     lib = joinpath(xcode_path, "usr", "lib", "c++", "v1")
@@ -227,8 +229,8 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
     isdir(inc) && (push!(headers, (inc, C_ExternCSystem)); didfind = true;)
     if isdir("/usr/include")
         push!(headers,("/usr/include", C_System))
-    else
-        error("\"/usr/include\" is missing, please install those headers by running `sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /`")
+    else isdir(joinpath(sdk_path, "usr", "include"))
+        push!(headers,(joinpath(sdk_path, "usr", "include"), C_System))
     end
     didfind || error("Could not find C++ standard library. Is XCode or CommandLineTools installed?")
 end # function addStdHeaders(C)
