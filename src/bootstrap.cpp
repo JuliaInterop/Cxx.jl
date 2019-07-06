@@ -3141,6 +3141,9 @@ JL_DLLEXPORT bool isDCComplete(clang::DeclContext *DC) {
   return (!clang::isa<clang::TagDecl>(DC) || DC->isDependentContext() || clang::cast<clang::TagDecl>(DC)->isCompleteDefinition() || clang::cast<clang::TagDecl>(DC)->isBeingDefined());
 }
 
+} // extern "C"
+
+#ifndef _OS_WINDOWS_
 #include <signal.h>
 static void jl_unblock_signal(int sig)
 {
@@ -3173,6 +3176,5 @@ JL_DLLEXPORT void InstallSIGABRTHandler(void *exception)
     abort(); // hah
   }
 }
-}
-
-}
+} // extern "C"
+#endif // _OS_WINDOWS_
