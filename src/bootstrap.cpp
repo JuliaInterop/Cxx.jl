@@ -1456,6 +1456,9 @@ static void set_default_clang_options(C, bool CCompiler, const char *Triple, con
         Cxx->CI->getLangOpts().Exceptions = 1;          // exception handling
         Cxx->CI->getLangOpts().ObjCExceptions = 1;  //  Objective-C exceptions
         Cxx->CI->getLangOpts().CXXExceptions = 1;   // C++ exceptions
+#ifdef _OS_WINDOWS_
+	Cxx->CI->getLangOpts().SEHExceptions = 1; // Julia uses SEH exception handling on Windows
+#endif
         Cxx->CI->getLangOpts().CXXOperatorNames = 1;
         Cxx->CI->getLangOpts().DoubleSquareBracketAttributes = 1;
         Cxx->CI->getHeaderSearchOpts().UseLibcxx = 1;
