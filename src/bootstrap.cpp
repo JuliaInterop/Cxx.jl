@@ -6,6 +6,11 @@
 #include <dlfcn.h>
 #include <cstdlib>
 
+#if defined(_WIN32) || defined(_WIN64)
+#define _OS_WINDOWS_
+#endif
+
+
 #ifdef NDEBUG
 #define OLD_NDEBUG
 #endif
@@ -1491,16 +1496,26 @@ static void finish_clang_init(C, bool EmitPCH, const char *PCHBuffer, size_t PCH
             clang::vfs::getRealFileSystem()));
         llvm::IntrusiveRefCntPtr<clang::vfs::InMemoryFileSystem> IMFS(
           new clang::vfs::InMemoryFileSystem);
+#ifdef _OS_WINDOWS_
+        IMFS->addFile("C:/Cxx.pch", PCHTime, llvm::MemoryBuffer::getMemBuffer(
+          StringRef(PCHBuffer, PCHBufferSize), "Cxx.pch", false
+        ));
+#else
         IMFS->addFile("/Cxx.pch", PCHTime, llvm::MemoryBuffer::getMemBuffer(
           StringRef(PCHBuffer, PCHBufferSize), "Cxx.pch", false
         ));
+#endif
         Overlay->pushOverlay(IMFS);
         Cxx->CI->setVirtualFileSystem(Overlay);
     }
     Cxx->CI->createFileManager();
     Cxx->CI->createSourceManager(Cxx->CI->getFileManager());
     if (PCHBuffer) {
+#ifdef _OS_WINDOWS_
+        Cxx->CI->getPreprocessorOpts().ImplicitPCHInclude = "C:/Cxx.pch";
+#else
         Cxx->CI->getPreprocessorOpts().ImplicitPCHInclude = "/Cxx.pch";
+#endif
     }
     Cxx->CI->createPreprocessor(clang::TU_Prefix);
     Cxx->CI->createASTContext();
@@ -1557,7 +1572,11 @@ static void finish_clang_init(C, bool EmitPCH, const char *PCHBuffer, size_t PCH
             Cxx->CI->getASTConsumer().GetASTDeserializationListener();
         bool DeleteDeserialListener = false;
         Cxx->CI->createPCHExternalASTSource(
+#ifdef _OS_WINDOWS_
+          "C:/Cxx.pch",
+#else
           "/Cxx.pch",
+#endif
           Cxx->CI->getPreprocessorOpts().DisablePCHValidation,
           Cxx->CI->getPreprocessorOpts().AllowPCHWithCompilerErrors, DeserialListener,
           DeleteDeserialListener);
@@ -1583,7 +1602,11 @@ static void finish_clang_init(C, bool EmitPCH, const char *PCHBuffer, size_t PCH
     pp.enableIncrementalProcessing();
 
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
+#ifdef _OS_WINDOWS_
+    const char *fname = PCHBuffer ? "C:/Cxx.cpp" : "C:/Cxx.h";
+#else
     const char *fname = PCHBuffer ? "/Cxx.cpp" : "/Cxx.h";
+#endif
     const clang::FileEntry *MainFile = Cxx->CI->getFileManager().getVirtualFile(fname, 0, time(0));
     sm.overrideFileContents(MainFile, llvm::MemoryBuffer::getNewMemBuffer(0, fname));
     sm.setMainFileID(sm.createFileID(MainFile, clang::SourceLocation(), clang::SrcMgr::C_User));
@@ -3072,8 +3095,8 @@ JL_DLLEXPORT void *getTypeName(C, void *Ty)
 extern void jl_error(const char *str);
 
 #include "unwind.h"
-void __attribute__((noreturn)) (*process_cxx_exception)(uint64_t exceptionClass, _Unwind_Exception* unwind_exception);
-_Unwind_Reason_Code __cxxjl_personality_v0
+JL_DLLEXPORT void __attribute__((noreturn)) (*process_cxx_exception)(uint64_t exceptionClass, _Unwind_Exception* unwind_exception);
+JL_DLLEXPORT _Unwind_Reason_Code __cxxjl_personality_v0
                     (int version, _Unwind_Action actions, uint64_t exceptionClass,
                      _Unwind_Exception* unwind_exception, _Unwind_Context* context)
 {
