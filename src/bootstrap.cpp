@@ -118,11 +118,7 @@
 
 // From julia
 using namespace llvm;
-#ifdef LLVM39
-extern llvm::LLVMContext jl_LLVMContext;
-#else
 extern llvm::LLVMContext &jl_LLVMContext;
-#endif
 static llvm::Type *T_pvalue_llvmt;
 static llvm::Type *T_pjlvalue;
 static llvm::Type *T_prjlvalue;
