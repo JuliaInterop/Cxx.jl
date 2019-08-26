@@ -21,7 +21,7 @@ Note that Windows support is still in its early stage, so feel free to submit fe
 ### Build from source
 #### Build requirements
 
-In addition to the [system requirements](https://github.com/JuliaLang/julia#required-build-tools-and-external-libraries) to build julia itself, the following are required:
+In addition to the [system requirements](https://github.com/JuliaLang/julia#required-build-tools-and-external-libraries) to build julia itself(note you need to build julia with `USE_BINARYBUILDER=0`), the following are required:
 
 - *Debian/Ubuntu*: `libedit-dev`, `libncurses5-dev`
 - *RedHat/CentOS*: `libedit-devel`
