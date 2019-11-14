@@ -218,9 +218,8 @@ nostdcxx = haskey(ENV,"CXXJL_NOSTDCXX")
 
 # On OS X, we just use the libc++ headers that ship with XCode
 @static if isapple() function collectStdHeaders!(headers)
-    cmd_path = strip(read(`xcode-select --print-path`, String))
-    sdk_path = joinpath(cmd_path, "SDKs", "MacOSX.sdk")
-    xcode_path = cmd_path
+    xcode_path = strip(read(`xcode-select --print-path`, String))
+    sdk_path = strip(read(`xcrun --show-sdk-path`, String))
     occursin("Xcode", xcode_path) && (xcode_path *= "/Toolchains/XcodeDefault.xctoolchain/")
     didfind = false
     lib = joinpath(xcode_path, "usr", "lib", "c++", "v1")
