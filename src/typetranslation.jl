@@ -436,11 +436,7 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}(
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-@static if IS_BINARYBUILD
-    include(joinpath(@__DIR__, "..", "deps", "usr", "build", "clang_constants.jl"))
-else
-    include(joinpath(@__DIR__, "..", "deps", "build", "clang_constants.jl"))
-end
+include(joinpath(@__DIR__, "..", "deps", "usr", "clang_constants.jl"))
 
 # TODO: Autogenerate this from the appropriate header
 # Decl::Kind

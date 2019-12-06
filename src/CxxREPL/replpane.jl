@@ -62,15 +62,16 @@ module CxxREPL
             addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "llvm-$ver_str", "include"))
         end
     else
-        cxxclangdir = joinpath(@__DIR__, "..", "..", "deps", "src", "clang-$ver_str", "include")
-        cxxllvmdir = joinpath(@__DIR__, "..", "..", "deps", "src", "llvm-$ver_str", "include")
+        llvmsrcdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "llvm-$ver_str")
+        cxxclangdir = joinpath(llvmsrcdir, "tools", "clang", "include")
+        cxxllvmdir = joinpath(llvmsrcdir, "include")
         if isdir(cxxclangdir)
             addHeaderDir(cxxclangdir)
-            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "build", "clang-$ver_str", "include"))
+            addHeaderDir(joinpath(BASE_JULIA_SRC, "usr", "include", "clang"))
         end
         if isdir(cxxllvmdir)
             addHeaderDir(cxxllvmdir)
-            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "build", "llvm-$ver_str", "include"))
+            addHeaderDir(joinpath(BASE_JULIA_SRC, "usr", "include", "llvm"))
         end
     end
 

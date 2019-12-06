@@ -10,8 +10,7 @@ binpath = BASE_JULIA_BIN
 srcpath = BASE_JULIA_SRC
 depspath = joinpath(BASE_JULIA_SRC, "deps", "srccache")
 
-# Load the Cxx.jl bootstrap library (in debug version if we're running the Julia
-# debug version)
+# Load the Cxx.jl bootstrap library (in debug version if we're running the Julia debug version)
 lib_suffix = ccall(:jl_is_debugbuild, Cint, ()) != 0 ? "-debug" : ""
 @static if Sys.iswindows()
     const libcxxffi = joinpath(@__DIR__, "..", "deps", "usr", "bin", "libcxxffi"*lib_suffix)
@@ -374,7 +373,7 @@ function collectClangHeaders!(headers)
     llvmver = string(Base.libllvm_version)
     baseclangdir = joinpath(BASE_JULIA_BIN, "..", "lib", "clang", llvmver, "include")
     cxxclangdir = @static IS_BINARYBUILD ? joinpath(@__DIR__, "..", "deps", "usr", "build", "clang-$llvmver", "lib", "clang", llvmver, "include") :
-                                           joinpath(@__DIR__, "..", "deps", "build", "clang-$llvmver", "lib", "clang", llvmver, "include")
+                                           baseclangdir
     if isdir(baseclangdir)
         push!(headers, (baseclangdir, C_ExternCSystem))
     else
