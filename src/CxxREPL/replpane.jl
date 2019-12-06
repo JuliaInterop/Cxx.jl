@@ -67,11 +67,11 @@ module CxxREPL
         cxxllvmdir = joinpath(llvmsrcdir, "include")
         if isdir(cxxclangdir)
             addHeaderDir(cxxclangdir)
-            addHeaderDir(joinpath(BASE_JULIA_SRC, "usr", "include", "clang"))
+            addHeaderDir(joinpath(CxxCore.BASE_JULIA_SRC, "usr", "include", "clang"))
         end
         if isdir(cxxllvmdir)
             addHeaderDir(cxxllvmdir)
-            addHeaderDir(joinpath(BASE_JULIA_SRC, "usr", "include", "llvm"))
+            addHeaderDir(joinpath(CxxCore.BASE_JULIA_SRC, "usr", "include", "llvm"))
         end
     end
 
