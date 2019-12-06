@@ -1723,10 +1723,10 @@ JL_DLLEXPORT void cleanup_cpp_env(C, cppcall_state_t *state)
     Cxx->CGM->Release();
 
     // Set all functions and globals to external linkage (MCJIT needs this ugh)
-    //for(Module::global_iterator I = jl_Module->global_begin(),
-    //        E = jl_Module->global_end(); I != E; ++I) {
-    //    I->setLinkage(llvm::GlobalVariable::ExternalLinkage);
-    //}
+    auto &jl_Module = Cxx->CGM->getModule();
+    for(auto I = jl_Module.global_begin(), E = jl_Module.global_end(); I != E; ++I) {
+       I->setLinkage(llvm::GlobalVariable::ExternalLinkage);
+    }
 
     Function *F = Cxx->CGF->CurFn;
 
