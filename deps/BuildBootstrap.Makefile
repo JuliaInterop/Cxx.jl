@@ -16,13 +16,13 @@ CURL := curl -fkL --connect-timeout $(TIMEOUT) -y $(TIMEOUT)
 
 usr/download:
 	@[ -d usr ] || mkdir usr
-	mkdir $@
+	mkdir -p $@
 
 LLVM_TARS := $(LLVM_TAR) $(CLANG_TAR) $(COMPILER_RT_TAR) $(LIBCXX_TAR) $(LIBCXXABI_TAR) $(POLLY_TAR) $(LIBUNWIND_TAR) $(LLD_TAR)
 
 llvm_tars: usr/download
 	@for tar in $(LLVM_TARS); do \
-		if [[ -e $</$$tar ]]; then \
+		if [ -e $</$$tar ]; then \
     		echo "$$tar already exists, please delete it manually if you'd like to re-download it."; \
 		else \
     		$(CURL) -o $</$$tar $(LLVM_URL_PREFIX)/$$tar ; \
@@ -31,7 +31,7 @@ llvm_tars: usr/download
 
 # unzip
 usr/src: usr/download
-	mkdir $@
+	mkdir -p $@
 
 llvm-$(LLVM_VER): usr/src llvm_tars
 	@[ -d $</$@ ] || mkdir -p $</$@
@@ -107,8 +107,8 @@ LLVM_LIB_NAME := LLVM
 LDFLAGS += -l$(LLVM_LIB_NAME)
 LIB_DEPENDENCY += $(JULIA_BIN)/../lib/lib$(LLVM_LIB_NAME).$(SHLIB_EXT)
 LLVM_EXTRA_CPPFLAGS = -DLLVM_NDEBUG
-JULIA_LIB := $(JULIA_BIN)/../lib/libjulia.dylib
-JULIA_DEBUG_LIB := $(JULIA_BIN)/../lib/libjulia-debug.dylib
+JULIA_LIB := $(JULIA_BIN)/../lib/libjulia.$(SHLIB_EXT)
+JULIA_DEBUG_LIB := $(JULIA_BIN)/../lib/libjulia-debug.$(SHLIB_EXT)
 
 all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) usr/clang_constants.jl
 
