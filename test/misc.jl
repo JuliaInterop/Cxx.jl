@@ -180,6 +180,7 @@ cxx""" enum myCoolEnum { OneValue = 1 }; """
 @assert icxx" OneValue; " == 1
 
 # Exception handling
+@static if !Sys.iswindows()
 try
     icxx" throw 20; "
     @assert false
@@ -211,7 +212,7 @@ catch e
     showerror(buf,e)
     @assert String(take!(buf)) == "5"
 end
-
+end # Sys.iswindows
 
 # Memory management
 cxx"""
