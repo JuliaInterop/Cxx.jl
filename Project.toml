@@ -1,10 +1,10 @@
 name = "Cxx"
 uuid = "a0b5b9ef-44b7-5148-a2d1-f6db19f3c3d2"
-version = "0.3.3"
+version = "0.3.4"
 
 [compat]
-julia = "1.1"
-BinaryProvider = "0.5.0"
+julia = "1.1, 1.3"
+BinaryProvider = "^0.5.0"
 
 [deps]
 BinaryProvider = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
