@@ -239,7 +239,7 @@ end
         end
     end
 end
-
+@static if !Sys.iswindows()
 @testset "Exceptions" begin
     @testset "std::length_error&" begin
         v = icxx"std::vector<$Int>{1, 2, 3};"
@@ -251,4 +251,5 @@ end
             @test startswith(sprint(showerror, err), "vector")
         end
     end
+end
 end
