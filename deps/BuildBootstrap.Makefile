@@ -130,7 +130,7 @@ usr/lib/libcxxffi.$(SHLIB_EXT):
 endif
 
 ifneq (,$(wildcard $(JULIA_DEBUG_LIB)))
-usr/lib/libcxxffi-debug.$(SHLIB_EXT): build/bootstrap.o $(LIB_DEPENDENCY) | usr/lib
+usr/lib/libcxxffi-debug.$(SHLIB_EXT): usr/lib/bootstrap.o $(LIB_DEPENDENCY) | usr/lib
 	@$(call PRINT_LINK, $(CXX) -shared -fPIC $(JULIA_LDFLAGS) -ljulia-debug $(LDFLAGS) -o $@ $(WHOLE_ARCHIVE) $(LINKED_LIBS) $(NO_WHOLE_ARCHIVE) $< )
 else
 usr/lib/libcxxffi-debug.$(SHLIB_EXT):

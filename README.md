@@ -12,7 +12,7 @@ The Julia C++ Foreign Function Interface (FFI) and REPL.
 
 
 ### Installation
-Now, this package provides an out-of-box installation experience on all 64-bit ["Tier 1"](https://julialang.org/downloads/#support-tiers) platforms for Julia 1.1.
+Now, this package provides an out-of-box installation experience on 64-bit Linux, macOS and Windows.
 ```
 pkg> add Cxx
 ```

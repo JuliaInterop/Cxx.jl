@@ -5,7 +5,7 @@ environment:
   - julia_version: nightly
 platform:
   - x64
-  - x86
+  # - x86
 matrix:
   allow_failures:
     - julia_version: nightly
