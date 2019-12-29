@@ -102,7 +102,7 @@ function get_llvmf_decl(tt)
   world = typemax(UInt)
   (ti, env, meth) = Base._methods_by_ftype(tt, 1, world)[1]
   #(ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
-  meth = Base.func_for_method_checked(meth, tt)
+  meth = Base.func_for_method_checked(meth, tt, tt.parameters)
   linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, tt, env, world)
   f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Cvoid}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
   f
