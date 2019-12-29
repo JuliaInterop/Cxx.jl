@@ -36,7 +36,6 @@ else
     @info "Building julia binary build"
     Sys.iswindows() && @warn "Windows support is still experimental!"
     ENV["LLVM_VER"] = Base.libllvm_version
-    ENV["JULIA_BINARY_BUILD"] = "1"
     ENV["PATH"] = string(BASE_JULIA_BIN,":",ENV["PATH"])
     include("build_libcxxffi.jl")
     s = s * "\n const IS_BINARYBUILD = true"

@@ -3,7 +3,6 @@ using Documenter, Cxx
 makedocs(
     modules = [Cxx],
     clean = false,
-    format = :html,
     sitename = "Cxx.jl",
     authors = "Keno Fischer",
     pages = [
@@ -17,5 +16,4 @@ makedocs(
 
 deploydocs(
     repo = "github.com/JuliaInterop/Cxx.jl.git",
-    target = "build",
 )

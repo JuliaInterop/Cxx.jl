@@ -14,13 +14,13 @@ LLD_TAR := lld-$(LLVM_VER).src.tar.xz
 TIMEOUT := 180
 CURL := curl -fkL --connect-timeout $(TIMEOUT) -y $(TIMEOUT)
 
-usr/download:
+usr/downloads:
 	@[ -d usr ] || mkdir usr
 	mkdir -p $@
 
 LLVM_TARS := $(LLVM_TAR) $(CLANG_TAR) $(COMPILER_RT_TAR) $(LIBCXX_TAR) $(LIBCXXABI_TAR) $(POLLY_TAR) $(LIBUNWIND_TAR) $(LLD_TAR)
 
-llvm_tars: usr/download
+llvm_tars: usr/downloads
 	@for tar in $(LLVM_TARS); do \
 		if [ -e $</$$tar ]; then \
     		echo "$$tar already exists, please delete it manually if you'd like to re-download it."; \
@@ -30,26 +30,26 @@ llvm_tars: usr/download
 	done
 
 # unzip
-usr/src: usr/download
+usr/src: usr/downloads
 	mkdir -p $@
 
 llvm-$(LLVM_VER): usr/src llvm_tars
 	@[ -d $</$@ ] || mkdir -p $</$@
-	tar -C $</$@ --strip-components=1 -xf usr/download/$(LLVM_TAR)
+	tar -C $</$@ --strip-components=1 -xf usr/downloads/$(LLVM_TAR)
 	@[ -d $</$@/tools/clang ] || mkdir -p $</$@/tools/clang
-	tar -C $</$@/tools/clang --strip-components=1 -xf usr/download/$(CLANG_TAR)
+	tar -C $</$@/tools/clang --strip-components=1 -xf usr/downloads/$(CLANG_TAR)
 	@[ -d $</$@/tools/polly ] || mkdir -p $</$@/tools/polly
-	tar -C $</$@/tools/polly --strip-components=1 -xf usr/download/$(POLLY_TAR)
+	tar -C $</$@/tools/polly --strip-components=1 -xf usr/downloads/$(POLLY_TAR)
 	@[ -d $</$@/tools/lld ] || mkdir -p $</$@/tools/lld
-	tar -C $</$@/tools/lld --strip-components=1 -xf usr/download/$(LLD_TAR)
+	tar -C $</$@/tools/lld --strip-components=1 -xf usr/downloads/$(LLD_TAR)
 	@[ -d $</$@/projects/compiler-rt ] || mkdir -p $</$@/projects/compiler-rt
-	tar -C $</$@/projects/compiler-rt --strip-components=1 -xf usr/download/$(COMPILER_RT_TAR)
+	tar -C $</$@/projects/compiler-rt --strip-components=1 -xf usr/downloads/$(COMPILER_RT_TAR)
 	@[ -d $</$@/projects/libcxx ] || mkdir -p $</$@/projects/libcxx
-	tar -C $</$@/projects/libcxx --strip-components=1 -xf usr/download/$(LIBCXX_TAR)
+	tar -C $</$@/projects/libcxx --strip-components=1 -xf usr/downloads/$(LIBCXX_TAR)
 	@[ -d $</$@/projects/libcxxabi ] || mkdir -p $</$@/projects/libcxxabi
-	tar -C $</$@/projects/libcxxabi --strip-components=1 -xf usr/download/$(LIBCXXABI_TAR)
+	tar -C $</$@/projects/libcxxabi --strip-components=1 -xf usr/downloads/$(LIBCXXABI_TAR)
 	@[ -d $</$@/projects/libunwind ] || mkdir -p $</$@/projects/libunwind
-	tar -C $</$@/projects/libunwind --strip-components=1 -xf usr/download/$(LIBUNWIND_TAR)
+	tar -C $</$@/projects/libunwind --strip-components=1 -xf usr/downloads/$(LIBUNWIND_TAR)
 
 # apply patches
 llvm-patched: llvm-$(LLVM_VER)

@@ -385,7 +385,7 @@ end
 function collectAllHeaders!(headers, nostdcxx)
     nostdcxx || collectStdHeaders!(headers)
     for header in split(get(ENV, "CXXJL_HEADER_DIRS", ""), ":")
-      push!(headers, (header, C_System))
+        isempty(header) || push!(headers, (header, C_System))
     end
     collectClangHeaders!(headers)
     headers
