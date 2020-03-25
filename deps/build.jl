@@ -28,14 +28,14 @@ llvm_config_path = joinpath(BASE_JULIA_BIN, "..", "tools", "llvm-config")
 if isfile(llvm_config_path)
     @info "Building julia source build"
     ENV["LLVM_CONFIG"] = llvm_config_path
-    delete!(ENV,"LLVM_VER")
+    ENV["LLVM_VER"] = string(Base.libllvm_version)
     make = Sys.isbsd() && !Sys.isapple() ? `gmake` : `make`
     run(`$make all -j$(Sys.CPU_THREADS) -f BuildBootstrap.Makefile BASE_JULIA_BIN=$BASE_JULIA_BIN BASE_JULIA_SRC=$BASE_JULIA_SRC`)
     s = s * "\n const IS_BINARYBUILD = false"
 else
     @info "Building julia binary build"
     Sys.iswindows() && @warn "Windows support is still experimental!"
-    ENV["LLVM_VER"] = Base.libllvm_version
+    ENV["LLVM_VER"] = string(Base.libllvm_version)
     ENV["PATH"] = string(BASE_JULIA_BIN,":",ENV["PATH"])
     include("build_libcxxffi.jl")
     s = s * "\n const IS_BINARYBUILD = true"

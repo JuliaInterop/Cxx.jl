@@ -1,6 +1,5 @@
 # Cxx source build
 # download sources
-LLVM_VER := 6.0.1
 LLVM_URL_PREFIX := http://releases.llvm.org/$(LLVM_VER)
 LLVM_TAR := llvm-$(LLVM_VER).src.tar.xz
 CLANG_TAR := cfe-$(LLVM_VER).src.tar.xz
