@@ -1,41 +1,19 @@
-commit 8eb2b102a203d83fb713f3bf79acf235dabdd8cd
-Author: Keno Fischer <keno@juliacomputing.com>
-Date:   Mon Jul 30 16:59:08 2018 -0400
-
-    [VNCoercion] Disallow coercion between different ni addrspaces
-    
-    Summary:
-    I'm not sure if it would be legal by the IR reference to introduce
-    an addrspacecast here, since the IR reference is a bit vague on
-    the exact semantics, but at least for our usage of it (and I
-    suspect for many other's usage) it is not. For us, addrspacecasts
-    between non-integral address spaces carry frontend information that the
-    optimizer cannot deduce afterwards in a generic way (though we
-    have frontend specific passes in our pipline that do propagate
-    these). In any case, I'm sure nobody is using it this way at
-    the moment, since it would have introduced inttoptrs, which
-    are definitely illegal.
-    
-    Fixes PR38375
-    
-    Reviewers: sanjoy, reames, dberlin
-    
-    Subscribers: llvm-commits
-    
-    Differential Revision: https://reviews.llvm.org/D50010
-
 diff --git a/lib/Transforms/Utils/VNCoercion.cpp b/lib/Transforms/Utils/VNCoercion.cpp
-index c3feea6a0a4..735d1e7b792 100644
+index 948d9bd5baa..fbd5b9bb3be 100644
 --- a/lib/Transforms/Utils/VNCoercion.cpp
 +++ b/lib/Transforms/Utils/VNCoercion.cpp
-@@ -20,14 +20,21 @@ bool canCoerceMustAliasedValueToLoad(Value *StoredVal, Type *LoadTy,
+@@ -20,7 +20,8 @@ bool canCoerceMustAliasedValueToLoad(Value *StoredVal, Type *LoadTy,
        StoredVal->getType()->isStructTy() || StoredVal->getType()->isArrayTy())
      return false;
  
+-  uint64_t StoreSize = DL.getTypeSizeInBits(StoredVal->getType());
 +  Type *StoredValTy = StoredVal->getType();
-+
-   // The store has to be at least as big as the load.
-   if (DL.getTypeSizeInBits(StoredVal->getType()) < DL.getTypeSizeInBits(LoadTy))
++  uint64_t StoreSize = DL.getTypeSizeInBits(StoredValTy);
+ 
+   // The store size must be byte-aligned to support future type casts.
+   if (llvm::alignTo(StoreSize, 8) != StoreSize)
+@@ -30,10 +31,15 @@ bool canCoerceMustAliasedValueToLoad(Value *StoredVal, Type *LoadTy,
+   if (StoreSize < DL.getTypeSizeInBits(LoadTy))
      return false;
  
 -  // Don't coerce non-integral pointers to integers or vice versa.
@@ -44,11 +22,11 @@ index c3feea6a0a4..735d1e7b792 100644
 +  bool StoredNI = DL.isNonIntegralPointerType(StoredValTy);
 +  bool LoadNI = DL.isNonIntegralPointerType(LoadTy);
 +  if (StoredNI != LoadNI) {
-     return false;
++    return false;
 +  } else if (StoredNI && LoadNI &&
 +             cast<PointerType>(StoredValTy)->getAddressSpace() !=
 +                 cast<PointerType>(LoadTy)->getAddressSpace()) {
-+    return false;
+     return false;
 +  }
  
    return true;

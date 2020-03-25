@@ -1,14 +1,7 @@
 # Cxx source build
 # download sources
-LLVM_URL_PREFIX := http://releases.llvm.org/$(LLVM_VER)
-LLVM_TAR := llvm-$(LLVM_VER).src.tar.xz
-CLANG_TAR := cfe-$(LLVM_VER).src.tar.xz
-COMPILER_RT_TAR := compiler-rt-$(LLVM_VER).src.tar.xz
-LIBCXX_TAR := libcxx-$(LLVM_VER).src.tar.xz
-LIBCXXABI_TAR := libcxxabi-$(LLVM_VER).src.tar.xz
-POLLY_TAR := polly-$(LLVM_VER).src.tar.xz
-LIBUNWIND_TAR := libunwind-$(LLVM_VER).src.tar.xz
-LLD_TAR := lld-$(LLVM_VER).src.tar.xz
+LLVM_URL_PREFIX := https://github.com/llvm/llvm-project/archive/
+LLVM_TAR := llvmorg-$(LLVM_VER).tar.gz
 
 TIMEOUT := 180
 CURL := curl -fkL --connect-timeout $(TIMEOUT) -y $(TIMEOUT)
@@ -17,7 +10,7 @@ usr/downloads:
 	@[ -d usr ] || mkdir usr
 	mkdir -p $@
 
-LLVM_TARS := $(LLVM_TAR) $(CLANG_TAR) $(COMPILER_RT_TAR) $(LIBCXX_TAR) $(LIBCXXABI_TAR) $(POLLY_TAR) $(LIBUNWIND_TAR) $(LLD_TAR)
+LLVM_TARS := $(LLVM_TAR)
 
 llvm_tars: usr/downloads
 	@for tar in $(LLVM_TARS); do \
@@ -35,25 +28,32 @@ usr/src: usr/downloads
 llvm-$(LLVM_VER): usr/src llvm_tars
 	@[ -d $</$@ ] || mkdir -p $</$@
 	tar -C $</$@ --strip-components=1 -xf usr/downloads/$(LLVM_TAR)
-	@[ -d $</$@/tools/clang ] || mkdir -p $</$@/tools/clang
-	tar -C $</$@/tools/clang --strip-components=1 -xf usr/downloads/$(CLANG_TAR)
-	@[ -d $</$@/tools/polly ] || mkdir -p $</$@/tools/polly
-	tar -C $</$@/tools/polly --strip-components=1 -xf usr/downloads/$(POLLY_TAR)
-	@[ -d $</$@/tools/lld ] || mkdir -p $</$@/tools/lld
-	tar -C $</$@/tools/lld --strip-components=1 -xf usr/downloads/$(LLD_TAR)
-	@[ -d $</$@/projects/compiler-rt ] || mkdir -p $</$@/projects/compiler-rt
-	tar -C $</$@/projects/compiler-rt --strip-components=1 -xf usr/downloads/$(COMPILER_RT_TAR)
-	@[ -d $</$@/projects/libcxx ] || mkdir -p $</$@/projects/libcxx
-	tar -C $</$@/projects/libcxx --strip-components=1 -xf usr/downloads/$(LIBCXX_TAR)
-	@[ -d $</$@/projects/libcxxabi ] || mkdir -p $</$@/projects/libcxxabi
-	tar -C $</$@/projects/libcxxabi --strip-components=1 -xf usr/downloads/$(LIBCXXABI_TAR)
-	@[ -d $</$@/projects/libunwind ] || mkdir -p $</$@/projects/libunwind
-	tar -C $</$@/projects/libunwind --strip-components=1 -xf usr/downloads/$(LIBUNWIND_TAR)
 
 # apply patches
-llvm-patched: llvm-$(LLVM_VER)
-	cd usr/src/$< && \
-	for p in ../../../llvm_patches/*.patch; do \
+llvm: llvm-$(LLVM_VER)
+	cd usr/src/$</$@ && \
+	for p in ../../../../llvm_patches/*.patch; do \
+		echo "Applying patch $$p"; \
+		patch -p1 < $$p ; \
+	done
+
+clang: llvm-$(LLVM_VER)
+	cd usr/src/$</$@ && \
+	for p in ../../../../clang_patches/*.patch; do \
+		echo "Applying patch $$p"; \
+		patch -p1 < $$p ; \
+	done
+
+compiler-rt: llvm-$(LLVM_VER)
+	cd usr/src/$</$@ && \
+	for p in ../../../../crt_patches/*.patch; do \
+		echo "Applying patch $$p"; \
+		patch -p1 < $$p ; \
+	done
+
+libcxx: llvm-$(LLVM_VER)
+	cd usr/src/$</$@ && \
+	for p in ../../../../libcxx_patches/*.patch; do \
 		echo "Applying patch $$p"; \
 		patch -p1 < $$p ; \
 	done
@@ -72,8 +72,8 @@ endif
 
 JULIA_SOURCE_INCLUDE_DIRS := $(JULIA_SRC)/src/support
 JULIA_INCLUDE_DIRS := $(JULIA_BIN)/../include
-CLANG_SOURCE_INCLUDE_DIRS := usr/src/llvm-$(LLVM_VER)/tools/clang/include
-CLANG_SOURCE_INCLUDE_DIRS += usr/src/llvm-$(LLVM_VER)/tools/clang/lib
+CLANG_SOURCE_INCLUDE_DIRS := usr/src/llvm-$(LLVM_VER)/clang/include
+CLANG_SOURCE_INCLUDE_DIRS += usr/src/llvm-$(LLVM_VER)/clang/lib
 CLANG_INCLUDE_DIRS := $(JULIA_BIN)/../include $(JULIA_BIN)/../include/clang
 INCLUDE_DIRS := $(JULIA_SOURCE_INCLUDE_DIRS) $(JULIA_INCLUDE_DIRS) $(CLANG_SOURCE_INCLUDE_DIRS) $(CLANG_INCLUDE_DIRS)
 CXXJL_CPPFLAGS = $(addprefix -I, $(INCLUDE_DIRS))
@@ -114,7 +114,7 @@ all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) usr/cla
 usr/lib: usr/src
 	mkdir $@
 
-usr/lib/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) llvm-patched | usr/lib
+usr/lib/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) llvm clang compiler-rt libcxx | usr/lib
 	@$(call PRINT_CC, $(CXX) $(CXX_ABI_SETTING) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) $(LLVM_EXTRA_CPPFLAGS) -c ../src/bootstrap.cpp -o $@)
 
 ifneq (,$(wildcard $(JULIA_LIB)))

@@ -1,0 +1,119 @@
+diff --git a/include/clang/Driver/CC1Options.td b/include/clang/Driver/CC1Options.td
+index 07c76884063..cff6280bb4a 100644
+--- a/include/clang/Driver/CC1Options.td
++++ b/include/clang/Driver/CC1Options.td
+@@ -146,6 +146,9 @@ def analyzer_config_compatibility_mode : Separate<["-"], "analyzer-config-compat
+ def analyzer_config_compatibility_mode_EQ : Joined<["-"], "analyzer-config-compatibility-mode=">,
+   Alias<analyzer_config_compatibility_mode>;
+ 
++def analyzer_werror : Flag<["-"], "analyzer-werror">,
++  HelpText<"Emit analyzer results as errors rather than warnings">;
++
+ //===----------------------------------------------------------------------===//
+ // Migrator Options
+ //===----------------------------------------------------------------------===//
+diff --git a/include/clang/StaticAnalyzer/Core/AnalyzerOptions.h b/include/clang/StaticAnalyzer/Core/AnalyzerOptions.h
+index 7745e459e19..ea59779fda8 100644
+--- a/include/clang/StaticAnalyzer/Core/AnalyzerOptions.h
++++ b/include/clang/StaticAnalyzer/Core/AnalyzerOptions.h
+@@ -216,6 +216,9 @@ public:
+   /// strategy. We get better code coverage when retry is enabled.
+   unsigned NoRetryExhausted : 1;
+ 
++  /// Emit analyzer warnings as errors.
++  unsigned AnalyzerWerror : 1;
++
+   /// The inlining stack depth limit.
+   // Cap the stack depth at 4 calls (5 stack frames, base + 4 calls).
+   unsigned InlineMaxStackDepth = 5;
+@@ -265,7 +268,8 @@ public:
+         AnalyzeAll(false), AnalyzerDisplayProgress(false),
+         AnalyzeNestedBlocks(false), eagerlyAssumeBinOpBifurcation(false),
+         TrimGraph(false), visualizeExplodedGraphWithGraphViz(false),
+-        UnoptimizedCFG(false), PrintStats(false), NoRetryExhausted(false) {
++        UnoptimizedCFG(false), PrintStats(false), NoRetryExhausted(false),
++        AnalyzerWerror(false) {
+     llvm::sort(AnalyzerConfigCmdFlags);
+   }
+ 
+diff --git a/clang/lib/Frontend/CompilerInvocation.cpp b/lib/Frontend/CompilerInvocation.cpp
+index 3e6528c2598..74c3e57eb99 100644
+--- a/lib/Frontend/CompilerInvocation.cpp
++++ b/lib/Frontend/CompilerInvocation.cpp
+@@ -299,6 +299,7 @@ static bool ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
+     Args.hasArg(OPT_analyzer_viz_egraph_graphviz);
+   Opts.DumpExplodedGraphTo = Args.getLastArgValue(OPT_analyzer_dump_egraph);
+   Opts.NoRetryExhausted = Args.hasArg(OPT_analyzer_disable_retry_exhausted);
++  Opts.AnalyzerWerror = Args.hasArg(OPT_analyzer_werror);
+   Opts.AnalyzeAll = Args.hasArg(OPT_analyzer_opt_analyze_headers);
+   Opts.AnalyzerDisplayProgress = Args.hasArg(OPT_analyzer_display_progress);
+   Opts.AnalyzeNestedBlocks =
+diff --git a/lib/StaticAnalyzer/Frontend/AnalysisConsumer.cpp b/lib/StaticAnalyzer/Frontend/AnalysisConsumer.cpp
+index d87937d9b63..9415d7ed8a9 100644
+--- a/lib/StaticAnalyzer/Frontend/AnalysisConsumer.cpp
++++ b/lib/StaticAnalyzer/Frontend/AnalysisConsumer.cpp
+@@ -84,10 +84,11 @@ void ento::createTextPathDiagnosticConsumer(AnalyzerOptions &AnalyzerOpts,
+ namespace {
+ class ClangDiagPathDiagConsumer : public PathDiagnosticConsumer {
+   DiagnosticsEngine &Diag;
+-  bool IncludePath;
++  bool IncludePath, ShouldEmitAsError;
++
+ public:
+   ClangDiagPathDiagConsumer(DiagnosticsEngine &Diag)
+-    : Diag(Diag), IncludePath(false) {}
++      : Diag(Diag), IncludePath(false), ShouldEmitAsError(false) {}
+   ~ClangDiagPathDiagConsumer() override {}
+   StringRef getName() const override { return "ClangDiags"; }
+ 
+@@ -102,9 +103,14 @@ public:
+     IncludePath = true;
+   }
+ 
++  void enableWerror() { ShouldEmitAsError = true; }
++
+   void FlushDiagnosticsImpl(std::vector<const PathDiagnostic *> &Diags,
+                             FilesMade *filesMade) override {
+-    unsigned WarnID = Diag.getCustomDiagID(DiagnosticsEngine::Warning, "%0");
++    unsigned WarnID =
++        ShouldEmitAsError
++            ? Diag.getCustomDiagID(DiagnosticsEngine::Error, "%0")
++            : Diag.getCustomDiagID(DiagnosticsEngine::Warning, "%0");
+     unsigned NoteID = Diag.getCustomDiagID(DiagnosticsEngine::Note, "%0");
+ 
+     for (std::vector<const PathDiagnostic*>::iterator I = Diags.begin(),
+@@ -226,6 +232,9 @@ public:
+           new ClangDiagPathDiagConsumer(PP.getDiagnostics());
+       PathConsumers.push_back(clangDiags);
+ 
++      if (Opts->AnalyzerWerror)
++        clangDiags->enableWerror();
++
+       if (Opts->AnalysisDiagOpt == PD_TEXT) {
+         clangDiags->enablePaths();
+ 
+diff --git a/test/Analysis/override-werror.c b/test/Analysis/override-werror.c
+index 7dc09f51862..df80bac84f4 100644
+--- a/test/Analysis/override-werror.c
++++ b/test/Analysis/override-werror.c
+@@ -1,14 +1,17 @@
+ // RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.core -Werror %s -analyzer-store=region -verify
++// RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.core -Werror %s -analyzer-store=region -analyzer-werror -verify=werror
+ 
+ // This test case illustrates that using '-analyze' overrides the effect of
+ // -Werror.  This allows basic warnings not to interfere with producing
+ // analyzer results.
+ 
+-char* f(int *p) { 
+-  return p; // expected-warning{{incompatible pointer types}}
++char* f(int *p) {
++  return p; // expected-warning{{incompatible pointer types}} \
++               werror-warning{{incompatible pointer types}}
+ }
+ 
+ void g(int *p) {
+-  if (!p) *p = 0; // expected-warning{{null}}  
++  if (!p) *p = 0; // expected-warning{{null}} \
++                     werror-error{{null}}
+ }
+ 
