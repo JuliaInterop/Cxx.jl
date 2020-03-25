@@ -237,8 +237,7 @@ JL_DLLEXPORT void add_directory(CxxInstance *Cxx, int kind, int isFramework, con
 JL_DLLEXPORT int isCCompiler(CxxInstance *Cxx)
 {
     return Cxx->CI->getLangOpts().CPlusPlus == 0 &&
-           Cxx->CI->getLangOpts().ObjC1 == 0 &&
-           Cxx->CI->getLangOpts().ObjC2 == 0;
+           Cxx->CI->getLangOpts().ObjC == 0;
 }
 
 JL_DLLEXPORT int _cxxparse(CxxInstance *Cxx)
