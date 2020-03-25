@@ -1099,19 +1099,26 @@ JL_DLLEXPORT int typeconstruct(CxxInstance *Cxx,void *type, clang::Expr **rawexp
 JL_DLLEXPORT void *BuildCXXNewExpr(CxxInstance *Cxx, clang::Type *type, clang::Expr **exprs, size_t nexprs)
 {
   clang::QualType Ty = clang::QualType::getFromOpaquePtr(type);
-    clang::SourceManager &sm = Cxx->CI->getSourceManager();
-  return (void*) Cxx->CI->getSema().BuildCXXNew(clang::SourceRange(),
-    false, getTrivialSourceLocation(Cxx),
-    clang::MultiExprArg(), getTrivialSourceLocation(Cxx), clang::SourceRange(),
-    Ty, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(Ty),
-    NULL, clang::SourceRange(sm.getLocForStartOfFile(sm.getMainFileID()),
-      sm.getLocForStartOfFile(sm.getMainFileID())),
-    new (Cxx->CI->getASTContext()) clang::ParenListExpr(Cxx->CI->getASTContext(),getTrivialSourceLocation(Cxx),
-      ArrayRef<clang::Expr*>(exprs, nexprs), getTrivialSourceLocation(Cxx))
-#ifndef LLVM40
-      ,false
-#endif
-    ).get();
+  clang::SourceManager &sm = Cxx->CI->getSourceManager();
+  return (void*) Cxx->CI->getSema().BuildCXXNew(
+                    clang::SourceRange(),
+                    false,
+                    getTrivialSourceLocation(Cxx),
+                    clang::MultiExprArg(),
+                    getTrivialSourceLocation(Cxx),
+                    clang::SourceRange(),
+                    Ty,
+                    Cxx->CI->getASTContext().getTrivialTypeSourceInfo(Ty),
+                    NULL,
+                    clang::SourceRange(sm.getLocForStartOfFile(sm.getMainFileID()),
+                                       sm.getLocForStartOfFile(sm.getMainFileID())),
+                    clang::ParenListExpr::Create(
+                        Cxx->CI->getASTContext(),
+                        getTrivialSourceLocation(Cxx),
+                        ArrayRef<clang::Expr*>(exprs, nexprs),
+                        getTrivialSourceLocation(Cxx)
+                      )
+                  ).get();
   //return (clang_astcontext) new clang::CXXNewExpr(clang_astcontext, false, nE, dE, )
 }
 
