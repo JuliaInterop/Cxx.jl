@@ -780,14 +780,11 @@ static Function *CloneFunctionAndAdjust(CxxInstance *Cxx, Function *F, FunctionT
     bool isboxed = false;
     Type *retty = f_julia_type_to_llvm(jl_retty, &isboxed);
     if (isboxed || (Call->getType()->isPointerTy() &&
-      cast<PointerType>(Call->getType())->getElementType()->isAggregateType())) {
-      Cxx->CGF->EmitAggregateCopy(Cxx->CGF->ReturnValue,
-#ifdef LLVM38
-                                  clang::CodeGen::Address(Call,clang::CharUnits::fromQuantity(sizeof(void*))),
-#else
-                                  Call,
-#endif
-                                  FD->getReturnType());
+        cast<PointerType>(Call->getType())->getElementType()->isAggregateType())) {
+      clang::QualType type = FD->getReturnType();
+      clang::CodeGen::LValue dest = Cxx->CGF->MakeAddrLValue(Cxx->CGF->ReturnValue, type);
+      clang::CodeGen::LValue src = Cxx->CGF->MakeAddrLValue(clang::CodeGen::Address(Call, clang::CharUnits::fromQuantity(sizeof(void*))), type);
+      Cxx->CGF->EmitAggregateCopy(dest, src, type, clang::CodeGen::AggValueSlot::DoesNotOverlap);
       Cxx->CGF->EmitFunctionEpilog(FI, false, clang::SourceLocation());
     } else {
       Value *Ret = Call;
