@@ -1098,7 +1098,7 @@ JL_DLLEXPORT void *EmitCXXNewExpr(CxxInstance *Cxx, clang::Expr *E)
   return (void*)Cxx->CGF->EmitCXXNewExpr(cast<clang::CXXNewExpr>(E));
 }
 
-JL_DLLEXPORT void *build_call_to_member(CxxInstance *Cxx, clang::Expr *MemExprE,clang::Expr **exprs, size_t nexprs)
+JL_DLLEXPORT void *build_call_to_member(CxxInstance *Cxx, clang::Expr *MemExprE, clang::Expr **exprs, size_t nexprs)
 {
   if (MemExprE->getType() == Cxx->CI->getASTContext().BoundMemberTy ||
          MemExprE->getType() == Cxx->CI->getASTContext().OverloadTy)
@@ -1108,15 +1108,14 @@ JL_DLLEXPORT void *build_call_to_member(CxxInstance *Cxx, clang::Expr *MemExprE,
     return NULL;
   }
   else {
-    return (void*) new (&Cxx->CI->getASTContext()) clang::CXXMemberCallExpr::Create(
-                                                      Cxx->CI->getASTContext(),
-                                                      MemExprE,
-                                                      ArrayRef<clang::Expr*>(exprs,nexprs),
-                                                      cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
-                                                      clang::VK_RValue,
-                                                      getTrivialSourceLocation(Cxx),
-                                                      0
-                                                    );
+    return (void*) clang::CXXMemberCallExpr::Create(
+                      Cxx->CI->getASTContext(),
+                      MemExprE,
+                      ArrayRef<clang::Expr*>(exprs, nexprs),
+                      cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
+                      clang::VK_RValue,
+                      getTrivialSourceLocation(Cxx)
+                    );
   }
 }
 
@@ -2869,7 +2868,7 @@ JL_DLLEXPORT void *CreateCStyleCast(CxxInstance *Cxx, clang::Expr *E, clang::Typ
 
 JL_DLLEXPORT void *CreateReturnStmt(CxxInstance *Cxx, clang::Expr *E)
 {
-  return (void*)new (Cxx->CI->getASTContext()) clang::ReturnStmt::Create(Cxx->CI->getASTContext(), clang::SourceLocation(),E,nullptr);
+  return (void*) clang::ReturnStmt::Create(Cxx->CI->getASTContext(), clang::SourceLocation(), E, nullptr);
 }
 
 JL_DLLEXPORT void *CreateThisExpr(CxxInstance *Cxx, void *T)
