@@ -1610,7 +1610,7 @@ static void finish_clang_init(CxxInstance *Cxx, bool EmitPCH, const char *PCHBuf
     clang::SourceManager &sm = Cxx->CI->getSourceManager();
     const char *fname = PCHBuffer ? "/Cxx.cpp" : "/Cxx.h";
     const clang::FileEntry *MainFile = Cxx->CI->getFileManager().getVirtualFile(fname, 0, time(0));
-    sm.overrideFileContents(MainFile, llvm::MemoryBuffer::getNewMemBuffer(0, fname));
+    sm.overrideFileContents(MainFile, llvm::WritableMemoryBuffer::getNewMemBuffer(0, fname));
     sm.setMainFileID(sm.createFileID(MainFile, clang::SourceLocation(), clang::SrcMgr::C_User));
 
     sema.getPreprocessor().EnterMainSourceFile();
