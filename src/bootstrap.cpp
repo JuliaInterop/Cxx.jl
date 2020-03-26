@@ -1138,10 +1138,15 @@ JL_DLLEXPORT void *build_call_to_member(CxxInstance *Cxx, clang::Expr *MemExprE,
     return NULL;
   }
   else {
-    return (void*) new (&Cxx->CI->getASTContext()) clang::CXXMemberCallExpr(Cxx->CI->getASTContext(),
-        MemExprE,ArrayRef<clang::Expr*>(exprs,nexprs),
-        cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
-        clang::VK_RValue,getTrivialSourceLocation(Cxx));
+    return (void*) new (&Cxx->CI->getASTContext()) clang::CXXMemberCallExpr::Create(
+                                                      Cxx->CI->getASTContext(),
+                                                      MemExprE,
+                                                      ArrayRef<clang::Expr*>(exprs,nexprs),
+                                                      cast<clang::CXXMethodDecl>(cast<clang::MemberExpr>(MemExprE)->getMemberDecl())->getReturnType(),
+                                                      clang::VK_RValue,
+                                                      getTrivialSourceLocation(Cxx),
+                                                      0
+                                                    );
   }
 }
 
@@ -2864,8 +2869,14 @@ CreateFunctionRefExpr(clang::Sema &S, clang::FunctionDecl *Fn, clang::NamedDecl 
   // being used.
   if (FoundDecl != Fn && S.DiagnoseUseOfDecl(Fn, Loc))
     return clang::ExprError();
-  clang::DeclRefExpr *DRE = new (S.Context) clang::DeclRefExpr(Fn, false, Fn->getType(),
-                                                 clang::VK_LValue, Loc, LocInfo);
+  clang::DeclRefExpr *DRE = new (S.Context) clang::DeclRefExpr::Create(
+                                              Fn,
+                                              false,
+                                              Fn->getType(),
+                                              clang::VK_LValue,
+                                              Loc,
+                                              LocInfo
+                                            );
   if (HadMultipleCandidates)
     DRE->setHadMultipleCandidates(true);
 
@@ -2881,13 +2892,13 @@ CreateFunctionRefExpr(clang::Sema &S, clang::FunctionDecl *Fn, clang::NamedDecl 
 JL_DLLEXPORT void *CreateCStyleCast(CxxInstance *Cxx, clang::Expr *E, clang::Type *T)
 {
   clang::QualType QT(T,0);
-  return (void*)clang::CStyleCastExpr::Create (Cxx->CI->getASTContext(), QT, clang::VK_RValue, clang::CK_BitCast,
+  return (void*)clang::CStyleCastExpr::Create(Cxx->CI->getASTContext(), QT, clang::VK_RValue, clang::CK_BitCast,
     E, nullptr, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(QT), clang::SourceLocation(), clang::SourceLocation());
 }
 
 JL_DLLEXPORT void *CreateReturnStmt(CxxInstance *Cxx, clang::Expr *E)
 {
-  return (void*)new (Cxx->CI->getASTContext()) clang::ReturnStmt(clang::SourceLocation(),E,nullptr);
+  return (void*)new (Cxx->CI->getASTContext()) clang::ReturnStmt::Create(clang::SourceLocation(),E,nullptr);
 }
 
 JL_DLLEXPORT void *CreateThisExpr(CxxInstance *Cxx, void *T)
