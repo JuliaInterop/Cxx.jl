@@ -74,15 +74,17 @@ JULIA_SOURCE_INCLUDE_DIRS := $(JULIA_SRC)/src/support
 JULIA_INCLUDE_DIRS := $(JULIA_BIN)/../include
 CLANG_SOURCE_INCLUDE_DIRS := usr/src/llvm-$(LLVM_VER)/clang/include
 CLANG_SOURCE_INCLUDE_DIRS += usr/src/llvm-$(LLVM_VER)/clang/lib
-CLANG_INCLUDE_DIRS := $(JULIA_BIN)/../include $(JULIA_BIN)/../include/clang
+# CLANG_INCLUDE_DIRS := $(JULIA_BIN)/../include $(JULIA_BIN)/../include/clang
 INCLUDE_DIRS := $(JULIA_SOURCE_INCLUDE_DIRS) $(JULIA_INCLUDE_DIRS) $(CLANG_SOURCE_INCLUDE_DIRS) $(CLANG_INCLUDE_DIRS)
 CXXJL_CPPFLAGS = $(addprefix -I, $(INCLUDE_DIRS))
 
-CLANG_LIBS := clangFrontendTool clangBasic clangLex clangDriver clangFrontend clangParse
-CLANG_LIBS += clangAST clangASTMatchers clangSema clangAnalysis clangEdit
-CLANG_LIBS += clangRewriteFrontend clangRewrite clangSerialization clangStaticAnalyzerCheckers
-CLANG_LIBS += clangStaticAnalyzerCore clangStaticAnalyzerFrontend clangTooling clangToolingCore
-CLANG_LIBS += clangCodeGen clangARCMigrate clangFormat
+CLANG_LIBS := clangAnalysis clangARCMigrate clangAST clangASTMatchers
+CLANG_LIBS += clangBasic clangCodeGen clangCrossTU clangDriver clangDynamicASTMatchers
+CLANG_LIBS += clangEdit clangFormat clangFrontend clangFrontendTool
+CLANG_LIBS += clangHandleCXX clangHandleLLVM clangIndex
+CLANG_LIBS += clangLex clangParse clangRewrite clangRewriteFrontend clangSema clangSerialization
+CLANG_LIBS += clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangStaticAnalyzerFrontend
+CLANG_LIBS += clangTooling clangToolingASTDiff clangToolingCore clangToolingInclusions clangToolingRefactor
 LINKED_LIBS = $(addprefix -l,$(CLANG_LIBS))
 
 LIB_DIRS := $(JULIA_BIN)/../lib

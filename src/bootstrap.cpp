@@ -43,9 +43,7 @@
 // // Clang includes
 #include "clang/AST/AST.h"
 #include "clang/AST/DeclVisitor.h"
-#define private public
 #include "clang/AST/ExprCXX.h"
-#undef private
 #include "clang/AST/PrettyDeclStackTrace.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "clang/Frontend/FrontendOptions.h"
