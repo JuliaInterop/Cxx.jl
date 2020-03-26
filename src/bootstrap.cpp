@@ -1511,14 +1511,14 @@ static void finish_clang_init(CxxInstance *Cxx, bool EmitPCH, const char *PCHBuf
       std::make_shared<clang::TargetOptions>(Cxx->CI->getTargetOpts())));
     clang::TargetInfo &tin = Cxx->CI->getTarget();
     if (PCHBuffer) {
-        llvm::IntrusiveRefCntPtr<clang::vfs::OverlayFileSystem>
-          Overlay(new clang::vfs::OverlayFileSystem(
-            clang::vfs::getRealFileSystem()));
-        llvm::IntrusiveRefCntPtr<clang::vfs::InMemoryFileSystem> IMFS(
-          new clang::vfs::InMemoryFileSystem);
-        IMFS->addFile("/Cxx.pch", PCHTime, llvm::MemoryBuffer::getMemBuffer(
-          StringRef(PCHBuffer, PCHBufferSize), "Cxx.pch", false
-        ));
+        llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> Overlay(
+           new llvm::vfs::OverlayFileSystem(llvm::vfs::getRealFileSystem()));
+        llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> IMFS(new llvm::vfs::InMemoryFileSystem);
+        IMFS->addFile(
+            "/Cxx.pch",
+            PCHTime,
+            llvm::MemoryBuffer::getMemBuffer(StringRef(PCHBuffer, PCHBufferSize), "Cxx.pch", false)
+          );
         Overlay->pushOverlay(IMFS);
         Cxx->CI->setVirtualFileSystem(Overlay);
     }
