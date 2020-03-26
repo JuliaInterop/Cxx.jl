@@ -35,70 +35,45 @@
 #endif
 
 // LLVM includes
-#include "llvm/ADT/DenseMapInfo.h"
-#ifdef LLVM40
-#include "llvm/Bitcode/BitcodeWriter.h"
-#else
-#include "llvm/Bitcode/ReaderWriter.h"
-#endif
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/Host.h"
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include "llvm/IR/ValueMap.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Transforms/Utils/ValueMapper.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Verifier.h"
 
-
-// Clang includes
-#include "clang/Sema/ScopeInfo.h"
-#include "clang/AST/ASTContext.h"
-// Well, yes this is cheating
-#define private public
-#include "clang/Parse/Parser.h"
-#undef private
-#include "clang/Parse/ParseDiagnostic.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/StmtVisitor.h"
+// // Clang includes
+#include "clang/AST/AST.h"
 #include "clang/AST/DeclVisitor.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/Sema/SemaConsumer.h"
-#include "clang/Frontend/ASTUnit.h"
-#include "clang/Analysis/DomainSpecific/CocoaConventions.h"
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/SourceManager.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Lex/PreprocessorOptions.h"
-#include "clang/Lex/Preprocessor.h"
-#include "clang/Lex/HeaderSearch.h"
-#include "clang/Parse/ParseAST.h"
+#define private public
+#include "clang/AST/ExprCXX.h"
+#undef private
+#include "clang/AST/PrettyDeclStackTrace.h"
+#include "clang/CodeGen/CGFunctionInfo.h"
+#include "clang/Frontend/FrontendOptions.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Lex/Lexer.h"
+#include "clang/Lex/HeaderSearch.h"
+#include "clang/Lex/Preprocessor.h"
+#include "clang/Lex/PreprocessorOptions.h"
 #include "clang/Sema/Sema.h"
-#include "clang/Frontend/FrontendAction.h"
-#include "clang/Sema/SemaDiagnostic.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Initialization.h"
-#include "clang/Sema/PrettyDeclStackTrace.h"
+#include "clang/Sema/SemaDiagnostic.h"
 #include "clang/Serialization/ASTWriter.h"
-#include "clang/Frontend/MultiplexConsumer.h"
-#include "clang/Basic/VirtualFileSystem.h"
-#include "Sema/TypeLocBuilder.h"
-#include <clang/Frontend/CompilerInstance.h>
-#include <clang/Frontend/CodeGenOptions.h>
-#include <clang/AST/Type.h>
-#include <clang/AST/ASTContext.h>
-#include <clang/AST/DeclTemplate.h>
-#include <clang/Basic/Specifiers.h>
-#include <clang/CodeGen/CGFunctionInfo.h>
-#include <clang/Parse/RAIIObjectsForParser.h>
-
-#include "CodeGen/CodeGenModule.h"
-#include <CodeGen/CodeGenTypes.h>
+// Well, yes this is cheating
 #define private public
-#include <CodeGen/CodeGenFunction.h>
+#include "clang/Parse/Parser.h" // 'DeclSpecContext' 'ParseDeclarator'
+#undef private
+#include "clang/Parse/RAIIObjectsForParser.h"
+
+// clang/lib/
+#include "Sema/TypeLocBuilder.h"
+#include "CodeGen/CodeGenModule.h"
+#define private public
+#include "CodeGen/CodeGenFunction.h"
 #undef private
 #include "CodeGen/CGCXXABI.h"
+#include "Sema/TypeLocBuilder.h"
 
 #ifdef _OS_WINDOWS_
 #define STDCALL __stdcall
