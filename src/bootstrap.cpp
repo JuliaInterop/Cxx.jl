@@ -2741,7 +2741,7 @@ JL_DLLEXPORT void FinalizeAnonClass(CxxInstance *Cxx, clang::CXXRecordDecl *TheC
 {
   llvm::SmallVector<clang::Decl *, 0> Fields;
   Cxx->CI->getSema().ActOnFields(nullptr, clang::SourceLocation(), TheClass,
-                       Fields, clang::SourceLocation(), clang::SourceLocation(), nullptr);
+                       Fields, clang::SourceLocation(), clang::SourceLocation(), clang::ParsedAttributesView());
   Cxx->CI->getSema().CheckCompletedCXXClass(TheClass);
 }
 
