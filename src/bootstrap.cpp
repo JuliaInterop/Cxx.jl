@@ -987,9 +987,7 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(CxxInstance *Cxx, char *name)
 {
   Cxx->Parser->EnterScope(clang::Scope::DeclScope);
   clang::ParsedAttributes attrs(Cxx->Parser->getAttrFactory());
-#ifdef LLVM38
   clang::UsingDirectiveDecl *UsingDecl = nullptr;
-#endif
   return Cxx->CI->getSema().ActOnStartNamespaceDef(
       Cxx->Parser->getCurScope(),
       getTrivialSourceLocation(Cxx),
@@ -997,10 +995,8 @@ JL_DLLEXPORT void *ActOnStartNamespaceDef(CxxInstance *Cxx, char *name)
       getTrivialSourceLocation(Cxx),
       Cxx->Parser->getPreprocessor().getIdentifierInfo(name),
       getTrivialSourceLocation(Cxx),
-      attrs.getList()
-#ifdef LLVM38
-      ,UsingDecl
-#endif
+      attrs,
+      UsingDecl
     );
 }
 
