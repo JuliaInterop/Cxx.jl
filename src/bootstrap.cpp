@@ -2839,7 +2839,8 @@ CreateFunctionRefExpr(clang::Sema &S, clang::FunctionDecl *Fn, clang::NamedDecl 
   // being used.
   if (FoundDecl != Fn && S.DiagnoseUseOfDecl(Fn, Loc))
     return clang::ExprError();
-  clang::DeclRefExpr *DRE = new (S.Context) clang::DeclRefExpr::Create(
+  clang::DeclRefExpr *DRE = new (S.Context) clang::DeclRefExpr(
+                                              S.Context,
                                               Fn,
                                               false,
                                               Fn->getType(),
