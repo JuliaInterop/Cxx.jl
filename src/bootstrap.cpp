@@ -930,8 +930,7 @@ JL_DLLEXPORT bool ParseFunctionStatementBody(CxxInstance *Cxx, clang::Decl *D)
   assert(Cxx->Parser->getCurToken().is(clang::tok::l_brace));
   clang::SourceLocation LBraceLoc = Cxx->Parser->getCurToken().getLocation();
 
-  clang::PrettyDeclStackTraceEntry CrashInfo(sema, D, LBraceLoc,
-                                      "parsing function body");
+  clang::PrettyDeclStackTraceEntry CrashInfo(Cxx->CI->getASTContext(), D, LBraceLoc, "parsing function body");
 
   // Do not enter a scope for the brace, as the arguments are in the same scope
   // (the function body) as the body itself.  Instead, just read the statement
