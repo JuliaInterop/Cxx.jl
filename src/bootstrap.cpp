@@ -972,7 +972,7 @@ JL_DLLEXPORT bool ParseFunctionStatementBody(CxxInstance *Cxx, clang::Decl *D)
         sema.ActOnFinishFunctionBody(D, nullptr);
         return false;
       }
-      Body->setLastStmt(RetStmt.get());
+      Body->body_begin()[Body->size() - 1] = RetStmt.get();
     }
   }
 
