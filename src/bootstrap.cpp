@@ -1754,7 +1754,7 @@ ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
 JL_DLLEXPORT void *CreateCallExpr(CxxInstance *Cxx, clang::Expr *Fn,clang::Expr **exprs, size_t nexprs)
 {
     return Cxx->CI->getSema().ActOnCallExpr(NULL, Fn, getTrivialSourceLocation(Cxx),
-      clang::MultiExprArg(exprs,nexprs), getTrivialSourceLocation(Cxx), NULL, false).get();
+      clang::MultiExprArg(exprs,nexprs), getTrivialSourceLocation(Cxx), nullptr).get();
 }
 
 JL_DLLEXPORT void *CreateVarDecl(CxxInstance *Cxx, void *DC, char* name, void *type)
@@ -1797,7 +1797,7 @@ JL_DLLEXPORT void *CreateCxxCallMethodDecl(CxxInstance *Cxx, clang::CXXRecordDec
                             T, Cxx->CI->getASTContext().getTrivialTypeSourceInfo(T),
                             clang::SC_None,
                             /*isInline=*/true,
-                            /*isConstExpr=*/false,
+                            /*isConstExpr=*/clang::CSK_unspecified,
                             getTrivialSourceLocation(Cxx));
   Method->setAccess(clang::AS_public);
   return Method;
