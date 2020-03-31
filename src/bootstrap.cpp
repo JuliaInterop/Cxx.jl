@@ -1327,33 +1327,15 @@ class JuliaPCHGenerator : public clang::PCHGenerator
 {
 public:
   JuliaPCHGenerator(
-    const clang::Preprocessor &PP, StringRef OutputFile,
-    clang::Module *Module, StringRef isysroot,
-    std::shared_ptr<clang::PCHBuffer> Buffer
-#ifdef LLVM38
-    ,ArrayRef<
-#ifdef LLVM40
-    std::shared_ptr<
-#else
-    llvm::IntrusiveRefCntPtr<
-#endif
-    clang::ModuleFileExtension>> Extensions,
-    bool IncludeTimestamps = true
-#endif
-    ,bool AllowASTWithErrors = false) :
-  PCHGenerator(PP,OutputFile,
-#ifndef LLVM40
-              Module,
-#endif
-              isysroot,Buffer,
-#ifdef LLVM38
-               Extensions,
-#endif
-               AllowASTWithErrors
-#ifdef LLVM38
-               , IncludeTimestamps
-#endif
-    ) {}
+    const clang::Preprocessor &PP,
+    clang::InMemoryModuleCache &ModuleCache,
+    StringRef OutputFile,
+    StringRef isysroot,
+    std::shared_ptr<clang::PCHBuffer> Buffer,
+    ArrayRef<std::shared_ptr<clang::ModuleFileExtension>> Extensions,
+    bool IncludeTimestamps = true,
+    bool AllowASTWithErrors = false) :
+  PCHGenerator(PP, ModuleCache, OutputFile, isysroot, Buffer, Extensions, AllowASTWithErrors, IncludeTimestamps){}
 
   void HandleTranslationUnit(clang::ASTContext &Ctx) {
     PCHGenerator::HandleTranslationUnit(Ctx);
@@ -1533,12 +1515,12 @@ static void finish_clang_init(CxxInstance *Cxx, bool EmitPCH, const char *PCHBuf
       StringRef OutputFile = "Cxx.pch";
       auto Buffer = std::make_shared<clang::PCHBuffer>();
       Cxx->PCHGenerator = new JuliaPCHGenerator(
-                        Cxx->CI->getPreprocessor(), OutputFile, nullptr,
+                        Cxx->CI->getPreprocessor(),
+                        Cxx->CI->getModuleCache(),
+                        OutputFile,
                         Cxx->CI->getHeaderSearchOpts().Sysroot,
                         Buffer,
-#ifdef LLVM38
                         Cxx->CI->getFrontendOpts().ModuleFileExtensions,
-#endif
                         true);
       std::vector<std::unique_ptr<clang::ASTConsumer>> Consumers;
       Consumers.push_back(std::unique_ptr<clang::ASTConsumer>(Cxx->JCodeGen));
