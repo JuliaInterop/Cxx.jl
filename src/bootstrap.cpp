@@ -303,7 +303,7 @@ JL_DLLEXPORT int cxxinclude(CxxInstance *Cxx, char *fname, int isAngled)
 
     const clang::FileEntry *File = P.LookupFile(
       getTrivialSourceLocation(Cxx), fname,
-      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr, nullptr);
+      isAngled, P.GetCurDirLookup(), nullptr, CurDir, nullptr,nullptr, nullptr, nullptr, nullptr);
 
     if(!File)
       return 0;
