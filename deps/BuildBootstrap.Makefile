@@ -29,35 +29,6 @@ llvm-$(LLVM_VER): usr/src llvm_tars
 	@[ -d $</$@ ] || mkdir -p $</$@
 	tar -C $</$@ --strip-components=1 -xf usr/downloads/$(LLVM_TAR)
 
-# apply patches
-llvm: llvm-$(LLVM_VER)
-	cd usr/src/$</$@ && \
-	for p in ../../../../llvm_patches/*.patch; do \
-		echo "Applying patch $$p"; \
-		patch -p1 < $$p ; \
-	done
-
-clang: llvm-$(LLVM_VER)
-	cd usr/src/$</$@ && \
-	for p in ../../../../clang_patches/*.patch; do \
-		echo "Applying patch $$p"; \
-		patch -p1 < $$p ; \
-	done
-
-compiler-rt: llvm-$(LLVM_VER)
-	cd usr/src/$</$@ && \
-	for p in ../../../../crt_patches/*.patch; do \
-		echo "Applying patch $$p"; \
-		patch -p1 < $$p ; \
-	done
-
-libcxx: llvm-$(LLVM_VER)
-	cd usr/src/$</$@ && \
-	for p in ../../../../libcxx_patches/*.patch; do \
-		echo "Applying patch $$p"; \
-		patch -p1 < $$p ; \
-	done
-
 # build libcxxffi
 include Make.inc
 
@@ -74,17 +45,10 @@ JULIA_SOURCE_INCLUDE_DIRS := $(JULIA_SRC)/src/support
 JULIA_INCLUDE_DIRS := $(JULIA_BIN)/../include
 CLANG_SOURCE_INCLUDE_DIRS := usr/src/llvm-$(LLVM_VER)/clang/include
 CLANG_SOURCE_INCLUDE_DIRS += usr/src/llvm-$(LLVM_VER)/clang/lib
-# CLANG_INCLUDE_DIRS := $(JULIA_BIN)/../include $(JULIA_BIN)/../include/clang
 INCLUDE_DIRS := $(JULIA_SOURCE_INCLUDE_DIRS) $(JULIA_INCLUDE_DIRS) $(CLANG_SOURCE_INCLUDE_DIRS) $(CLANG_INCLUDE_DIRS)
 CXXJL_CPPFLAGS = $(addprefix -I, $(INCLUDE_DIRS))
 
-CLANG_LIBS := clangAnalysis clangARCMigrate clangAST clangASTMatchers
-CLANG_LIBS += clangBasic clangCodeGen clangCrossTU clangDriver clangDynamicASTMatchers
-CLANG_LIBS += clangEdit clangFormat clangFrontend clangFrontendTool
-CLANG_LIBS += clangHandleCXX clangHandleLLVM clangIndex
-CLANG_LIBS += clangLex clangParse clangRewrite clangRewriteFrontend clangSema clangSerialization
-CLANG_LIBS += clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangStaticAnalyzerFrontend
-CLANG_LIBS += clangTooling clangToolingASTDiff clangToolingCore clangToolingInclusions clangToolingRefactor
+CLANG_LIBS := clang-cpp
 LINKED_LIBS = $(addprefix -l,$(CLANG_LIBS))
 
 LIB_DIRS := $(JULIA_BIN)/../lib
@@ -116,7 +80,7 @@ all: usr/lib/libcxxffi.$(SHLIB_EXT) usr/lib/libcxxffi-debug.$(SHLIB_EXT) usr/cla
 usr/lib: usr/src
 	mkdir $@
 
-usr/lib/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) llvm clang compiler-rt libcxx | usr/lib
+usr/lib/bootstrap.o: ../src/bootstrap.cpp BuildBootstrap.Makefile $(LIB_DEPENDENCY) llvm-$(LLVM_VER) | usr/lib
 	@$(call PRINT_CC, $(CXX) $(CXX_ABI_SETTING) -fno-rtti -DLIBRARY_EXPORTS -fPIC -O0 -g $(FLAGS) $(LLVM_EXTRA_CPPFLAGS) -c ../src/bootstrap.cpp -o $@)
 
 ifneq (,$(wildcard $(JULIA_LIB)))
