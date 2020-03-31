@@ -674,7 +674,7 @@ static Function *CloneFunctionAndAdjust(CxxInstance *Cxx, Function *F, FunctionT
                                              "julia.gc_alloc_obj");
       Type *T_pdjlvalue = PointerType::get(
         cast<PointerType>(T_prjlvalue)->getElementType(), AddressSpace::Derived);
-      FunctionType *pointer_from_objref_func_fty = FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false))
+      FunctionType *pointer_from_objref_func_fty = FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false);
       Function *pointer_from_objref_func = Function::Create(pointer_from_objref_func_fty,
                                                             Function::ExternalLinkage,
                                                             "julia.pointer_from_objref",
