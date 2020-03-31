@@ -39,6 +39,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Support/VirtualFileSystem.h"
 
 // // Clang includes
 #include "clang/AST/AST.h"
@@ -1474,9 +1475,10 @@ static void finish_clang_init(CxxInstance *Cxx, bool EmitPCH, const char *PCHBuf
             llvm::MemoryBuffer::getMemBuffer(StringRef(PCHBuffer, PCHBufferSize), "Cxx.pch", false)
           );
         Overlay->pushOverlay(IMFS);
-        Cxx->CI->setVirtualFileSystem(Overlay);
+        Cxx->CI->createFileManager(Overlay);
+    } else {
+        Cxx->CI->createFileManager();
     }
-    Cxx->CI->createFileManager();
     Cxx->CI->createSourceManager(Cxx->CI->getFileManager());
     if (PCHBuffer) {
         Cxx->CI->getPreprocessorOpts().ImplicitPCHInclude = "/Cxx.pch";
