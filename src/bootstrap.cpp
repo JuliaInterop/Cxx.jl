@@ -657,27 +657,41 @@ static Function *CloneFunctionAndAdjust(CxxInstance *Cxx, Function *F, FunctionT
       Cxx->CGF->ReturnValue = Cxx->CGF->CreateIRTemp(FD->getReturnType(), "retval");
       builder.SetInsertPoint(Cxx->CGF->Builder.GetInsertBlock(),
         Cxx->CGF->Builder.GetInsertPoint());
-      Function *PTLSStates = cast<Function>(
-        Cxx->shadow->getOrInsertFunction("julia.ptls_states",
-        FunctionType::get(PointerType::get(PointerType::get(T_pjlvalue,0),0),{})));
+      FunctionType *PTLSStates_func_fty = FunctionType::get(
+                                            PointerType::get(
+                                              PointerType::get(T_pjlvalue, 0),
+                                              0),
+                                            {}
+                                          );
+      Function *PTLSStates = Function::Create(PTLSStates_func_fty,
+                                              Function::ExternalLinkage,
+                                              "julia.ptls_states",
+                                              Cxx->shadow);
+
       Function *jl_alloc_obj_func = Function::Create(FunctionType::get(T_prjlvalue,
                                             {T_pint8, T_size, T_prjlvalue}, false),
                                              Function::ExternalLinkage,
                                              "julia.gc_alloc_obj");
       Type *T_pdjlvalue = PointerType::get(
         cast<PointerType>(T_prjlvalue)->getElementType(), AddressSpace::Derived);
-      Function *pointer_from_objref_func = cast<Function>(
-        Cxx->shadow->getOrInsertFunction("julia.pointer_from_objref",
-          FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false)));
+      FunctionType *pointer_from_objref_func_fty = FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false))
+      Function *pointer_from_objref_func = Function::Create(pointer_from_objref_func_fty,
+                                                            Function::ExternalLinkage,
+                                                            "julia.pointer_from_objref",
+                                                            Cxx->shadow);
 
       Type *TokenTy = Type::getTokenTy(jl_LLVMContext);
       Type *VoidTy = Type::getVoidTy(jl_LLVMContext);
-      Function *gc_preserve_begin_func = cast<Function>(
-        Cxx->shadow->getOrInsertFunction("llvm.julia.gc_preserve_begin",
-          FunctionType::get(TokenTy, {T_prjlvalue}, true)));
-      Function *gc_preserve_end_func = cast<Function>(
-        Cxx->shadow->getOrInsertFunction("llvm.julia.gc_preserve_end",
-          FunctionType::get(VoidTy, {TokenTy}, false)));
+      FunctionType *gc_preserve_begin_func_fty = FunctionType::get(TokenTy, {T_prjlvalue}, true);
+      Function *gc_preserve_begin_func = Function::Create(gc_preserve_begin_func_fty,
+                                                          Function::ExternalLinkage,
+                                                          "llvm.julia.gc_preserve_begin",
+                                                          Cxx->shadow);
+      FunctionType *gc_preserve_end_func_fty = FunctionType::get(VoidTy, {TokenTy}, false);
+      Function *gc_preserve_end_func = Function::Create(gc_preserve_end_func_fty,
+                                                        Function::ExternalLinkage,
+                                                        "llvm.julia.gc_preserve_end",
+                                                        Cxx->shadow);
 
       // Unconditionally emit the PTLSStates call into the entry block, otherwise
       // julia's passes may ignore it.
@@ -2398,8 +2412,9 @@ JL_DLLEXPORT void *CreatePointerFromObjref(CxxInstance *Cxx, CxxIRBuilder *build
 {
   Type *T_pdjlvalue = PointerType::get(
     cast<PointerType>(T_prjlvalue)->getElementType(), AddressSpace::Derived);
-  Function *PFO = cast<Function>(Cxx->shadow->getOrInsertFunction("julia.pointer_from_objref",
-                                    FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false)));
+  FunctionType *PFO_fty = FunctionType::get(T_pjlvalue, {T_pdjlvalue}, false);
+  Function *PFO = Function::Create(PFO_fty, Function::ExternalLinkage,
+                                   "julia.pointer_from_objref", Cxx->shadow);
   return (void*)builder->CreateCall(PFO, {
     builder->CreateAddrSpaceCast(val, T_pdjlvalue)});
 }
