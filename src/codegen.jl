@@ -127,7 +127,7 @@ resolvemodifier(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") where {T} =
 resolvemodifier_llvm(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") where {ptr} = IntToPtr(builder,v,toLLVM(C,cpptype(C, Ptr{ptr})))
 function resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T<:Ref}
     v = CreatePointerFromObjref(C, builder, v)
-    v    
+    v
 end
 resolvemodifier_llvm(C, builder, t::Type{Bool}, v::pcpp"llvm::Value") =
     CreateTrunc(builder, v, toLLVM(C, cpptype(C, Bool)))
@@ -419,7 +419,7 @@ end
 
 function _julia_to_llvm(@nospecialize x)
     isboxed = Ref{UInt8}()
-    ty = pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Cvoid},(Any,Ref{UInt8}),x,isboxed))
+    ty = pcpp"llvm::Type"(ccall(:jl_type_to_llvm,Ptr{Cvoid},(Any,Ref{UInt8}),x,isboxed))
     (isboxed[] != 0, ty)
 end
 function julia_to_llvm(@nospecialize x)
@@ -749,7 +749,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
             push!(args2,arg)
         end
     end
-    
+
     if (rett != Union{}) && rett <: CppValue
         arguments = vcat([:r], args2)
         size = cxxsizeof(C,rt)
