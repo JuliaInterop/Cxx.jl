@@ -1865,7 +1865,9 @@ JL_DLLEXPORT void AddDeclToDeclCtx(clang::DeclContext *DC, clang::Decl *D)
 
 JL_DLLEXPORT void AddTopLevelDecl(CxxInstance *Cxx, clang::NamedDecl *D)
 {
-    Cxx->CI->getSema().pushExternalDeclIntoScope(D, D->getDeclName());
+    if (Cxx->CI->getSema().IdResolver.tryAddTopLevelDecl(D, D->getDeclName()) &&
+        Cxx->CI->getSema().TUScope)
+      Cxx->CI->getSema().TUScope->AddDecl(D);
 }
 
 JL_DLLEXPORT void *CreateDeclRefExpr(CxxInstance *Cxx,clang::ValueDecl *D, clang::CXXScopeSpec *scope, int islvalue)
