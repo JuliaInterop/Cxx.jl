@@ -537,7 +537,7 @@ function juliatype(t::QualType, quoted = false, typeargs = Dict{Int,Cvoid}();
             T = CppEnum{Symbol(get_name(t)),T}
         end
     elseif isIntegerType(t)
-        kind = builtinKind(t)
+        kind = builtinKind(t) - 12
         if kind == cLong || kind == cLongLong
             T = Int64
         elseif kind == cULong || kind == cULongLong
