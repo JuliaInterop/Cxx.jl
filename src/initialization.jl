@@ -78,7 +78,7 @@ end
 
 Include the C++ file specified by `fname`. This should be used when the path
 of the included file needs to be assembled programmatically as a Julia string.
-In all other situations, it is avisable to just use `cxx"#include ..."`, which
+In all other situations, it is advisable to just use `cxx"#include ..."`, which
 makes the intent clear and has the same directory resolution logic as C++.
 """
 function cxxinclude(C, fname; isAngled = false)
