@@ -227,10 +227,8 @@ function ArgCleanup(C,e,sv)
     end
 end
 
-const sourcebuffers = Vector{Tuple{AbstractString,Symbol,Int,Int,Bool}}(undef, 0)
-
-struct SourceBuf{id}; end
-sourceid(::Type{SourceBuf{id}}) where {id} = id
+struct SourceBuf{source,filename,line,col,disable_ac}; end
+sourcebuf_data(::Type{SourceBuf{source,filename,line,col,disable_ac}}) where {source,filename,line,col,disable_ac} = String(source),filename,line,col,disable_ac
 
 icxxcounter = 0
 
@@ -575,9 +573,9 @@ end
     ret
 end
 
-function build_icxx_expr(id, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)
+function build_icxx_expr(sourcebuf, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)
     setup = Expr(:block)
-    cxxstr = Expr(:call,impl_func,compiler,:($(SourceBuf){$id}()))
+    cxxstr = Expr(:call,impl_func,compiler,sourcebuf)
     for (i,e) in enumerate(exprs)
         #=if isexprs[i]
             s = gensym()
@@ -692,17 +690,15 @@ function process_cxx_string(str, global_scope=true, type_name=false, __source__=
             Expr(:call, CxxType, :__current_compiler__,
                 CxxTypeName{Symbol(String(take!(sourcebuf)))}(),CodeLoc{filename,__source__.line,col}(),exprs...)
         else
-            push!(sourcebuffers,(String(take!(sourcebuf)),filename,__source__.line, col, disable_ac))
-            id = length(sourcebuffers)
-            build_icxx_expr(id, exprs, isexprs, icxxs, compiler, cxxstr_impl)
+            SB = SourceBuf{Symbol(String(take!(sourcebuf))), filename, __source__.line, col, disable_ac}()
+            build_icxx_expr(SB, exprs, isexprs, icxxs, compiler, cxxstr_impl)
         end
     end
 end
 
-@generated function cxxstr_impl(CT, sourcebuf, args...)
+@generated function cxxstr_impl(CT, SB, args...)
     C = instance(CT)
-    id = sourceid(sourcebuf)
-    buf, filename, line, col, disable_ac = sourcebuffers[id]
+    buf, filename, line, col, disable_ac = sourcebuf_data(SB)
 
     FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
     EmitTopLevelDecl(C,FD)
