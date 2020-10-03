@@ -18,6 +18,8 @@ pkg> add Cxx
 ```
 Note that Windows support is still in its early stage, so feel free to submit feedback in the issue tracker.
 
+**Please, note that Cxx.jl only works (out of the box) currently with Julia 1.1.x to 1.3.x, i.e. with no currently supported Julia, while those versions can still be downloaded at Julialang.org.**
+
 ### Build from source
 #### Build requirements
 
@@ -271,7 +273,3 @@ As of now Cxx.jl does not allow redefinition of a function. In order to allow de
 ```julia
 __current_compiler__ = Cxx.new_clang_instance()
 ```
-
-### Limitations
-
-Please, note that Cxx.jl only works (out of the box) currently with Julia 1.1.x to 1.3.x, i.e. with no currently supported Julia, while those versions can still be downloaded at Julialang.org.
