@@ -274,4 +274,4 @@ __current_compiler__ = Cxx.new_clang_instance()
 
 ### Limitations
 
-Please, note that Cxx.jl only works currently with Julia 1.3 or older.
+Please, note that Cxx.jl only works (out of the box) currently with Julia 1.1.x to 1.3.x, i.e. with no currently supported Julia, while those versions can still be downloaded at Julialang.org.
