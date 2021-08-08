@@ -74,7 +74,7 @@ ints = inlineicxx()
 Base.length(x::cxxt"std::vector<uint64_t>") = icxx"$ints.size();"
 Base.getindex(x::cxxt"std::vector<uint64_t>",i) = icxx"auto x = $ints.at($i); return x;"
 @assert length(ints) == 10
-Cxx.@list cxxt"std::vector<uint64_t>"
-for (i, x) in enumerate(ints)
-    @assert 10*(i-1) < convert(UInt64,x) <= 10*i
-end
+# Cxx.@list cxxt"std::vector<uint64_t>"
+# for (i, x) in enumerate(ints)
+#     @assert 10*(i-1) < convert(UInt64,x) <= 10*i
+# end

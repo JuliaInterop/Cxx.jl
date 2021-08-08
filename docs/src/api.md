@@ -1,7 +1,6 @@
 # API
 
 ```@docs
-Cxx.@cxx
 Cxx.@cxx_str
 Cxx.@icxx_str
 Cxx.cxxinclude

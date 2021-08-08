@@ -3,13 +3,13 @@ using Cxx
 include("llvmincludes.jl")
 
 RequireCompleteType(C,d::cpcpp"clang::Type") =
-    ccall((:RequireCompleteType,Cxx.libcxxffi),Cint,(Ptr{Cxx.ClangCompiler},Ptr{Cvoid}),&C,d.ptr) > 0
+    ccall((:RequireCompleteType,Cxx.libcxxffi),Cint,(Ptr{Cxx.CXCompiler},Ptr{Cvoid}),&C,d.ptr) > 0
 
 function cxxsizeof(d::pcpp"clang::CXXRecordDecl")
     executionEngine = pcpp"llvm::ExecutionEngine"(ccall((:jl_get_llvm_ee,Cxx.libcxxffi),Ptr{Cvoid},()))
     C = Cxx.instance(__current_compiler__)
     cgt = pcpp"clang::CodeGen::CodeGenTypes"(ccall((:clang_get_cgt,Cxx.libcxxffi),Ptr{Cvoid},
-        (Ptr{Cxx.ClangCompiler},),&C))
+        (Ptr{Cxx.CXCompiler},),&C))
     dl = @cxx executionEngine->getDataLayout()
     RequireCompleteType(C,@cxx d->getTypeForDecl())
     t = @cxx cgt->ConvertRecordDeclType(d)
@@ -39,7 +39,7 @@ void f() {}
 """
 C = Cxx.instance(__current_compiler__)
 clangmod = pcpp"llvm::Module"(ccall(:clang_shadow_module,Ptr{Cvoid},
-    (Ptr{Cxx.ClangCompiler},),&C))
+    (Ptr{Cxx.CXCompiler},),&C))
 ptr = @cxx clangmod->getFunction(pointer("_Z1fv"))
 @assert ptr != C_NULL
 
