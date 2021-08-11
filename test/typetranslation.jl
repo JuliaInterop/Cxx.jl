@@ -74,5 +74,15 @@ end
     t = cpptype(CxxRef{CxxBaseType{Symbol("size_t")}, (false, false, true)}, cc)
     @test ClangCompiler.get_string(t) == "__restrict size_t &"
 
+    # macros
+    t = cpptype(pcpp"size_t", cc)
+    @test ClangCompiler.get_string(t) == "size_t *"
+
+    t = cpptype(cpcpp"size_t", cc)
+    @test ClangCompiler.get_string(t) == "const size_t *"
+
+    t = cpptype(rcpp"size_t", cc)
+    @test ClangCompiler.get_string(t) == "size_t &"
+
     dispose(cc)
 end

@@ -12,6 +12,8 @@ include("clanginstances.jl")
 export CxxCompiler, dispose
 
 include("cxxtypes.jl")
+export @pcpp_str, @cpcpp_str, @rcpp_str, @vcpp_str
+
 include("typetranslation.jl")
 
 end
