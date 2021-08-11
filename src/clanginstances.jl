@@ -9,6 +9,11 @@ function CxxCompiler(src::String)
     return CxxCompiler(irgen)
 end
 
+function dispose(x::CxxCompiler)
+    dispose(x.lookup)
+    dispose(x.irgen)
+end
+
 get_compiler_instance(x::CxxCompiler) = get_instance(x.irgen)
 get_llvm_context(x::CxxCompiler) = ClangCompiler.LLVM.context(get_context(x.irgen))
 
