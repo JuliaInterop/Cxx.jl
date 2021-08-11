@@ -9,6 +9,9 @@ function CxxCompiler(src::String)
     return CxxCompiler(irgen)
 end
 
+get_compiler_instance(x::CxxCompiler) = get_instance(x.irgen)
+get_llvm_context(x::CxxCompiler) = ClangCompiler.LLVM.context(get_context(x.irgen))
+
 const ACTIVE_INSTANCES = CxxCompiler[]
 
 struct CxxInstance{N} end
