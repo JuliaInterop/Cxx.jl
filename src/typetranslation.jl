@@ -58,7 +58,7 @@ cppdecl(x::Type{CxxEnum{S,T}}, cc::CxxCompiler) where {S,T} = lookup(S, cc)
 
 function cppdecl(x::Type{CxxTemplate{T,TARGS}}, cc::CxxCompiler) where {T,TARGS}
     template_decl = ClassTemplateDecl(cppdecl(T, cc))
-    @assert template_decl.ptr != C_NULL "can not cast the decl to a `ClassTemplateDecl`."
+    @assert template_decl.ptr != C_NULL "can not dyn_cast the decl to a `ClassTemplateDecl`."
     targs = []
     for targ in TARGS.parameters
         if targ isa Type
@@ -81,10 +81,12 @@ end
 cppdecl(::Type{CxxPtr{T,CVR}}, cc::CxxCompiler) where {T,CVR} = cppdecl(T, cc)
 cppdecl(::Type{CxxRef{T,CVR}}, cc::CxxCompiler) where {T,CVR} = cppdecl(T, cc)
 
+get_type(decl, cc::CxxCompiler) = get_decl_type(get_ast_context(get_compiler_instance(cc)), decl)
+
 # the actual definition of cpptype
-cpptype(x::Type{CxxBaseType{S}}, cc::CxxCompiler) where {S} = get_type_for_decl(cppdecl(x, cc))
-cpptype(::Type{T}, cc::CxxCompiler) where {T<:CxxTemplate} = get_type_for_decl(cppdecl(T, cc))
-cpptype(::Type{T}, cc::CxxCompiler) where {T<:CxxEnum} = get_type_for_decl(cppdecl(T, cc))
+cpptype(x::Type{CxxBaseType{S}}, cc::CxxCompiler) where {S} = get_type(cppdecl(x, cc), cc)
+cpptype(::Type{T}, cc::CxxCompiler) where {T<:CxxTemplate} = get_type(cppdecl(T, cc), cc)
+cpptype(::Type{T}, cc::CxxCompiler) where {T<:CxxEnum} = get_type(cppdecl(T, cc), cc)
 
 cpptype(::Type{CxxValue{T,N}}, cc::CxxCompiler) where {T,N} = cpptype(C,T)
 cpptype(::Type{CxxValue{T}}, cc::CxxCompiler) where {T} = cpptype(C,T)

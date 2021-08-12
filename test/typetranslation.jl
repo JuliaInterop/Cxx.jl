@@ -28,8 +28,8 @@ end
     @test ClangCompiler.name(decl) == "A"
 
     # CxxEnum
-    decl = cppdecl(CxxEnum{Symbol("foo13::bar::A"), Int}, cc)
-    @test ClangCompiler.name(decl) == "A"
+    decl = cppdecl(CxxEnum{Symbol("foo13::bar::baz"), Int}, cc)
+    @test ClangCompiler.name(decl) == "baz"
 
     # CxxTemplate
     decl = cppdecl(CxxTemplate{CxxBaseType{Symbol("std::vector<int>")}, Tuple{Cint}}, cc)
