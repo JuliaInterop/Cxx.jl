@@ -216,8 +216,9 @@ function juliatype(x::FunctionProtoType)
     return CxxFunc{rt, Tuple{argts...}}
 end
 
-juliatype(x::TypedefType) = juliatype(desugar(x))
-juliatype(x::ElaboratedType) = juliatype(desugar(x))
+juliatype(x::TypedefType) = juliatype(get_canonical_type(x))
+
+juliatype(x::ElaboratedType) = juliatype(desugar(x)) # FIXME: same as TypedefType?
 
 function juliatype(x::MemberPointerType)
     class = juliatype(get_class(x))

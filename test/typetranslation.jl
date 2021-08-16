@@ -96,7 +96,7 @@ end
 
     # CxxEnum
     t = CxxEnum{Symbol("enum foo13::bar::baz"), Int}
-    @test juliatype(cpptype(t, cc)) == t
+    @test juliatype(cpptype(t, cc)) == CxxEnum{:baz, UInt32} # FIXME: see above
 
     # CxxTemplate
     t = cpptype(CxxTemplate{CxxBaseType{Symbol("std::vector<int>")}, Tuple{Cint}}, cc)
