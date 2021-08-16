@@ -91,9 +91,9 @@ cpptype(::Type{CxxValue{T}}, cc::CxxCompiler) where {T} = cpptype(C,T)
 # cpptype(::Type{CxxArrayType{T}}, cc::CxxCompiler) where {T} = getIncompleteArrayType(C, cpptype(T, cc))
 
 function add_qualifiers(ty::QualType, (C, V, R))
-    C && (ty = with_const(ty);)
-    V && (ty = with_volatile(ty);)
-    R && (ty = with_restrict(ty);)
+    C && (ty = add_const(ty);)
+    V && (ty = add_volatile(ty);)
+    R && (ty = add_restrict(ty);)
     return ty
 end
 
@@ -113,7 +113,7 @@ end
 
 function cpptype(::Type{CxxRef{T,CVR}}, cc::CxxCompiler) where {T,CVR}
     ctx = get_ast_context(get_compiler_instance(cc))
-    return get_lvalue_reference_type(ctx, add_qualifiers(cpptype(T, cc), CVR))
+    return add_qualifiers(get_lvalue_reference_type(ctx, cpptype(T, cc)), CVR)
 end
 
 function cpptype(::Type{Ref{T}}, cc::CxxCompiler) where {T}
@@ -149,45 +149,62 @@ end
 # hierarchy.
 #
 
-juliatype(x::T) where {T<:AbstractBuiltinType} = clty_to_jlty(x)
+function juliatype(x::T) where {T<:AbstractBuiltinType}
+    cvr = get_qualifiers(x)
+    t = clty_to_jlty(x)
+    if cvr == NullCVR
+        return t
+    else
+        return CxxQualType{t, cvr}
+    end
+end
 
-juliatype(x::QualType) = juliatype(typeclass(get_canonical_type(x)))
+juliatype(x::QualType) = juliatype(typeclass(x))
 
-get_cxx_value_type(::Type{S}) where {S} = S
-get_cxx_value_type(::Type{S}) where S<:CxxValue{T,N} where {T,N} = T
+# get_cxx_value_type(::Type{S}) where {S} = S
+# get_cxx_value_type(::Type{S}) where S<:CxxValue{T,N} where {T,N} = T
 
-get_qualifiers(ty::QualType) = is_const(ty), is_volatile(ty), is_restrict(ty)
+get_qualifiers(ty::AbstractQualType) = is_const(ty), is_volatile(ty), is_restrict(ty)
 
 function juliatype(x::PointerType)
-    cvr = get_qualifiers(get_qual_type(x))
+    cvr = get_qualifiers(x)
     ptree_clty = get_pointee_type(x)
     ptree_jlty = juliatype(ptree_clty)
     if ptree_jlty <: CxxFunc
         return CxxFptr{ptree_jlty}
-    else
-        t = CxxPtr{ptree_jlty, cvr}
+    elseif ptree_jlty == pcpp"jl_value_t"
         # As a special case, if we're returning a jl_value_t *, interpret it as a julia type.
-        if t == pcpp"jl_value_t"
-            return Any
-        else
-            return CxxPtr{ptree_jlty, cvr}
-        end
+        return Any
+    elseif cvr == NullCVR
+        return Ptr{ptree_jlty}
+    else
+        return CxxPtr{ptree_jlty, cvr}
     end
 end
 
 function juliatype(x::AbstractReferenceType)
     ptree = juliatype(get_pointee_type(x))
-    cvr = get_qualifiers(get_qual_type(x))
+    cvr = get_qualifiers(x)
     return CxxRef{ptree, cvr}
 end
 
+juliatype(x::TagType) = juliatype(typeclass(x))
+
 function juliatype(x::EnumType)
     t = juliatype(get_integer_type(x))
-    n = get_name(t)
-    if isempty(n)
-       return CxxEnum{gensym(), t}
+    n = name(x)
+    sym = isempty(n) ? gensym() : Symbol(n)
+    return CxxEnum{sym, t}
+end
+
+function juliatype(x::RecordType)
+    n = name(x)
+    sym = isempty(n) ? gensym() : Symbol(n)
+    cvr = get_qualifiers(x)
+    if cvr == NullCVR
+       return CxxBaseType{Symbol(n)}
     else
-       return CxxEnum{Symbol(n), t}
+       return CxxQualType{CxxBaseType{Symbol(n)}, cvr}
     end
 end
 
@@ -199,10 +216,11 @@ function juliatype(x::FunctionProtoType)
     return CxxFunc{rt, Tuple{argts...}}
 end
 
+juliatype(x::TypedefType) = juliatype(desugar(x))
 juliatype(x::ElaboratedType) = juliatype(desugar(x))
 
 function juliatype(x::MemberPointerType)
-    class = juliatype(get_qual_type(get_class(x)))
+    class = juliatype(get_class(x))
     ptree = juliatype(get_pointee_type(x))
     return CxxMFptr{class, ptree}
 end
@@ -224,6 +242,6 @@ function juliatype(x::TemplateSpecializationType)
             error("Unhandled template argument kind: $k")
         end
     end
-    cvr = get_qualifiers(get_qual_type(x))
+    cvr = get_qualifiers(x)
     return CxxQualType{CxxTemplate{base_ty, Tuple{argts...}}, cvr}
 end

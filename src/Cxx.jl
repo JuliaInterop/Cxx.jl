@@ -2,14 +2,15 @@ module Cxx
 
 using ClangCompiler
 using ClangCompiler.LLVM
-using ClangCompiler: QualType, with_const, with_restrict, with_volatile, get_canonical_type
-using ClangCompiler: get_qual_type, typeclass
+using ClangCompiler: QualType, add_const, add_restrict, add_volatile
+using ClangCompiler: is_const, is_volatile, is_restrict, typeclass
+using ClangCompiler: TypedefType, get_canonical_type
 using ClangCompiler: ClassTemplateDecl
 using ClangCompiler: get_ast_context, get_pointer_type, get_decl_type, get_lvalue_reference_type
 using ClangCompiler: PointerType, get_pointee_type
 using ClangCompiler: MemberPointerType, get_class
 using ClangCompiler: AbstractReferenceType
-using ClangCompiler: EnumType, get_integer_type
+using ClangCompiler: TagType, EnumType, get_integer_type, RecordType
 using ClangCompiler: FunctionProtoType, FunctionNoProtoType, get_return_type, get_params
 using ClangCompiler: ElaboratedType, desugar
 using ClangCompiler: TemplateSpecializationType, name

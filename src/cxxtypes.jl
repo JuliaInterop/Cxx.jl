@@ -128,8 +128,8 @@ Base.convert(::Type{Int}, p::CxxPtr) = convert(Int, reinterpret(Ptr{Cvoid}, p))
 Base.convert(::Type{UInt}, p::CxxPtr) = convert(UInt, reinterpret(Ptr{Cvoid}, p))
 Base.convert(::Type{Ptr{Cvoid}}, p::CxxPtr) = reinterpret(Ptr{Cvoid}, p)
 
-==(p1::CxxPtr, p2::Ptr) = convert(Ptr{Cvoid}, p1) == p2
-==(p1::Ptr, p2::CxxPtr) = p1 == convert(Ptr{Cvoid}, p2)
+Base.:(==)(p1::CxxPtr, p2::Ptr) = convert(Ptr{Cvoid}, p1) == p2
+Base.:(==)(p1::Ptr, p2::CxxPtr) = p1 == convert(Ptr{Cvoid}, p2)
 
 Base.unsafe_load(p::CxxRef{T}) where {T<:CxxPtr} = unsafe_load(reinterpret(Ptr{T}, p))
 
