@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.7.0-beta3.2"
+julia_version = "1.7.0-rc1"
 manifest_format = "2.0"
 
 [[deps.ArgTools]]
@@ -43,21 +43,21 @@ version = "1.3.0"
 
 [[deps.LLVM]]
 deps = ["CEnum", "LLVMExtra_jll", "Libdl", "Printf", "Unicode"]
-git-tree-sha1 = "733abcbdc67337bb6aaf873c6bebbe1e6440a5df"
+git-tree-sha1 = "756cd7ea042f82962d8d46e378c0f1863bb4dc0f"
 uuid = "929cbde3-209d-540e-8aea-75f648917ca0"
-version = "4.1.1"
+version = "4.5.3"
 
 [[deps.LLVMExtra_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "b36c0677a0549c7d1dc8719899a4133abbfacf7d"
+git-tree-sha1 = "9c360e5ce980b88bb31a7b086dbb19469008154b"
 uuid = "dad2f222-ce93-54a1-a47d-0025e8a3acab"
-version = "0.0.6+0"
+version = "0.0.10+0"
 
 [[deps.LLVM_full_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "77e4b6f109c61ab4ccd2f86218a3c0aacfbbbdd2"
+git-tree-sha1 = "890e426645cfd17eb330e4e134d8bf2ca9e971c9"
 uuid = "a3ccf953-465e-511d-b87f-60a6490c289d"
-version = "12.0.1+0"
+version = "12.0.1+2"
 
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
@@ -147,9 +147,9 @@ uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
 
 [[deps.libclangex_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-path = "../libclangex_jll"
+git-tree-sha1 = "960e333d4f793d63289f09280ec2862772e4b7a2"
 uuid = "82994860-12e5-56b1-9971-c34819be692e"
-version = "0.1.1+0"
+version = "0.1.3+0"
 
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
