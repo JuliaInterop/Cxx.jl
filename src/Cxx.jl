@@ -14,7 +14,7 @@ using ClangCompiler: TagType, EnumType, get_integer_type, RecordType
 using ClangCompiler: FunctionProtoType, FunctionNoProtoType, get_return_type, get_params
 using ClangCompiler: ElaboratedType, desugar
 using ClangCompiler: TemplateSpecializationType, get_name
-using ClangCompiler: CXTemplateArgument_ArgKind_Integral, CXTemplateArgument_ArgKind_Type
+using ClangCompiler: CXTemplateArgument_Integral, CXTemplateArgument_Type
 using ClangCompiler: get_kind, get_as_type
 using ClangCompiler: getASTContext
 

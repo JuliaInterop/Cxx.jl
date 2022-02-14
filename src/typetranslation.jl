@@ -18,7 +18,7 @@ end
 #
 # 1. Perform the name lookup of the inner most declaration (cppdecl)
 #   - While doing this we also need to perform template instantiation
-# 2. Resolve pointer/reference types in clang/land
+# 2. Resolve pointer/reference types in clang land
 # 3. Add CVR qualifiers
 #
 
@@ -54,7 +54,7 @@ cppdecl(x::Type{CxxEnum{S,T}}, cc::CxxCompiler) where {S,T} = lookup(S, cc)
 
 function cppdecl(x::Type{CxxTemplate{T,TARGS}}, cc::CxxCompiler) where {T,TARGS}
     template_decl = ClassTemplateDecl(cppdecl(T, cc))
-    @assert template_decl.ptr != C_NULL "can not dyn_cast the decl to a `ClassTemplateDecl`."
+    @assert template_decl.ptr != C_NULL "Can not dyn_cast the decl to a `ClassTemplateDecl`."
     targs = []
     for targ in TARGS.parameters
         if targ isa Type
@@ -79,7 +79,7 @@ cppdecl(::Type{CxxRef{T,CVR}}, cc::CxxCompiler) where {T,CVR} = cppdecl(T, cc)
 
 get_type(decl, cc::CxxCompiler) = get_decl_type(get_ast_context(get_compiler_instance(cc)), decl)
 
-# the actual definition of cpptype
+# The actual definition of cpptype
 cpptype(x::Type{CxxBaseType{S}}, cc::CxxCompiler) where {S} = get_type(cppdecl(x, cc), cc)
 cpptype(::Type{T}, cc::CxxCompiler) where {T<:CxxTemplate} = get_type(cppdecl(T, cc), cc)
 cpptype(::Type{T}, cc::CxxCompiler) where {T<:CxxEnum} = get_type(cppdecl(T, cc), cc)
@@ -232,12 +232,12 @@ function juliatype(x::TemplateSpecializationType)
     argts = []
     for arg in args
         k = get_kind(arg)
-        if k == CXTemplateArgument_ArgKind_Integral
+        if k == CXTemplateArgument_Integral
             int_ty = juliatype(get_integral_type(x))
             int_val = get_as_integral(x)
             push!(argts, Base.convert(int_ty, int_val))
             dispose(int_val)
-        elseif k == CXTemplateArgument_ArgKind_Type
+        elseif k == CXTemplateArgument_Type
             push!(argts, juliatype(get_as_type(arg)))
         else
             error("Unhandled template argument kind: $k")
