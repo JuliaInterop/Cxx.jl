@@ -635,8 +635,6 @@ getTypeName(C, T) = ccall((:getTypeName, libcxxffi), Any, (Ref{ClangCompiler}, P
 
 GetAddrOfFunction(C, FD) = pcpp"llvm::Constant"(ccall((:GetAddrOfFunction,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},Ptr{Cvoid}),C,FD))
 
-RegisterType(C, RD, ST) = ccall((:RegisterType,libcxxffi),Cvoid,(Ref{ClangCompiler},Ptr{Cvoid},Ptr{Cvoid}), C, RD, ST)
-
 getPointerElementType(T::pcpp"llvm::Type") = pcpp"llvm::Type"(ccall((:getPointerElementType,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},),T))
 
 hasFDBody(FD::pcpp"clang::FunctionDecl") = ccall((:hasFDBody,libcxxffi),Cint,(Ptr{Cvoid},),FD) != 0

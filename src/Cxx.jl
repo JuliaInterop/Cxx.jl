@@ -138,13 +138,12 @@
 # Function (in some cases we need to return some extra code, but those cases
 # are discussed below)
 #
-__precompile__(true)
 module Cxx
 
 module CxxCore
-pathfile = joinpath(dirname(@__FILE__), "..", "deps", "path.jl")
-isfile(pathfile) || error("path.jl not generated. Try running Pkg.build(\"Cxx\")")
-include(pathfile)
+
+include("platform/JLLEnvs.jl")
+using .JLLEnvs
 
 using Base.Meta
 using Core: svec
@@ -162,7 +161,6 @@ export cast,
 export CppValue, CppRef, CppPtr, cpptype, CxxQualType, CppBaseType,
     CppTemplate, CxxBuiltinTypes, CxxBuiltinTs, CxxException, CppFptr, CppMFptr
 
-
 include("cxxtypes.jl")
 include("clanginstances.jl")
 include("clangwrapper.jl")
@@ -175,6 +173,7 @@ include("utils.jl")
 include("exceptions.jl")
 
 # In precompilation mode, we do still need clang, so do it manually
+JLLEnvs.__init__()
 __init__()
 
 end
