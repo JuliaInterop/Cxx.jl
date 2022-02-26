@@ -26,6 +26,7 @@ const CLANG_INC = joinpath(Clang_jll.artifact_dir, "lib", "clang", string(Base.l
 function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
     Libdl.dlopen(libcxxffi, Libdl.RTLD_GLOBAL)
+    @ccall libcxxffi.init_types()::Cvoid
 end
 
 function setup_instance(args::Vector{String}, PCHBuffer = []; PCHTime = Base.Libc.TmStruct())
@@ -151,8 +152,7 @@ function ParseVirtual(C, string, VirtualFileName, FileName, Line, Column, isType
     end
 end
 
-setup_cpp_env(C, f::pcpp"llvm::Function") =
-    ccall((:setup_cpp_env, libcxxffi), Ptr{Cvoid}, (Ref{ClangCompiler}, Ptr{Cvoid}), C, f)
+setup_cpp_env(C, f) = @ccall libcxxffi.setup_cpp_env(C::Ref{ClangCompiler}, f::LLVMValueRef)::Ptr{Cvoid}
 
 function cleanup_cpp_env(C, state)
     ccall((:cleanup_cpp_env, libcxxffi), Cvoid, (Ref{ClangCompiler}, Ptr{Cvoid}), C, state)

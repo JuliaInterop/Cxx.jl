@@ -145,6 +145,9 @@ module CxxCore
 include("platform/JLLEnvs.jl")
 using .JLLEnvs
 
+using LLVM
+using LLVM.API: LLVMValueRef
+
 using Base.Meta
 using Core: svec
 

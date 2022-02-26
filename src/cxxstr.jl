@@ -85,10 +85,11 @@ end
 const lambda_roots = Function[]
 
 function latest_world_return_type(tt)
-    params = Core.Compiler.Params(typemax(UInt))
+    world = Core.Compiler.get_world_counter()
+    interp = Core.Compiler.NativeInterpreter(world)
     rt = Union{}
-    for m in Base._methods_by_ftype(tt, -1, params.world)
-        ty = Core.Compiler.typeinf_type(m[3], m[1], m[2], params)
+    for m in Base._methods_by_ftype(tt, -1, world)
+        ty = Core.Compiler.typeinf_type(interp, m[3], m[1], m[2])
         ty === nothing && return Any
         rt = Core.Compiler.tmerge(rt, ty)
         rt === Any && break

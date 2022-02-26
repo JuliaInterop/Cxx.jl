@@ -30,7 +30,6 @@ include("version.jl")
 include("target.jl")
 include("type.jl")
 include("system.jl")
-# include("library.jl")
 
 function get_default_args(is_cxx=false, version=GCC_MIN_VER)
     env = get_default_env(; is_cxx, version)

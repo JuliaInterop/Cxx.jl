@@ -284,7 +284,7 @@ const InverseMappedTypes = Dict{QualType, Type}()
 isbits_spec(T, allow_singleton = true) = isbitstype(T) && isconcretetype(T) &&
     (allow_singleton || (sizeof(T) > 0 || fieldcount(T) > 0))
 function cpptype(C,::Type{T}) where T
-    (!(T === Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
+    (!(T === Union) && !isabstracttype(T)) || error("Cannot create C++ equivalent for abstract types")
     try
     if !haskey(MappedTypes, T)
         AnonClass = CreateAnonymousClass(C, translation_unit(C))

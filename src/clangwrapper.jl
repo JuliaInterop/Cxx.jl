@@ -134,8 +134,7 @@ function BuildDecltypeType(C,expr)
 end
 
 function CreateFunction(C,rt,argt)
-    pcpp"llvm::Function"(ccall((:CreateFunction,libcxxffi),Ptr{Cvoid},
-        (Ref{ClangCompiler},Ptr{Cvoid},Ptr{Ptr{Cvoid}},Csize_t),C,rt,cptrarr(argt),length(argt)))
+    @ccall libcxxffi.CreateFunction(C::Ref{ClangCompiler}, rt::Ptr{Cvoid}, cptrarr(argt)::Ptr{Ptr{Cvoid}}, length(argt)::Csize_t)::LLVMValueRef
 end
 
 function ExtractValue(C,v::pcpp"llvm::Value",idx)
@@ -625,8 +624,7 @@ emitDestroyCXXObject(C, x, T) = ccall((:emitDestroyCXXObject, libcxxffi), Cvoid,
 hasTrivialDestructor(C, D::pcpp"clang::CXXRecordDecl") =
   ccall((:hasTrivialDestructor, libcxxffi), Bool, (Ref{ClangCompiler}, Ptr{Cvoid},), C, D)
 
-setPersonality(F::pcpp"llvm::Function", PersonalityF::pcpp"llvm::Function") =
-    ccall((:setPersonality, libcxxffi), Cvoid, (Ptr{Cvoid}, Ptr{Cvoid}), F, PersonalityF)
+setPersonality(F, PersonalityF::pcpp"llvm::Function") = @ccall libcxxffi.setPersonality(F::LLVMValueRef, PersonalityF::Ptr{Cvoid})::Cvoid
 
 getFunction(C, name) =
     pcpp"llvm::Function"(ccall((:getFunction, libcxxffi), Ptr{Cvoid}, (Ref{ClangCompiler}, Ptr{UInt8}, Csize_t), C, name, endof(name)))

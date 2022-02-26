@@ -127,7 +127,7 @@ resolvemodifier(C,p::Type{CppAddr{T}}, e::pcpp"clang::Expr") where {T} =
 resolvemodifier_llvm(C, builder, t::Type{Ptr{ptr}}, v::pcpp"llvm::Value") where {ptr} = IntToPtr(builder,v,toLLVM(C,cpptype(C, Ptr{ptr})))
 function resolvemodifier_llvm(C, builder, t::Type{T}, v::pcpp"llvm::Value") where {T<:Ref}
     v = CreatePointerFromObjref(C, builder, v)
-    v    
+    v
 end
 resolvemodifier_llvm(C, builder, t::Type{Bool}, v::pcpp"llvm::Value") =
     CreateTrunc(builder, v, toLLVM(C, cpptype(C, Bool)))
@@ -365,8 +365,7 @@ function llvmargs(C, builder, f, argt)
     args = Vector{pcpp"llvm::Value"}(undef, length(argt))
     for i in 1:length(argt)
         t = argt[i]
-        args[i] = pcpp"llvm::Value"(ccall(
-            (:get_nth_argument,libcxxffi),Ptr{Cvoid},(Ptr{Cvoid},Csize_t),f,i-1))
+        args[i] = pcpp"llvm::Value"(@ccall libcxxffi.get_nth_argument(f::LLVMValueRef, (i-1)::Csize_t)::Ptr{Cvoid})
         @assert args[i] != C_NULL
         args[i] = resolvemodifier_llvm(C, builder, t, args[i])
         if args[i] == C_NULL
@@ -419,7 +418,7 @@ end
 
 function _julia_to_llvm(@nospecialize x)
     isboxed = Ref{UInt8}()
-    ty = pcpp"llvm::Type"(ccall(:julia_type_to_llvm,Ptr{Cvoid},(Any,Ref{UInt8}),x,isboxed))
+    ty = pcpp"llvm::Type"(ccall(:jl_type_to_llvm,Ptr{Cvoid},(Any,Ref{UInt8}),x,isboxed))
     (isboxed[] != 0, ty)
 end
 function julia_to_llvm(@nospecialize x)
@@ -442,7 +441,7 @@ end
 # error.
 function check_args(argt,f)
     for (i,t) in enumerate(argt)
-        if isa(t,Union) || (isa(t,DataType) && t.abstract) || (!isCxxEquivalentType(t) &&
+        if isa(t,Union) || (isa(t,DataType) && isabstracttype(t)) || (!isCxxEquivalentType(t) &&
             !(t <: CxxBuiltinTs))
             error("Got bad type information while compiling $f (got $t for argument $i)")
         end
@@ -661,7 +660,7 @@ function EmitExpr(C,ce,nE,ctce, argt, pvds, rett = Cvoid; kwargs...)
 
     # Clang's code emitter needs some extra information about the function, so let's
     # initialize that as well
-    state = setup_cpp_env(C,f)
+    state = setup_cpp_env(C, f)
 
     builder = irbuilder(C)
 
@@ -733,7 +732,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         end
     end
 
-    cleanup_cpp_env(C,state)
+    # cleanup_cpp_env(C,state)
 
     args2 = Any[]
     for (j,i) = enumerate(argidxs)
@@ -749,13 +748,17 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
             push!(args2,arg)
         end
     end
-    
+
+    llvmf = LLVM.Function(f)
+    mod = LLVM.parent(llvmf)
+    ir = string(mod)
+    fn = LLVM.name(llvmf)
     if (rett != Union{}) && rett <: CppValue
         arguments = vcat([:r], args2)
         size = cxxsizeof(C,rt)
         B = Expr(:block,
             :( r = ($(rett){$(Int(size))})() ),
-                Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Cvoid},f),Cvoid,Tuple{llvmargt...},arguments...))
+                Expr(:call,Core.Intrinsics.llvmcall, (ir, fn), Cvoid, Tuple{llvmargt...}, arguments...))
         T = cpptype(C, rett)
         D = getAsCXXRecordDecl(T)
         if D != C_NULL && !hasTrivialDestructor(C,D)
@@ -765,7 +768,7 @@ function createReturn(C,builder,f,argt,llvmargt,llvmrt,rett,rt,ret,state; argidx
         push!(B.args,:r)
         return B
     else
-        return Expr(:call,Core.Intrinsics.llvmcall,convert(Ptr{Cvoid},f),rett,Tuple{argt...},args2...)
+        return Expr(:call,Core.Intrinsics.llvmcall,(ir, fn),rett,Tuple{argt...},args2...)
     end
 end
 
