@@ -4,28 +4,33 @@ global varnum = 1
 
 const jns = cglobal((:julia_namespace,libcxxffi),Ptr{Cvoid})
 
-#
-# Takes a julia value and makes in into an llvm::Constant
-#
+"""
+    llvmconst(@nospecialize val)
+Take a Julia value and makes in into an `llvm::Constant`.
+"""
 function llvmconst(@nospecialize val)
+    handle = @ccall libcxxffi.get_llvm_context()::LLVMContextRef
+    ctx = LLVM.Context(handle)
     T = typeof(val)
     if isbitstype(T)
         if !Base.isstructtype(T)
             if T <: AbstractFloat
-                return getConstantFloat(julia_to_llvm(T),Float64(val))
+                ty = convert(LLVMType, T; ctx)
+                return LLVM.ConstantFP(ty, Float64(val))
             elseif T <: Integer
-                return getConstantInt(julia_to_llvm(T),UInt64(val))
+                ty = convert(LLVMType, T; ctx)
+                return LLVM.ConstantInt(ty, UInt64(val))
             elseif T <: Ptr || T <: CppPtr
-                return getConstantInt(julia_to_llvm(Ptr{Cvoid}),UInt(
-                    convert(Ptr{Cvoid}, val)))
+                ty = convert(LLVMType, Ptr{Cvoid}; ctx)
+                return LLVM.ConstantInt(ty, UInt(convert(Ptr{Cvoid}, val)))
             else
                 error("Creating LLVM constants for type `$T` not implemented yet")
             end
         elseif sizeof(T) == 0
-            return getConstantStruct(getEmptyStructType(),pcpp"llvm::Constant"[])
+            T_jlvalue = LLVM.StructType(LLVM.LLVMType[]; ctx)
+            return LLVM.ConstantStruct(T_jlvalue, LLVM.Constant[])
         else
-            vals = [llvmconst(getfield(val,i)) for i = 1:length(fieldnames(T))]
-            return getConstantStruct(julia_to_llvm(T),vals)
+            return LLVM.ConstantStruct(val; ctx)
         end
     end
     error("Cannot turn this julia value (of type `$T`) into a constant")

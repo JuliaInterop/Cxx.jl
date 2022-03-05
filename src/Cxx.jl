@@ -146,7 +146,7 @@ include("platform/JLLEnvs.jl")
 using .JLLEnvs
 
 using LLVM
-using LLVM.API: LLVMValueRef
+using LLVM.API: LLVMValueRef, LLVMTypeRef, LLVMContextRef, LLVMModuleRef, LLVMBuilderRef
 
 using Base.Meta
 using Core: svec
