@@ -308,7 +308,7 @@ function cpptype(C,::Type{T}) where T
             TPs = Any[]
             argtQTs = QualType[]
             for argt in sig.parameters[2:end]
-                if argt.abstract
+                if isabstracttype(argt)
                     TP = ActOnTypeParameter(C,string("param",tparamnum),tparamnum-1)
                     push!(argtQTs,RValueRefernceTo(C,QualType(typeForDecl(TP))))
                     push!(TPs, TP)

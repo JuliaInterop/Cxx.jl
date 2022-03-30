@@ -20,28 +20,28 @@ size = cxxsizeof(pcpp"clang::CXXRecordDecl"(Cxx.lookup_name(Cxx.instance(__curre
     ["llvm","ExecutionEngine"]).ptr))
 @assert size >= 144
 
-code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Cvoid}, (Any,Bool,Bool), Tuple{t...}, false, false))
-function code_graph(f,args)
-    v = @cxx std::string()
-    os = @cxx llvm::raw_string_ostream(v)
-    graphf = code_llvmf(f,args)
-    @cxx llvm::WriteGraph(os,graphf)
-    @cxx os->flush()
-    String(v)
-end
+# code_llvmf(f,t::Tuple{Vararg{Type}}) = pcpp"llvm::Function"(ccall(:jl_get_llvmf, Ptr{Cvoid}, (Any,Bool,Bool), Tuple{t...}, false, false))
+# function code_graph(f,args)
+#     v = @cxx std::string()
+#     os = @cxx llvm::raw_string_ostream(v)
+#     graphf = code_llvmf(f,args)
+#     @cxx llvm::WriteGraph(os,graphf)
+#     @cxx os->flush()
+#     String(v)
+# end
 
-gt = code_graph(factorize,(typeof(rand(4,4)),))
+# gt = code_graph(factorize,(typeof(rand(4,4)),))
 
-@assert sizeof(gt) > 0
+# @assert sizeof(gt) > 0
 
-cxx"""
-void f() {}
-"""
-C = Cxx.instance(__current_compiler__)
-clangmod = pcpp"llvm::Module"(ccall(:clang_shadow_module,Ptr{Cvoid},
-    (Ptr{Cxx.ClangCompiler},),&C))
-ptr = @cxx clangmod->getFunction(pointer("_Z1fv"))
-@assert ptr != C_NULL
+# cxx"""
+# void f() {}
+# """
+# C = Cxx.instance(__current_compiler__)
+# clangmod = pcpp"llvm::Module"(ccall(:clang_shadow_module,Ptr{Cvoid},
+#     (Ptr{Cxx.ClangCompiler},),&C))
+# ptr = @cxx clangmod->getFunction(pointer("_Z1fv"))
+# @assert ptr != C_NULL
 
 jns = cglobal((:julia_namespace,Cxx.libcxxffi),Ptr{Cvoid})
 ns = Cxx.createNamespace(C,"julia")
@@ -64,7 +64,7 @@ unsafe_store!(jns,C_NULL)
 #GV = @cxx dyn_cast{llvm::GlobalVariable}(@cxx (@cxx clang_shadow_module)->getNamedValue(pointer("_ZN5julia4var1E")))
 GV = pcpp"llvm::GlobalVariable"((@cxx (@cxx clang_shadow_module(convert(Ptr{Cvoid},pointer([C]))))->getNamedValue(pointer("_ZN5julia5xvar1E"))).ptr)
 @assert GV != C_NULL
-@cxx (@cxx GV->getType())->dump()
+# @cxx (@cxx GV->getType())->dump()
 @cxx GV->setInitializer(@cxx llvm::ConstantInt::get((@cxx llvm::Type::getInt64Ty(*(@cxx &jl_LLVMContext))),UInt64(0)))
 @cxx GV->setConstant(true)
 @assert (@cxx foo()) === UInt64(0)

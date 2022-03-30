@@ -26,7 +26,11 @@ const CLANG_INC = joinpath(Clang_jll.artifact_dir, "lib", "clang", string(Base.l
 function init_libcxxffi()
     # Force libcxxffi to be opened with RTLD_GLOBAL
     Libdl.dlopen(libcxxffi, Libdl.RTLD_GLOBAL)
-    @ccall libcxxffi.init_types()::Cvoid
+    isboxed = Ref{UInt8}(0)
+    T_pjlvalue = @ccall jl_type_to_llvm(Any::Any, isboxed::Ref{UInt8})::Ptr{Cvoid}
+    ctx = LLVM.Context()
+    @ccall libcxxffi.init_llvm_context(ctx::LLVMContextRef)::Cvoid
+    @ccall libcxxffi.init_types(T_pjlvalue::LLVMTypeRef)::Cvoid
 end
 
 function setup_instance(args::Vector{String}, PCHBuffer = []; PCHTime = Base.Libc.TmStruct())
@@ -38,7 +42,9 @@ function setup_instance(args::Vector{String}, PCHBuffer = []; PCHTime = Base.Lib
         PCHPtr = pointer(PCHBuffer)
         PCHSize = sizeof(PCHBuffer)
     end
-    @ccall libcxxffi.init_clang_instance(x::Ptr{Cvoid}, args::Ptr{Ptr{UInt8}}, length(args)::Cint, EmitPCH::Bool, PCHPtr::Ptr{UInt8}, PCHSize::Csize_t, PCHTime::Ref{Base.Libc.TmStruct})::Cvoid
+    ctx = @ccall libcxxffi.get_llvm_context()::LLVMContextRef
+    mod = LLVM.Module("ClangShadow"; ctx=LLVM.Context(ctx))
+    @ccall libcxxffi.init_clang_instance(x::Ptr{Cvoid}, mod::LLVMModuleRef, args::Ptr{Ptr{UInt8}}, length(args)::Cint, EmitPCH::Bool, PCHPtr::Ptr{UInt8}, PCHSize::Csize_t, PCHTime::Ref{Base.Libc.TmStruct})::Cvoid
     x[]
 end
 
@@ -51,22 +57,16 @@ end
 # us a list of all global constructors declared so far that need to be run
 # and put them in a single function. Calling this function, will then in turn
 # call all the global constructors and initialize them as needed.
-import Base: llvmcall, cglobal
-
-CollectGlobalConstructors(C) = pcpp"llvm::Function"(
-    ccall((:CollectGlobalConstructors, libcxxffi), Ptr{Cvoid}, (Ref{ClangCompiler},), C))
-
-function RunGlobalConstructors(C)
-    p = convert(Ptr{Cvoid}, CollectGlobalConstructors(C))
-    # If p is NULL it means we have no constructors to run
-    if p != C_NULL
-        eval(:(
-            let f() = llvmcall($p, Cvoid, Tuple{})
-                f()
-            end
-        ))
-    end
-end
+# function RunGlobalConstructors(m)
+#     fn = JuliaCGUtils.collect_global_ctors(m)
+#     if !isnothing(fn)
+#         eval(:(
+#             let f() = Base.llvmcall((m, fn), Cvoid, Tuple{})
+#                 f()
+#             end
+#         ))
+#     end
+# end
 
 """
     cxxinclude([C::CxxInstance,] fname; isAngled=false)
@@ -81,7 +81,7 @@ function cxxinclude(C, fname; isAngled = false)
         C, fname, isAngled) == 0
         error("Could not include file $fname")
     end
-    RunGlobalConstructors(C)
+    # RunGlobalConstructors(C)
 end
 cxxinclude(C::CxxInstance, fname; isAngled = false) =
     cxxinclude(instance(C), fname; isAngled = isAngled)
@@ -113,7 +113,7 @@ EnterVirtualSource(C, buf, file::Symbol) = EnterVirtualSource(C, buf, string(fil
 function ParseToEndOfFile(C)
     hadError = ccall((:_cxxparse, libcxxffi), Cint, (Ref{ClangCompiler},), C) == 0
     if !hadError
-        RunGlobalConstructors(C)
+        # RunGlobalConstructors(C)
     end
     !hadError
 end
@@ -156,7 +156,7 @@ setup_cpp_env(C, f) = @ccall libcxxffi.setup_cpp_env(C::Ref{ClangCompiler}, f::L
 
 function cleanup_cpp_env(C, state)
     ccall((:cleanup_cpp_env, libcxxffi), Cvoid, (Ref{ClangCompiler}, Ptr{Cvoid}), C, state)
-    RunGlobalConstructors(C)
+    # RunGlobalConstructors(C)
 end
 
 # Include paths and macro handling
@@ -240,6 +240,7 @@ function __init__()
     args = get_compiler_args(; version=v"7.1.0")
     push!(args, "-std=c++14")
     Sys.isapple() && push!(args, "-stdlib=libc++")
+    # push!(args, "-fno-exceptions")
     push!(args, joinpath(@__DIR__, "dummy.cpp"))
 
     C = setup_instance(args, GlobalPCHBuffer; PCHTime = PCHTime)

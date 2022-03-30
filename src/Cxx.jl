@@ -142,6 +142,8 @@ module Cxx
 
 module CxxCore
 
+using LLVMCGUtils
+
 include("platform/JLLEnvs.jl")
 using .JLLEnvs
 
@@ -201,7 +203,7 @@ export cast,
        addHeaderDir, defineMacro, cxxinclude, cxxparse, new_clang_instance,
        C_User, C_System, C_ExternCSystem
 
-include("CxxREPL/replpane.jl")
+# include("CxxREPL/replpane.jl")
 
 # C++ standard library helpers
 module CxxStd
@@ -215,31 +217,31 @@ module CxxStd
 end
 
 # Use as Cxx.
-import .CxxStd: @list
+# import .CxxStd: @list
 
-module CxxREPLInit
-    using ..CxxCore
-    using ..CxxREPL
-    function __init__()
-        if isdefined(Base, :active_repl)
-            CxxREPL.RunCxxREPL(CxxCore.__current_compiler__)
-        end
-    end
-end
+# module CxxREPLInit
+#     using ..CxxCore
+#     using ..CxxREPL
+#     function __init__()
+#         if isdefined(Base, :active_repl)
+#             CxxREPL.RunCxxREPL(CxxCore.__current_compiler__)
+#         end
+#     end
+# end
 
-module CxxExceptionInit
-    using ..CxxCore
-    __init__() = ccall(:jl_generating_output, Cint, ()) == 0 &&
-        eval(:(CxxCore.setup_exception_callback()))
-end
+# module CxxExceptionInit
+#     using ..CxxCore
+#     __init__() = ccall(:jl_generating_output, Cint, ()) == 0 &&
+#         eval(:(CxxCore.setup_exception_callback()))
+# end
 
-module CxxDumpPCH
-    using ..CxxCore
-    # Now that we've loaded Cxx, save everything we just did into a PCH
-    if ccall(:jl_generating_output, Cint, ()) != 0
-        append!(CxxCore.GlobalPCHBuffer, CxxCore.decouple_pch(CxxCore.instance(CxxCore.__current_compiler__)))
-    end
-end
+# module CxxDumpPCH
+#     using ..CxxCore
+#     # Now that we've loaded Cxx, save everything we just did into a PCH
+#     if ccall(:jl_generating_output, Cint, ()) != 0
+#         append!(CxxCore.GlobalPCHBuffer, CxxCore.decouple_pch(CxxCore.instance(CxxCore.__current_compiler__)))
+#     end
+# end
 
 if ccall(:jl_generating_output, Cint, ()) != 0
     CxxCore.reset_init!()

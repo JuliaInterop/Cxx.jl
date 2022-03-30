@@ -8,13 +8,14 @@ using Cxx.CxxCore
     __current_compiler__ = Cxx.Cxx.__default_compiler__
     @test Cxx.@cxx_str("#include <iostream>")
     @test Cxx.@icxx_str("316;") == 316
-    Cxx.@cxxm "int f316()" 316
+    # Cxx.@cxxm "int f316()" 316
 end
+include("typetranslation.jl")
 include("cxxstr.jl")
-include("icxxstr.jl")
-include("ctest.jl")
-include("misc.jl")
+# include("icxxstr.jl")
+# include("ctest.jl")
+# include("misc.jl")
 #include("show.jl")
 #include("llvmtest.jl")
 #include("llvmgraph.jl")
-include("std.jl")
+# include("std.jl")

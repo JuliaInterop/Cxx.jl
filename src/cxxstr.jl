@@ -1,16 +1,13 @@
-# cxx"" string implementation (global scope)
-
 global varnum = 1
 
-const jns = cglobal((:julia_namespace,libcxxffi),Ptr{Cvoid})
+const jns = cglobal((:julia_namespace, libcxxffi), Ptr{Cvoid})
 
 """
     llvmconst(@nospecialize val)
 Take a Julia value and makes in into an `llvm::Constant`.
 """
 function llvmconst(@nospecialize val)
-    handle = @ccall libcxxffi.get_llvm_context()::LLVMContextRef
-    ctx = LLVM.Context(handle)
+    ctx = LLVM.Context(@ccall libcxxffi.get_llvm_context()::LLVMContextRef)
     T = typeof(val)
     if isbitstype(T)
         if !Base.isstructtype(T)
@@ -34,10 +31,6 @@ function llvmconst(@nospecialize val)
         end
     end
     error("Cannot turn this julia value (of type `$T`) into a constant")
-end
-
-function SetDeclInitializer(C,decl::pcpp"clang::VarDecl",val::pcpp"llvm::Constant")
-    ccall((:SetDeclInitializer,libcxxffi),Cvoid,(Ref{ClangCompiler},Ptr{Cvoid},Ptr{Cvoid}),C,decl,val)
 end
 
 const specTypes = 8
@@ -72,7 +65,6 @@ end
 
 function CreateLambdaCallExpr(C, T, argt = [])
     meth = getLambdaCallOperator(getAsCXXRecordDecl(T))
-
     callargs, cpvds = buildargexprs(C,argt)
     PCvoid = cpptype(C,Ptr{Cvoid})
     pvd = CreateParmVarDecl(C, PCvoid)
@@ -110,7 +102,7 @@ function get_llvmf_decl(tt)
   #(ti, env) = ccall(:jl_match_method, Any, (Any, Any), tt, meth.sig)::SimpleVector
   meth = Base.func_for_method_checked(meth, tt, tt.parameters)
   linfo = ccall(:jl_specializations_get_linfo, Ref{Core.MethodInstance}, (Any, Any, Any, UInt), meth, tt, env, world)
-  f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_decl, Ptr{Cvoid}, (Any, UInt, Bool, Base.CodegenParams), linfo, world, false, params))
+  f = pcpp"llvm::Function"(ccall(:jl_get_llvmf_defn, Ptr{Cvoid}, (Any, UInt, Bool, Bool, Base.CodegenParams), linfo, world, false, false, params))
   f
 end
 
@@ -162,7 +154,7 @@ function InstantiateSpecializationsForType(C, DC, LambdaT)
         if T === Union{}
           T = Cvoid
         end
-        if isa(T,Union) || T.abstract
+        if isa(T,Union) || isabstracttype(T)
           error("Inferred Union or abstract type $T for expression $F")
         end
         f = get_llvmf_decl(tt)
@@ -221,15 +213,17 @@ function ArgCleanup(C,e,sv)
             else
                 val = pointer_from_objref(e)
             end
-            lc = getConstantIntToPtr(llvmconst(val),
-                getI8PtrTy())
+            c = llvmconst(val)
+            ctx = LLVM.context(c)
+            lc = LLVM.const_inttoptr(c, LLVM.PointerType(LLVM.Int8Type(ctx)))
         elseif isa(e, Ptr) || isa(e, CppPtr)
-            lc = getConstantIntToPtr(llvmconst(e),
-                getI8PtrTy())
+            c = llvmconst(e)
+            ctx = LLVM.context(c)
+            lc = LLVM.const_inttoptr(c, LLVM.PointerType(LLVM.Int8Type(ctx)))
         else
             lc = llvmconst(e)
         end
-        SetDeclInitializer(C, sv, lc)
+        @ccall libcxxffi.SetDeclInitializer(C::Ref{ClangCompiler}, sv::Ptr{Cvoid}, lc::LLVMValueRef)::Cvoid
     end
 end
 
@@ -241,11 +235,6 @@ icxxcounter = 0
 function ActOnStartOfFunction(C,D,ScopeIsNull = false)
     pcpp"clang::Decl"(ccall((:ActOnStartOfFunction,libcxxffi),
         Ptr{Cvoid},(Ref{ClangCompiler},Ptr{Cvoid},Bool),C,D,ScopeIsNull))
-end
-function ParseFunctionStatementBody(C,D)
-    if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Cvoid}),C,D) == 0
-        error("A failure occured while parsing the function body")
-    end
 end
 
 function ActOnStartNamespaceDef(C,name)
@@ -272,11 +261,11 @@ function cppconst(C, Val)
     end
 end
 
-#
-# Create a clang FunctionDecl with the given body and
-# and the given types for embedded __juliavars
-#
-function CreateFunctionWithBody(C,body,args...; named_args = Any[],
+"""
+    CreateFunctionWithBody(C, body, args...)
+Create a `clang::FunctionDecl` with the given body and and the given types for embedded `__juliavars`
+"""
+function CreateFunctionWithBody(C, body, args...; named_args = Any[],
         filename::Symbol = Symbol(""), line::Int = 1, col::Int = 1, disable_ac = false)
     global icxxcounter
 
@@ -358,7 +347,8 @@ function CreateFunctionWithBody(C,body,args...; named_args = Any[],
         SetFDParams(FD,params)
         FD = ActOnStartOfFunction(C,pcpp"clang::Decl"(convert(Ptr{Cvoid}, FD)))
         try
-            ParseFunctionStatementBody(C,FD)
+            status = @ccall libcxxffi.ParseFunctionStatementBody(C::Ref{ClangCompiler}, FD::Ptr{Cvoid})::Bool
+            @assert status "A failure occured while parsing the function body"
         finally
             ActOnFinishNamespaceDef(C,ND)
             disable_ac && set_access_control_enabled(C, old)
@@ -371,7 +361,7 @@ end
 
 function CallDNE(C, dne, argt; kwargs...)
     callargs, pvds = buildargexprs(C,argt)
-    ce = CreateCallExpr(C, dne,callargs)
+    ce = CreateCallExpr(C, dne, callargs)
     EmitExpr(C,ce,C_NULL,C_NULL,argt,pvds; kwargs...)
 end
 
@@ -573,10 +563,9 @@ end
         loc.parameters[2], loc.parameters[3], true)
     if !iscc
         ExitParserScope(C)
-        unsafe_store!(jns,C_NULL)
+        unsafe_store!(jns, C_NULL)
     end
-    ret = juliatype(x,true,mapping)
-    ret
+    return juliatype(x, true, mapping)
 end
 
 function build_icxx_expr(sourcebuf, exprs, isexprs, icxxs, compiler, impl_func = cxxstr_impl)
@@ -610,7 +599,7 @@ function adjust_source(C, source)
     if isCCompiler(C)
         return replace(source, "__julia::"=>"__juliaglobal")
     end
-    source
+    return source
 end
 
 function process_cxx_string(str, global_scope=true, type_name=false, __source__=LineNumberNode(1, :none),
@@ -706,7 +695,14 @@ end
     C = instance(CT)
     buf, filename, line, col, disable_ac = sourcebuf_data(SB)
 
-    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C,buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
+    # @ccall remove_module(C::Ref{ClangCompiler})::Cvoid
+    # mod_ptr = @ccall libcxxffi.get_llvm_module(C::Ref{ClangCompiler})::LLVMModuleRef
+    # @assert mod_ptr == C_NULL "failed to update module."
+    # ctx = LLVM.Context(@ccall libcxxffi.get_llvm_context()::LLVMContextRef)
+    # new_mod = LLVM.Module("ClangShadow"; ctx)
+    # @ccall update_module(C::Ptr{ClangCompiler}, new_mod::LLVMModuleRef)::Cvoid
+
+    FD, llvmargs, argidxs, symargs = CreateFunctionWithBody(C, buf, args...; filename = filename, line = line, col = col, disable_ac=disable_ac)
     EmitTopLevelDecl(C,FD)
 
     for T in args
@@ -715,9 +711,9 @@ end
         end
     end
 
-    dne = CreateDeclRefExpr(C,FD)
+    dne = CreateDeclRefExpr(C, FD)
     argt = tuple(llvmargs...)
-    expr = CallDNE(C,dne,argt; argidxs = argidxs, symargs = symargs)
+    expr = CallDNE(C, dne, argt; argidxs = argidxs, symargs = symargs)
     expr
 end
 
