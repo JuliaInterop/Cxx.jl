@@ -6,10 +6,4 @@ version = "0.5.0"
 ClangCompiler = "06fc9500-c033-43bc-8ca2-e20da63309d9"
 
 [compat]
-julia = "~1.7"
-
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["Test"]
+julia = "1.7"

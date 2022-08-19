@@ -1,3 +1,4 @@
+import ClangCompiler: IncrementalIRGenerator
 struct CxxCompiler
     irgen::IncrementalIRGenerator
     lookup::DeclFinder
