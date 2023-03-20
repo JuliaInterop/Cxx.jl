@@ -221,6 +221,14 @@ extern "C" {
 
 extern void jl_error(const char *str);
 
+bool _debug_ast = false;
+
+// enable output of the ast
+// usage `ccall((:enable_ast_debug, Cxx.libcxxffi),Void, ())`
+JL_DLLEXPORT void enable_ast_debug() {
+  _debug_ast = true;
+}
+
 // For initialization.jl
 JL_DLLEXPORT void add_directory(CxxInstance *Cxx, int kind, int isFramework, const char *dirname)
 {
@@ -1224,8 +1232,16 @@ public:
   }
 
   void VisitDecl(clang::Decl *D) {
-    if (D->isInvalidDecl())
+    if (_debug_ast) {
+      std::cout << "--------------------------" << std::endl;
+      D->dump();
+      std::cout << "--------------------------" << std::endl;
+    }
+
+    // check for semantic errors
+    if (D->isInvalidDecl()) {
       FoundInvalid = true;
+    }
 
     if (isa<clang::FunctionDecl>(D) || isa<clang::ObjCMethodDecl>(D) || isa<clang::BlockDecl>(D))
       return;
@@ -1266,7 +1282,6 @@ public:
 
 };
 
-
 class JuliaCodeGenerator : public clang::ASTConsumer {
   public:
     JuliaCodeGenerator(CxxInstance *Cxx) : Cxx(*Cxx) {}
@@ -1282,10 +1297,23 @@ class JuliaCodeGenerator : public clang::ASTConsumer {
     bool EmitTopLevelDecl(clang::Decl *D)
     {
       Visitor.Visit(D);
-      bool HadErrors = (bool)Visitor;
-      if (!HadErrors)
+      const clang::DiagnosticsEngine& Diags = Cxx.CI->getSema().getDiagnostics();
+      bool HadErrors = ((bool) Visitor) || Diags.hasErrorOccurred() || Diags.hasFatalErrorOccurred();
+      if (!HadErrors) {
         Cxx.CGM->EmitTopLevelDecl(D);
+      } else {
+        // remove declaration if an error occured
+        clang::DeclContext* decl_ctx = D->getLexicalDeclContext();
+        if (decl_ctx->containsDecl(D)) {
+          decl_ctx->removeDecl(D);
+          std::cout << "removed decl " << D << " since an error occured" << std::endl;
+        }
+
+        // nop?
+        Cxx.CI->getSema().getASTContext().Deallocate(D);
+      }
       Visitor.reset();
+      
       return HadErrors;
     }
 
