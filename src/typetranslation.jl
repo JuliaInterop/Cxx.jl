@@ -197,7 +197,7 @@ cppdecl(C,p::Type{T}) where {T<:CppEnum} = lookup_ctx(C,p.parameters[1])
 function cppdecl(C,TT::Type{CppTemplate{T,targs}}) where {T,targs}
     ctx = cppdecl(C,T)
 
-    # Do the acutal template resolution
+    # Do the actual template resolution
     cxxt = cxxtmplt(ctx)
     @assert cxxt != C_NULL
     deduced_class = specialize_template(C,cxxt,targs)

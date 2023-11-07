@@ -7,7 +7,7 @@ struct QualType
 end
 Base.convert(::Type{Ptr{Cvoid}}, QT::QualType) = QT.ptr
 
-# All types that are recgonized as builtins
+# All types that are recognized as builtins
 const CxxBuiltinTypes = Union{Type{Bool},
     Type{UInt8},  Type{Int8},    Type{UInt16}, Type{Int16},
     Type{Int32},  Type{UInt32},  Type{Int64},  Type{UInt64},

@@ -238,7 +238,7 @@ function ActOnStartOfFunction(C,D,ScopeIsNull = false)
 end
 function ParseFunctionStatementBody(C,D)
     if ccall((:ParseFunctionStatementBody,libcxxffi),Bool,(Ref{ClangCompiler},Ptr{Cvoid}),C,D) == 0
-        error("A failure occured while parsing the function body")
+        error("A failure occurred while parsing the function body")
     end
 end
 
@@ -435,7 +435,7 @@ end
 
 function process_body(compiler, str, global_scope = true, cxxt = false, filename=Symbol(""),line=1,col=1)
     # First we transform the source buffer by pulling out julia expressions
-    # and replaceing them by expression like __julia::var1, which we can
+    # and replacing them by expression like __julia::var1, which we can
     # later intercept in our external sema source
     # TODO: Consider if we need more advanced scope information in which
     # case we should probably switch to __julia_varN instead of putting
@@ -460,7 +460,7 @@ function process_body(compiler, str, global_scope = true, cxxt = false, filename
     # so we just write a bunch of spaces to match the
     # indentation for the first line.
     # However, due to the processing below columns are off anyway,
-    # so let's not do this until we can actually gurantee it'll be correct
+    # so let's not do this until we can actually guarantee it'll be correct
     # for _ in 1:(col-1)
     #    write(sourcebuf," ")
     # end

@@ -1701,7 +1701,7 @@ JL_DLLEXPORT void *setup_cpp_env(CxxInstance *Cxx, void *jlfunc)
 
     Cxx->CGF->ReturnBlock = Cxx->CGF->getJumpDestInCurrentScope("return");
 
-    // setup the environment to clang's expecations
+    // setup the environment to clang's expectations
     Cxx->CGF->Builder.SetInsertPoint( b0 );
     // clang expects to alloca memory before the AllocaInsertPt
     // typically, clang would create this pointer when it started emitting the function

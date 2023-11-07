@@ -415,7 +415,7 @@ function setup_exception_callback()
     unsafe_store!(callback, @cfunction(process_cxx_exception,Union{},(UInt64,Ptr{Cvoid})))
 end
 
-# As an optimzation, create a generic function per compiler instance,
+# As an optimization, create a generic function per compiler instance,
 # to avoid having to create closures at the call site
 const GlobalPCHBuffer = UInt8[]
 const inited = Ref{Bool}(false)

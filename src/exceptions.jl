@@ -87,7 +87,7 @@ function process_cxx_exception(code::UInt64, e::Ptr{Cvoid})
     error("Caught a C++ exception")
 end
 
-# Get the typename, but strip refence
+# Get the typename, but strip reference
 @generated function typename(CT, Ty)
     if Ty <: Type || Ty <: Val
         Ty = Ty.parameters[1]

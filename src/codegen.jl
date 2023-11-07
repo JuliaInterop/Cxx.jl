@@ -222,7 +222,7 @@ end
 #
 # This can be considered a more fancy form of name lookup, etc. because it
 # can it can descend into template declarations, as well as having to
-# unmarshall the CppNNS structure. However, the basic functionality and
+# unmarshal the CppNNS structure. However, the basic functionality and
 # caveats named in typetranslation.jl still apply.
 #
 
