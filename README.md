@@ -20,6 +20,8 @@ Note that Windows support is still in its early stage, so feel free to submit fe
 
 **Please, note that Cxx.jl only works (out of the box) currently with Julia 1.1.x to 1.3.x, i.e. with no currently supported Julia, while those versions can still be downloaded at Julialang.org.**
 
+**If you're working on macOS Sonoma, you might need to fix [this](https://github.com/JuliaInterop/Cxx.jl/blob/f5a6e33e6184150c2ed0ae5e99bdce485d68b87a/src/initialization.jl#L218-L235) manually.**
+
 ### Build from source
 #### Build requirements
 
