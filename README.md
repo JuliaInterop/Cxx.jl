@@ -1,5 +1,8 @@
 ## Cxx.jl
 
+**Please, note that Cxx.jl only works (out of the box) currently with Julia 1.1.x to 1.3.x, i.e. with no currently supported Julia, while those versions can still be downloaded at Julialang.org.**
+**For support of newer Julia versions see [CxxWrap.jl](https://github.com/JuliaInterop/CxxWrap.jl).**
+
 [![Build Status](https://travis-ci.org/JuliaInterop/Cxx.jl.svg?branch=master)](https://travis-ci.org/JuliaInterop/Cxx.jl)
 [![Build status](https://ci.appveyor.com/api/projects/status/uimv2b4shsb5ndcj/branch/master?svg=true)](https://ci.appveyor.com/project/JuliaInterop/cxx-jl/branch/master)
 [![codecov](https://codecov.io/gh/JuliaInterop/Cxx.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaInterop/Cxx.jl)
@@ -18,7 +21,6 @@ pkg> add Cxx
 ```
 Note that Windows support is still in its early stage, so feel free to submit feedback in the issue tracker.
 
-**Please, note that Cxx.jl only works (out of the box) currently with Julia 1.1.x to 1.3.x, i.e. with no currently supported Julia, while those versions can still be downloaded at Julialang.org.**
 
 **If you're working on macOS Sonoma, you might need to fix [this](https://github.com/JuliaInterop/Cxx.jl/blob/f5a6e33e6184150c2ed0ae5e99bdce485d68b87a/src/initialization.jl#L218-L235) manually.**
 
