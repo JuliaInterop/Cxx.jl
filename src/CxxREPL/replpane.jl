@@ -3,7 +3,6 @@ module CxxREPL
     using REPL.LineEdit
     using ..Cxx
     import Cxx: CxxCore
-    import Cxx.CxxCore: IS_BINARYBUILD
     # Some of this code is derived from cling.
     # Copyright (c) 2007-2014 by the Authors.
     # All rights reserved.
@@ -48,42 +47,12 @@ module CxxREPL
 
     const __current_compiler__ = Cxx.__default_compiler__
 
-    # Load Clang Headers
-    ver_str = Base.libllvm_version
-    @static if IS_BINARYBUILD
-        cxxclangdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "clang-$ver_str", "include")
-        cxxllvmdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "llvm-$ver_str", "include")
-        if isdir(cxxclangdir)
-            addHeaderDir(cxxclangdir)
-            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "clang-$ver_str", "include"))
-        end
-        if isdir(cxxllvmdir)
-            addHeaderDir(cxxllvmdir)
-            addHeaderDir(joinpath(@__DIR__, "..", "..", "deps", "usr", "build", "llvm-$ver_str", "include"))
-        end
-    else
-        llvmsrcdir = joinpath(@__DIR__, "..", "..", "deps", "usr", "src", "llvm-$ver_str")
-        cxxclangdir = joinpath(llvmsrcdir, "tools", "clang", "include")
-        cxxllvmdir = joinpath(llvmsrcdir, "include")
-        if isdir(cxxclangdir)
-            addHeaderDir(cxxclangdir)
-            addHeaderDir(joinpath(CxxCore.BASE_JULIA_SRC, "usr", "include", "clang"))
-        end
-        if isdir(cxxllvmdir)
-            addHeaderDir(cxxllvmdir)
-            addHeaderDir(joinpath(CxxCore.BASE_JULIA_SRC, "usr", "include", "llvm"))
-        end
-    end
-
-    addHeaderDir(joinpath(Sys.BINDIR, "..", "include"))
+    addHeaderDir(normpath(joinpath(Sys.BINDIR, "..", "include")))
 
     cxx"""
     #define __STDC_LIMIT_MACROS
     #define __STDC_CONSTANT_MACROS
-    // Need to use TentativeParsingAction which is private
-    #define private public
     #include "clang/Parse/Parser.h"
-    #undef private
     #include "clang/Frontend/CompilerInstance.h"
     """
 

@@ -18,9 +18,7 @@ parser(C) = pcpp"clang::Parser"(
     ccall((:clang_parser,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C))
 compiler(C) = pcpp"clang::CompilerInstance"(
     ccall((:clang_compiler,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C))
-shadow(C) = pcpp"llvm::Module"(
-    ccall((:clang_shadow_module,libcxxffi),Ptr{Cvoid},(Ref{ClangCompiler},),C)
-    )
+shadow(C) = LLVM.Module(@ccall libcxxffi.get_llvm_module(C::Ref{ClangCompiler})::LLVMModuleRef)
 parser(C::CxxInstance) = parser(instance(C))
 compiler(C::CxxInstance) = compiler(instance(C))
 shadow(C::CxxInstance) = shadow(instance(C))
@@ -33,7 +31,7 @@ shadow(C::CxxInstance) = shadow(instance(C))
     FD, llvmargs, argidxs = CreateFunctionWithBody(C,buf, args...;
         filename = filename, line = line, col = col)
 
-    :( Cxx.dump($FD) )
+    :( CxxCore.dump($FD) )
 end
 
 macro icxxdebug_str(str,args...)
@@ -42,32 +40,34 @@ macro icxxdebug_str(str,args...)
     if isempty(args)
         args = (Symbol(""),1,1)
     end
-    SB = SourceBuf{Symbol(takebuf_string(sourcebuf)), Symbol(args[1]), args[2:end]...}()
+    SB = SourceBuf{Symbol(String(take!(sourcebuf))), :file, __source__.line, 1, false}()
     esc(build_icxx_expr(SB, exprs, isexprs, Any[], compiler, dumpast_impl))
 end
 
-function collectSymbolsForExport(RD::pcpp"clang::CXXRecordDecl")
-    f = Cxx.CreateFunctionWithPersonality(C, Cxx.julia_to_llvm(Cvoid),[Cxx.julia_to_llvm(Ptr{Ptr{Cvoid}})])
-    builder = irbuilder(C)
-    nummethods = icxx"""
-    auto *CGM = $(Cxx.instance(Cxx.__default_compiler__).CGM);
-    CGM->EmitTopLevelDecl($RD);
-    llvm::SmallVector<llvm::Constant *, 0> addresses;
-    unsigned i = 0;
-    for (auto method : $RD->methods()) {
-      clang::GlobalDecl GD(method);
-      auto name = CGM->getMangledName(GD);
-      auto llvmf = $(Cxx.instance(Cxx.__default_compiler__).shadow)->getFunction(name);
-      llvm::IRBuilder *builder = $builder;
-      builder->CreateStore(
-        builder->CreateBitCast(llvmf,$(Cxx.julia_to_llvm(Ptr{Cvoid}))),
-        builder->CreateConstGEP2_32($(Cxx.julia_to_llvm(Ptr{Ptr{Cvoid}})),
-        $f->getArgumentList()[0], 0, i++));
-      )
-    }
-    i
-    """
-    addresses = zeros(Ptr{Ptr{Cvoid}},nummethods)
-    eval(:(llvmcall($(convert(Ptr{Cvoid},f)),Cvoid,(Ptr{Ptr{Cvoid}},),$(pointer(addresses)))))
-    addresses
-end
+# function collectSymbolsForExport(RD::pcpp"clang::CXXRecordDecl")
+#     f = Cxx.CreateFunctionWithPersonality(C, Cxx.julia_to_llvm(Cvoid),[Cxx.julia_to_llvm(Ptr{Ptr{Cvoid}})])
+#     builder = get_llvm_ir_builder()
+#     @ccall libcxxffi.sync_builder_states(C::Ref{ClangCompiler}, builder::LLVMBuilderRef)::Cvoid
+
+#     nummethods = icxx"""
+#     auto *CGM = $(Cxx.instance(Cxx.__default_compiler__).CGM);
+#     CGM->EmitTopLevelDecl($RD);
+#     llvm::SmallVector<llvm::Constant *, 0> addresses;
+#     unsigned i = 0;
+#     for (auto method : $RD->methods()) {
+#       clang::GlobalDecl GD(method);
+#       auto name = CGM->getMangledName(GD);
+#       auto llvmf = $(Cxx.instance(Cxx.__default_compiler__).shadow)->getFunction(name);
+#       llvm::IRBuilder *builder = $builder;
+#       builder->CreateStore(
+#         builder->CreateBitCast(llvmf,$(Cxx.julia_to_llvm(Ptr{Cvoid}))),
+#         builder->CreateConstGEP2_32($(Cxx.julia_to_llvm(Ptr{Ptr{Cvoid}})),
+#         $f->getArgumentList()[0], 0, i++));
+#       )
+#     }
+#     i
+#     """
+#     addresses = zeros(Ptr{Ptr{Cvoid}},nummethods)
+#     eval(:(llvmcall($(convert(Ptr{Cvoid},f)),Cvoid,(Ptr{Ptr{Cvoid}},),$(pointer(addresses)))))
+#     addresses
+# end

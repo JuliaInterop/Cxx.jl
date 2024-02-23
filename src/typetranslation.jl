@@ -284,7 +284,7 @@ const InverseMappedTypes = Dict{QualType, Type}()
 isbits_spec(T, allow_singleton = true) = isbitstype(T) && isconcretetype(T) &&
     (allow_singleton || (sizeof(T) > 0 || fieldcount(T) > 0))
 function cpptype(C,::Type{T}) where T
-    (!(T === Union) && !T.abstract) || error("Cannot create C++ equivalent for abstract types")
+    (!(T === Union) && !isabstracttype(T)) || error("Cannot create C++ equivalent for abstract types")
     try
     if !haskey(MappedTypes, T)
         AnonClass = CreateAnonymousClass(C, translation_unit(C))
@@ -308,7 +308,7 @@ function cpptype(C,::Type{T}) where T
             TPs = Any[]
             argtQTs = QualType[]
             for argt in sig.parameters[2:end]
-                if argt.abstract
+                if isabstracttype(argt)
                     TP = ActOnTypeParameter(C,string("param",tparamnum),tparamnum-1)
                     push!(argtQTs,RValueRefernceTo(C,QualType(typeForDecl(TP))))
                     push!(TPs, TP)
@@ -436,7 +436,7 @@ function getTemplateParameters(cxxd,quoted = false,typeargs = Dict{Int64,Cvoid}(
     return quoted ? Expr(:curly,:Tuple,args...) : Tuple{args...}
 end
 
-include(joinpath(@__DIR__, "..", "deps", "usr", "clang_constants.jl"))
+include("clang_constants.jl")
 
 # TODO: Autogenerate this from the appropriate header
 # Decl::Kind
