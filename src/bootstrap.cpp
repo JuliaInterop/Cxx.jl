@@ -1475,6 +1475,8 @@ static void set_default_clang_options(CxxInstance *Cxx, bool CCompiler, const ch
 #endif
     }
 
+    const char* cpu_env_setting = getenv("JULIA_CXX_CPU");
+
     // TODO: Decide how we want to handle this
     // clang_compiler->getLangOpts().AccessControl = 0;
     if (SysRoot)
@@ -1482,7 +1484,7 @@ static void set_default_clang_options(CxxInstance *Cxx, bool CCompiler, const ch
     Cxx->CI->getCodeGenOpts().DwarfVersion = 2;
     Cxx->CI->getCodeGenOpts().StackRealignment = 1;
     Cxx->CI->getTargetOpts().Triple = target.normalize();
-    Cxx->CI->getTargetOpts().CPU = CPU == NULL ? llvm::sys::getHostCPUName() : CPU;
+    Cxx->CI->getTargetOpts().CPU = CPU == NULL ? (cpu_env_setting != NULL && cpu_env_setting[0] != '\0' ? cpu_env_setting : llvm::sys::getHostCPUName()) : CPU;
     StringMap< bool > ActiveFeatures;
     std::vector< std::string > Features;
     if (isnvptx) {
